@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Next.js build output and cache
+.next
+out
+build
+dist
+.cache
+*.tsbuildinfo
+
+# Environment variables (Crucial for security)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Logs
+npm-debug.log*
+
+# IDE/OS files
+.DS_Store
+.vscode
+.idea
+*.swp
+
+# Testing
+coverage
+.nyc_output
+
+
+# Rust
+target
+.env
+*.sublime-project
+*.sublime-workspace
+test.fish
+uploads
+*.iml
+*.log

@@ -1,0 +1,217 @@
+use axum::{extract::{State, Path}, http::StatusCode, Json};
+use uuid::Uuid;
+use chrono::Utc;
+use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
+
+pub async fn get_conversations(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<ConversationResponse>>, AppError> {
+    let convos = sqlx::query_as!(
+        ConversationResponse,
+        r#"
+        SELECT 
+            c.id,
+            u.id as other_user_id,
+            u.username as other_username,
+            u.avatar_url as other_avatar_url,
+            (SELECT body FROM messages m WHERE m.conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+            c.updated_at
+        FROM conversations c
+        JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+        WHERE c.user1_id = $1 OR c.user2_id = $1
+        ORDER BY c.updated_at DESC
+        "#,
+        auth.user_id
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+
+    Ok(Json(convos))
+}
+
+pub async fn get_messages(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(conversation_id): Path<Uuid>,
+) -> Result<Json<Vec<MessageResponse>>, AppError> {
+    let has_access = sqlx::query!(
+        "SELECT 1 as access FROM conversations WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)",
+        conversation_id, auth.user_id
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    if has_access.is_none() {
+        return Err(AppError::forbidden("Access denied to this conversation"));
+    }
+
+    let messages = sqlx::query_as::<_, MessageResponse>(
+        r#"
+        SELECT 
+            m.id, m.conversation_id, m.sender_id, m.body, m.created_at, m.edited_at, m.is_read, m.reply_to_message_id,
+            COALESCE(
+                (
+                    SELECT json_agg(json_build_object('emoji', mr.emoji, 'user_id', mr.user_id, 'username', u.username))
+                    FROM message_reactions mr
+                    JOIN users u ON u.id = mr.user_id
+                    WHERE mr.message_id = m.id
+                ), 
+                '[]'::json
+            ) as reactions
+        FROM messages m
+        WHERE m.conversation_id = $1
+        ORDER BY m.created_at ASC
+        "#
+    )
+    .bind(conversation_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+
+    Ok(Json(messages))
+}
+
+pub async fn send_message(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<SendMessageRequest>,
+) -> Result<Json<MessageResponse>, AppError> {
+    if auth.user_id == payload.receiver_id {
+        return Err(AppError::bad_request("You cannot message yourself"));
+    }
+
+    let mutual_follow_count = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count 
+        FROM follows 
+        WHERE (follower_id = $1 AND following_id = $2)
+           OR (follower_id = $2 AND following_id = $1)
+        "#,
+        auth.user_id, payload.receiver_id
+    )
+    .fetch_one(&state.db)
+    .await?
+    .count;
+
+    if mutual_follow_count != Some(2) {
+        return Err(AppError::forbidden("You can only message users who follow you back."));
+    }
+
+    let conv_record = sqlx::query!(
+        r#"
+        INSERT INTO conversations (user1_id, user2_id)
+        VALUES (least($1::uuid, $2::uuid), greatest($1::uuid, $2::uuid))
+        ON CONFLICT (least(user1_id, user2_id), greatest(user1_id, user2_id))
+        DO UPDATE SET updated_at = NOW()
+        RETURNING id
+        "#,
+        auth.user_id, payload.receiver_id
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    let message_id = sqlx::query!(
+        r#"
+        INSERT INTO messages (conversation_id, sender_id, body, reply_to_message_id)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        "#,
+        conv_record.id, auth.user_id, payload.body, payload.reply_to_message_id
+    )
+    .fetch_one(&state.db)
+    .await?
+    .id;
+
+    let message = sqlx::query_as::<_, MessageResponse>(
+        r#"
+        SELECT id, conversation_id, sender_id, body, created_at, edited_at, is_read, reply_to_message_id, '[]'::json as reactions
+        FROM messages WHERE id = $1
+        "#
+    )
+    .bind(message_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+
+    Ok(Json(message))
+}
+
+pub async fn edit_message(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(message_id): Path<Uuid>,
+    Json(payload): Json<EditMessageRequest>,
+) -> Result<StatusCode, AppError> {
+    let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Message not found"))?;
+
+    if msg_meta.sender_id != auth.user_id {
+        return Err(AppError::forbidden("You can only edit your own messages"));
+    }
+
+    sqlx::query!(
+        "UPDATE messages SET body = $1, edited_at = $2 WHERE id = $3",
+        payload.body, Utc::now(), message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(StatusCode::OK)
+}
+
+pub async fn delete_message(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(message_id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found("Message not found"))?;
+
+    if msg_meta.sender_id != auth.user_id {
+        return Err(AppError::forbidden("You can only delete your own messages"));
+    }
+
+    sqlx::query!("DELETE FROM messages WHERE id = $1", message_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn toggle_reaction(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(message_id): Path<Uuid>,
+    Json(payload): Json<ToggleReactionRequest>,
+) -> Result<StatusCode, AppError> {
+    let existing = sqlx::query!(
+        "SELECT 1 as has_reacted FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
+        message_id, auth.user_id, payload.emoji
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    if existing.is_some() {
+        sqlx::query!(
+            "DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
+            message_id, auth.user_id, payload.emoji
+        )
+        .execute(&state.db)
+        .await?;
+    } else {
+        sqlx::query!(
+            "INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)",
+            message_id, auth.user_id, payload.emoji
+        )
+        .execute(&state.db)
+        .await?;
+    }
+
+    Ok(StatusCode::OK)
+}
