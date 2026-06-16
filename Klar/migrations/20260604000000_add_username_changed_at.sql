@@ -1,2 +1,2 @@
 ALTER TABLE users 
-ADD COLUMN username_changed_at TIMESTAMPTZ;
+ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;

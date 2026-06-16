@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Plus, Search, Settings, User, Bell } from "lucide-react";
+import { LogOut, Plus, Search, Settings, User, Bell, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { posts as postsApi, type Post } from "@/lib/api";
 import PostCard from "@/components/PostCard";
@@ -150,7 +150,7 @@ export default function FeedPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4">
+        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
           <Link href="/feed" className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity">
             Klar
           </Link>
@@ -198,6 +198,15 @@ export default function FeedPage() {
               )}
             </div>
 
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push("/chats")}
+              aria-label="Chats"
+            >
+              <MessageCircle size={20} />
+            </Button>
+
             <Button variant="ghost" size="icon" onClick={() => user && router.push(`/users/${user.username}`)} aria-label="Profile">
               <User size={20} />
             </Button>
@@ -211,7 +220,7 @@ export default function FeedPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-lg px-4">
+      <main className="mx-auto max-w-3xl px-4">
         {showSkeletons && (
           <>
             <PostSkeleton />

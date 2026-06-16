@@ -1,4 +1,4 @@
 -- Add profile fields to users
-ALTER TABLE users ADD COLUMN display_name VARCHAR(50);
-ALTER TABLE users ADD COLUMN bio TEXT;
-ALTER TABLE users ADD COLUMN avatar_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;

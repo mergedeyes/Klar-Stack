@@ -1,7 +1,7 @@
 -- Media assets — images attached to posts
 -- Separate table because a post can have multiple images (carousel, later)
 -- For now we'll do one image per post but the schema supports more
-CREATE TABLE media_assets (
+CREATE TABLE IF NOT EXISTS media_assets (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     post_id     UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     -- Storage paths for each variant (relative to upload dir)
@@ -19,4 +19,4 @@ CREATE TABLE media_assets (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_media_assets_post_id ON media_assets (post_id);
+CREATE INDEX IF NOT EXISTS idx_media_assets_post_id ON media_assets (post_id);

@@ -1,6 +1,16 @@
-CREATE TYPE notification_type AS ENUM ('follow', 'post_like', 'comment', 'comment_like');
+DO $$
+BEGIN
+    CREATE TYPE notification_type AS ENUM (
+        'follow',
+        'post_like',
+        'comment',
+        'comment_like'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     -- The person receiving the notification
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, 
@@ -22,6 +32,6 @@ CREATE TABLE notifications (
 );
 
 -- Index for fetching a user's feed quickly
-CREATE INDEX idx_notifications_user_id_created ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id_created ON notifications(user_id, created_at DESC);
 -- Index for finding unread counts
-CREATE INDEX idx_notifications_unread ON notifications(user_id) WHERE is_read = FALSE;
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id) WHERE is_read = FALSE;

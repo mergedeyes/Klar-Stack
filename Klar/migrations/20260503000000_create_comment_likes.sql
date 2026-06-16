@@ -5,4 +5,4 @@ CREATE TABLE IF NOT EXISTS comment_likes (
     PRIMARY KEY (user_id, comment_id)
 );
 
-CREATE INDEX idx_comment_likes_comment_id ON comment_likes(comment_id);
+CREATE INDEX IF NOT EXISTS idx_comment_likes_comment_id ON comment_likes(comment_id);

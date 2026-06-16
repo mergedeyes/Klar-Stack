@@ -5,8 +5,8 @@ import { chatsApi, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import Avatar from "@/components/Avatar";
 import { Reply, Edit2, Trash2, X, Smile } from "lucide-react";
+import { getMediaUrl } from "@/lib/utils/media";
 
 interface ChatWindowProps {
   conversationId?: string;
@@ -25,11 +25,12 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
   // States für die neuen Features
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || conversationId === "new") return;
     chatsApi.getMessages(conversationId)
       .then(setMessages)
       .catch(err => console.error("Could not load messages:", err));
@@ -60,6 +61,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
       setError(err.message);
     } finally {
       setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 10);
     }
   };
 
@@ -93,14 +95,21 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
     }
   };
 
-  return (
-    <div className="flex flex-col h-[600px] w-full max-w-lg border rounded-xl overflow-hidden bg-background shadow-sm">
+return (
+    <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
+      
       {/* Header */}
-      <div className="p-4 border-b flex items-center gap-3 bg-muted/30">
-        <Avatar username={receiverUsername} avatarUrl={receiverAvatar} size={10} />
+      <div className="h-20 flex-none p-4 border-b flex items-center gap-3 bg-background/95 backdrop-blur">
+        <div className="w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
+          {receiverAvatar ? (
+            <img src={getMediaUrl(receiverAvatar)} alt={receiverUsername} className="w-full h-full object-cover" />
+          ) : (
+            <span className="font-bold text-muted-foreground">{receiverUsername.charAt(0).toUpperCase()}</span>
+          )}
+        </div>
         <div>
           <span className="font-semibold">{receiverUsername}</span>
-          <div className="text-xs text-muted-foreground">End-to-End Encrypted (Just kidding)</div>
+          <div className="text-xs text-muted-foreground">End-to-End Encrypted</div>
         </div>
       </div>
 
@@ -170,7 +179,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
       </div>
 
       {/* Input Area */}
-      <div className="p-3 border-t bg-muted/10">
+      <div className="flex-none p-3 border-t bg-muted/10">
         {error && <p className="text-sm text-destructive mb-2 px-2">{error}</p>}
         
         {/* Active Reply/Edit Banners */}
@@ -189,6 +198,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
 
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input 
+            ref={inputRef}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={editingMessage ? "Edit message..." : `Message @${receiverUsername}...`}

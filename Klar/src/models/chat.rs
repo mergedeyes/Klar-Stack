@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use sqlx::FromRow;
 
 #[derive(Debug, Deserialize)]
 pub struct SendMessageRequest {
@@ -33,10 +34,10 @@ pub struct ConversationResponse {
     pub other_username: String,
     pub other_avatar_url: Option<String>,
     pub last_message: Option<String>,
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, FromRow)]
 pub struct MessageResponse {
     pub id: Uuid,
     pub conversation_id: Uuid,

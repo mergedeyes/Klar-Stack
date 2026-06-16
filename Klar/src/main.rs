@@ -10,7 +10,7 @@ mod rate_limit;
 mod routes;
 mod storage;
 
-use email::EmailService;
+use email::{EmailProvider, EmailService};
 use handlers::auth::AppState;
 use crate::storage::Storage;
 use tokio::sync::broadcast;
@@ -33,13 +33,21 @@ async fn main() {
     tracing::info!("Cloud storage client connected");
 
     // Email service
+    let provider: EmailProvider = std::env::var("EMAIL_PROVIDER")
+        .expect("EMAIL_PROVIDER missing")
+        .parse()
+        .expect("Invalid EMAIL_PROVIDER");
+
     let email = EmailService::new(
-        &config.smtp_host,
-        config.smtp_port,
-        config.smtp_user.as_deref(),
-        config.smtp_pass.as_deref(),
-        &config.smtp_from,
-        &config.base_url,
+        provider,
+        &std::env::var("SMTP_HOST").expect("SMTP_HOST missing"),
+        std::env::var("SMTP_PORT")
+            .expect("SMTP_PORT missing")
+            .parse()
+            .expect("Invalid SMTP_PORT"),
+        &std::env::var("SMTP_FROM").expect("SMTP_FROM missing"),
+        std::env::var("SMTP_PASS").ok().as_deref(),
+        &std::env::var("BASE_URL").expect("BASE_URL missing"),
     );
     tracing::info!("Email service ready (SMTP: {}:{})", config.smtp_host, config.smtp_port);
 

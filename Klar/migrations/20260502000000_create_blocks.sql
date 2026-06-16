@@ -6,4 +6,4 @@ CREATE TABLE IF NOT EXISTS blocks (
     CONSTRAINT no_self_block CHECK (blocker_id != blocked_id)
 );
 
-CREATE INDEX idx_blocks_blocked_id ON blocks(blocked_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_blocked_id ON blocks(blocked_id);

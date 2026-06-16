@@ -9,4 +9,3 @@ pub use like::*;
 pub use media::*;
 pub use post::*;
 pub use user::*;
-pub use chat::*;

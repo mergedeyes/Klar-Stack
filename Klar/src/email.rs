@@ -25,31 +25,56 @@ impl std::fmt::Display for EmailError {
     }
 }
 
+#[derive(Debug)]
+pub enum EmailProvider {
+    Local,
+    Ionos,
+}
+
+impl std::str::FromStr for EmailProvider {
+    type Err = String;
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "local" => Ok(Self::Local),
+            "ionos" => Ok(Self::Ionos),
+            _ => Err(format!("Unknown email provider: {}", s)),
+        }
+    }
+}
+
 impl EmailService {
     pub fn new(
+        provider: EmailProvider,
         smtp_host: &str,
         smtp_port: u16,
-        smtp_user: Option<&str>,
+        smtp_from: &str,
         smtp_pass: Option<&str>,
-        from_address: &str,
         base_url: &str,
     ) -> Self {
-        let mut transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
-            .port(smtp_port);
+        let mailer = match provider {
+            EmailProvider::Local => {
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
+                    .port(smtp_port)
+                    .build()
+            }
 
-        // Add credentials if provided (MailHog doesn't need them)
-        if let (Some(user), Some(pass)) = (smtp_user, smtp_pass) {
-            transport = transport.credentials(Credentials::new(
-                user.to_string(),
-                pass.to_string(),
-            ));
-        }
+            EmailProvider::Ionos => {
+                let pass = smtp_pass.expect("SMTP_PASS required");
 
-        let mailer = transport.build();
+                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_host)
+                    .expect("Invalid SMTP host")
+                    .port(smtp_port)
+                    .credentials(Credentials::new(
+                        smtp_from.to_string(),
+                        pass.to_string(),
+                    ))
+                    .build()
+            }
+        };
 
         Self {
             mailer,
-            from_address: from_address.to_string(),
+            from_address: smtp_from.to_string(),
             base_url: base_url.to_string(),
         }
     }

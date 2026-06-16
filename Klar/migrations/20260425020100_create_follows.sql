@@ -1,6 +1,6 @@
 -- Follows table — the social graph
 -- Composite primary key prevents duplicate follows
-CREATE TABLE follows (
+CREATE TABLE IF NOT EXISTS follows (
     follower_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     following_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -10,6 +10,6 @@ CREATE TABLE follows (
 );
 
 -- "Who am I following?" (for feed generation)
-CREATE INDEX idx_follows_follower ON follows (follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows (follower_id);
 -- "Who follows me?" (for follower list)
-CREATE INDEX idx_follows_following ON follows (following_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON follows (following_id);

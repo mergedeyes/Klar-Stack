@@ -105,13 +105,13 @@ pub fn create_router(state: AppState) -> Router {
             post(handlers::comment_likes::toggle_comment_like))
 
         // ── Chats ──────────────────────────────────────────────
-        .route("/chats", get(handlers::chat::get_conversations))
-        .route("/chats/send", post(handlers::chat::send_message))
-        .route("/chats/{conversation_id}/messages", get(handlers::chat::get_messages))
+        .route("/chats", get(handlers::chats::get_conversations))
+        .route("/chats/send", post(handlers::chats::send_message))
+        .route("/chats/{conversation_id}/messages", get(handlers::chats::get_messages))
         .route("/chats/messages/{message_id}", 
-            patch(handlers::chat::edit_message)
-            .delete(handlers::chat::delete_message))
-        .route("/chats/messages/{message_id}/reactions", post(handlers::chat::toggle_reaction))
+            patch(handlers::chats::edit_message)
+            .delete(handlers::chats::delete_message))
+        .route("/chats/messages/{message_id}/reactions", post(handlers::chats::toggle_reaction))
         // ────────────────────────────────────────────────────────────
 
         // Feed (auth required)

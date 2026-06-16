@@ -32,6 +32,12 @@ impl IntoResponse for AppError {
     }
 }
 
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        AppError::internal(format!("Database error: {}", err))
+    }
+}
+
 impl AppError {
     pub fn not_found(msg: impl Into<String>) -> Self {
         Self { status: StatusCode::NOT_FOUND, message: msg.into() }
@@ -52,6 +58,13 @@ impl AppError {
     pub fn unauthorized(msg: impl Into<String>) -> Self {
         Self {
             status: axum::http::StatusCode::UNAUTHORIZED,
+            message: msg.into(),
+        }
+    }
+
+    pub fn forbidden(msg: impl Into<String>) -> Self {
+        Self {
+            status: axum::http::StatusCode::FORBIDDEN,
             message: msg.into(),
         }
     }
