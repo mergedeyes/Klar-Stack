@@ -4,7 +4,7 @@ use reqwest::Client as HttpClient;
 use crate::errors::AppError;
 
 // ─── DER WRAPPER ─────────────────────────────────────────────────────────────
-// Diese Struktur wird im AppState gespeichert. Sie leitet jeden Aufruf 
+// Diese Struktur wird im AppState gespeichert. Sie leitet jeden Aufruf
 // einfach an den aktiven Provider weiter.
 #[derive(Clone)]
 pub enum Storage {
@@ -13,7 +13,8 @@ pub enum Storage {
 }
 
 impl Storage {
-    /// Initialisiert den Storage basierend auf der .env Variable
+    /// Initialisiert den Storage basierend auf der .env Variable.
+    /// Setze STORAGE_PROVIDER=s3, um Bunny über die S3-kompatible API zu nutzen.
     pub async fn new() -> Self {
         let provider = std::env::var("STORAGE_PROVIDER")
             .unwrap_or_else(|_| "bunny".to_string())
@@ -51,6 +52,9 @@ impl Storage {
 }
 
 // ─── NATIVE BUNNY REST API ───────────────────────────────────────────────────
+// Hinweis: Seit Bunny eine S3-kompatible API anbietet, ist dieser REST-Wrapper
+// redundant — S3Storage unten kann dasselbe Storage-Backend abdecken. Bleibt
+// vorerst als Fallback erhalten.
 #[derive(Clone)]
 pub struct BunnyStorage {
     client: HttpClient,
@@ -78,9 +82,9 @@ impl BunnyStorage {
 
     pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), AppError> {
         let url = format!("{}/{}/{}", self.endpoint, self.bucket, key);
-        
-        let content_type = if key.ends_with(".png") { "image/png" } 
-            else if key.ends_with(".webp") { "image/webp" } 
+
+        let content_type = if key.ends_with(".png") { "image/png" }
+            else if key.ends_with(".webp") { "image/webp" }
             else { "image/jpeg" };
 
         let response = self.client
@@ -132,6 +136,26 @@ impl BunnyStorage {
 }
 
 // ─── S3 COMPATIBLE API (AWS SDK) ─────────────────────────────────────────────
+// Konfiguriert für Bunny.net Storage über die S3-kompatible Gateway.
+//
+// Bunny-Mapping (wichtig!):
+//   • Access Key ID     = Name deiner Storage Zone  → identisch mit dem Bucket.
+//                         Darum reicht der Bucket; kein separater Access-Key nötig.
+//                         (Setzt du S3_STORAGE_ACCESS_KEY, wird der genutzt — so
+//                          funktioniert derselbe Code auch für Hetzner/AWS.)
+//   • Secret Access Key = Passwort deiner Storage Zone (S3_STORAGE_SECRET_ACCESS_KEY)
+//   • Endpoint          = https://<region>-s3.storage.bunnycdn.com
+//   • Region            = de | ny | sg | uk | se | la | jh
+//                         Wird aus dem Endpoint abgeleitet (override via S3_STORAGE_REGION).
+//   • Bunny unterstützt NUR path-style URLs → force_path_style(true).
+//
+// Benötigte .env-Variablen:
+//   STORAGE_PROVIDER=s3
+//   S3_STORAGE_ENDPOINT=https://de-s3.storage.bunnycdn.com
+//   S3_STORAGE_BUCKET=<deine-storage-zone>
+//   S3_STORAGE_SECRET_ACCESS_KEY=<storage-zone-passwort>
+//   S3_PUBLIC_STORAGE_URL=https://<deine-pullzone>.b-cdn.net   (öffentliche Reads laufen
+//                         über die CDN-Pull-Zone, nicht über den S3-Endpoint!)
 #[derive(Clone)]
 pub struct S3Storage {
     client: S3Client,
@@ -142,11 +166,27 @@ pub struct S3Storage {
 impl S3Storage {
     pub async fn new() -> Self {
         let endpoint = std::env::var("S3_STORAGE_ENDPOINT").expect("S3_STORAGE_ENDPOINT missing");
-        let region_str = std::env::var("S3_STORAGE_REGION").unwrap_or_else(|_| "fsn1".to_string());
-        let access_key = std::env::var("S3_STORAGE_ACCESS_KEY").expect("S3_STORAGE_ACCESS_KEY missing");
-        let secret_key = std::env::var("S3_STORAGE_SECRET_KEY").expect("S3_STORAGE_SECRET_KEY missing");
         let bucket = std::env::var("S3_STORAGE_BUCKET").expect("S3_STORAGE_BUCKET missing");
-        let public_url_base = std::env::var("S3_PUBLIC_STORAGE_URL").expect("S3_UBLIC_STORAGE_URL missing");
+
+        // Bunny: Access Key ID = Storage-Zone-Name = Bucket. Fallback auf den Bucket,
+        // wenn kein expliziter Access-Key gesetzt ist.
+        let access_key = std::env::var("S3_STORAGE_ACCESS_KEY")
+            .unwrap_or_else(|_| bucket.clone());
+
+        // Secret = Storage-Zone-Passwort. Akzeptiert auch den alten Namen.
+        let secret_key = std::env::var("S3_STORAGE_SECRET_ACCESS_KEY")
+            .or_else(|_| std::env::var("S3_STORAGE_SECRET_KEY"))
+            .expect("S3_STORAGE_SECRET_ACCESS_KEY missing");
+
+        // Region wird für die Signatur gebraucht. Aus dem Endpoint ableiten
+        // (z.B. https://de-s3.storage.bunnycdn.com → "de"), override via Env.
+        let region_str = std::env::var("S3_STORAGE_REGION")
+            .ok()
+            .or_else(|| derive_region_from_endpoint(&endpoint))
+            .unwrap_or_else(|| "us-east-1".to_string());
+
+        let public_url_base = std::env::var("S3_PUBLIC_STORAGE_URL")
+            .expect("S3_PUBLIC_STORAGE_URL missing");
 
         let credentials = Credentials::new(access_key, secret_key, None, None, "manual");
 
@@ -158,10 +198,10 @@ impl S3Storage {
             .await;
 
         let s3_config = aws_sdk_s3::config::Builder::from(&config)
-            // WICHTIG: Das bleibt hier für S3 aktiv
-            .force_path_style(true) 
+            // WICHTIG: Bunny unterstützt nur path-style URLs.
+            .force_path_style(true)
             .build();
-            
+
         Self {
             client: S3Client::from_conf(s3_config),
             bucket,
@@ -171,8 +211,8 @@ impl S3Storage {
 
     pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), AppError> {
         let body = ByteStream::from(data.to_vec());
-        let content_type = if key.ends_with(".png") { "image/png" } 
-            else if key.ends_with(".webp") { "image/webp" } 
+        let content_type = if key.ends_with(".png") { "image/png" }
+            else if key.ends_with(".webp") { "image/webp" }
             else { "image/jpeg" };
 
         self.client
@@ -209,5 +249,19 @@ impl S3Storage {
     pub fn public_url(&self, key: &str) -> String {
         let clean_key = if key.starts_with('/') { &key[1..] } else { key };
         format!("{}/{}", self.public_url_base, clean_key)
+    }
+}
+
+/// Leitet den Bunny-Regionscode aus dem S3-Endpoint ab.
+/// z.B. "https://de-s3.storage.bunnycdn.com" → Some("de").
+/// Gibt None zurück, wenn das Muster nicht passt (dann greift der Fallback).
+fn derive_region_from_endpoint(endpoint: &str) -> Option<String> {
+    let host = endpoint.split("://").last()?;      // de-s3.storage.bunnycdn.com
+    let first_label = host.split('.').next()?;     // de-s3
+    let region = first_label.strip_suffix("-s3")?; // de
+    if region.is_empty() {
+        None
+    } else {
+        Some(region.to_string())
     }
 }

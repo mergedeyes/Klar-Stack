@@ -9,9 +9,9 @@ axum = { version = "0.8", features = ["multipart"] }
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
-# Environment variables
-dotenvy = "0.15"
+sqlx = { version = "0.8", features = [
+    "runtime-tokio", "tls-native-tls", "postgres", "uuid", "chrono", "migrate", "migrate"
+] }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -49,3 +49,4 @@ aws-config = "=1.4.0"
 aws-sdk-s3 = "=1.4.0"
 aws-smithy-types = "=1.4.0"
 reqwest = "0.13.4"
+dotenvy = "0.15.7"

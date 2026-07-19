@@ -8,8 +8,9 @@ import { posts as postsApi, comments as commentsApi, type Post, type MediaAsset 
 import { useAuth } from "@/lib/auth-context";
 import EditedBadge from "@/components/EditedBadge";
 import { getMediaUrl } from "@/lib/utils/media";
+import { ENV } from '../env';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_URL = ENV.API_URL;
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();

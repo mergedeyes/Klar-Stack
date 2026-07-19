@@ -8,8 +8,9 @@ import { users as usersApi, follows, type User } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getMediaUrl } from "@/lib/utils/media";
+import { ENV } from '../env';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_URL = ENV.API_URL;
 
 // ── User result card ──────────────────────────────────────────────────────────
 

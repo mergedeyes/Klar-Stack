@@ -4,12 +4,11 @@ import { useCallback, useRef, useState } from "react";
 import Image from "next/image";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-
 import { tokens } from "@/lib/api";
-
 import { Button } from "@/components/ui/button";
+import { ENV } from '../env';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_URL = ENV.API_URL;
 
 interface CreatePostModalProps {
   onClose: () => void;

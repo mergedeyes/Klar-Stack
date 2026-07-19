@@ -16,7 +16,9 @@ import { Button } from "@/components/ui/button";
 import EditedBadge from "@/components/EditedBadge";
 import { useRouter } from "next/navigation";
 import { getMediaUrl } from "@/lib/utils/media";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { ENV } from '../env';
+
+const API_URL = ENV.API_URL;
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -385,7 +387,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="relative flex max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-background shadow-2xl">
+      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl md:flex-row">
         {user?.username === post.username && (
           <button
             onClick={handleDeletePost}
@@ -400,10 +402,17 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
           <X size={18} />
         </button>
 
-        {/* Image panel */}
+        {/* image panel */}
         {firstImage?.medium_url && (
-          <div className="hidden w-[55%] shrink-0 items-center justify-center bg-black md:flex">
-            <Image src={getMediaUrl(firstImage.medium_url)} alt={post.caption ?? "Post image"} width={640} height={640} className="max-h-[90vh] w-full object-contain" unoptimized />
+          <div className="flex w-full shrink-0 items-center justify-center bg-black md:w-[58%]">
+            <Image
+              src={getMediaUrl(firstImage.medium_url)}
+              alt={post.caption ?? "Post image"}
+              width={firstImage.width ?? 1080}
+              height={firstImage.height ?? 1080}
+              className="h-auto w-full object-contain max-h-[50vh] md:max-h-[90vh]"
+              unoptimized
+            />
           </div>
         )}
 

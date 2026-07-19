@@ -115,6 +115,7 @@ pub fn create_router(state: AppState) -> Router {
 
         // Feed (auth required)
         .route("/feed", get(handlers::posts::get_feed))
+        .route("/feed/discovery", get(handlers::feed::get_global_feed))
 
         // Notifications
         .route("/notifications", get(handlers::notifications::get_notifications))

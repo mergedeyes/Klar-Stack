@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from "@/lib/auth-context"; // <-- 1. Auth importieren
+import { useAuth } from "@/lib/auth-context";
+import { ENV } from '../env';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_URL = ENV.API_URL;
 
 export interface AppNotification {
   id: string;
