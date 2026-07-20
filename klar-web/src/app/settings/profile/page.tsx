@@ -11,12 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '../env';
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 
 export default function EditProfilePage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
 
   const [username, setUsername] = useState("");
@@ -80,7 +80,7 @@ export default function EditProfilePage() {
     setError(null);
     setSuccess(false);
 
-    const newUsername = username.trim().toLowerCase();
+    const newUsername = username.trim();
 
     // Basic frontend validation
     if (newUsername.length < 3 || newUsername.length > 30) {
@@ -100,13 +100,17 @@ export default function EditProfilePage() {
       }
 
       // Update profile (Only send username if it actually changed to avoid triggering cooldown unnecessarily)
-      const usernamePayload = newUsername !== user.username ? newUsername : null;
+      const usernamePayload = newUsername.toLowerCase() !== user.username.toLowerCase() ? newUsername : null;
 
       await usersApi.updateProfile(
         usernamePayload,
         displayName.trim() || null,
         bio.trim() || null
       );
+
+      // Refresh the cached user so other pages (e.g. "is this my own
+      // profile") don't keep comparing against stale pre-save data.
+      await refreshUser();
 
       setSuccess(true);
       

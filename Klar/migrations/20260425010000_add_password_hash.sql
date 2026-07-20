@@ -1,4 +1,1 @@
--- Add password_hash to users table
--- Nullable for now because the existing "jan" row doesn't have one.
--- In production you'd force a password reset for existing users.
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+-- Superseded by the 20260720 schema rewrite. See migrations/20260720000000_*.

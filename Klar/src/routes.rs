@@ -5,6 +5,8 @@ use axum::{
     Router,
 };
 use tower_http::cors::{AllowHeaders, CorsLayer};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 use crate::handlers;
 use crate::handlers::auth::AppState;
@@ -33,9 +35,26 @@ fn build_cors() -> CorsLayer {
         .allow_credentials(true)
 }
 
+/// Build the request/response tracing layer. Logs every request — method,
+/// path, status code, and latency — at INFO, so failures are always visible
+/// in the server console even for handlers that don't call tracing:: themselves.
+fn build_trace_layer() -> TraceLayer<tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>> {
+    TraceLayer::new_for_http()
+        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+        .on_response(DefaultOnResponse::new().level(Level::INFO).latency_unit(tower_http::LatencyUnit::Millis))
+        .on_failure(DefaultOnFailure::new().level(Level::ERROR))
+}
+
 pub fn create_router(state: AppState) -> Router {
     // ── Rate limiters ───────────────────────────────────────────
-    let auth_limiter = RateLimitState::new(15, 60);
+    // Auth limit is configurable via AUTH_RATE_LIMIT_PER_MIN (defaults to the
+    // production value of 15) so local/test runs that register many users
+    // in quick succession don't need to weaken the real production limit.
+    let auth_rate_limit: u32 = std::env::var("AUTH_RATE_LIMIT_PER_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(15);
+    let auth_limiter = RateLimitState::new(auth_rate_limit, 60);
     let general_limiter = RateLimitState::new(500, 60);
 
     // ── Auth routes (strict rate limit) ─────────────────────────
@@ -107,6 +126,7 @@ pub fn create_router(state: AppState) -> Router {
         // ── Chats ──────────────────────────────────────────────
         .route("/chats", get(handlers::chats::get_conversations))
         .route("/chats/send", post(handlers::chats::send_message))
+        .route("/chats/{conversation_id}/messages", get(handlers::chats::get_messages))
         .route("/chats/messages/{message_id}", 
             patch(handlers::chats::edit_message)
             .delete(handlers::chats::delete_message))
@@ -122,6 +142,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/notifications/stream", get(handlers::notifications::notification_stream))
         .route("/notifications/read", patch(handlers::notifications::mark_read))
 
+        // Interaction event log (client-reported views)
+        .route("/events", post(handlers::events::create_event))
+
         .route_layer(middleware::from_fn_with_state(
             general_limiter,
             rate_limit::rate_limit_middleware,
@@ -132,5 +155,6 @@ pub fn create_router(state: AppState) -> Router {
         .merge(auth_routes)
         .merge(api_routes)
         .layer(build_cors())
+        .layer(build_trace_layer())
         .with_state(state)
 }

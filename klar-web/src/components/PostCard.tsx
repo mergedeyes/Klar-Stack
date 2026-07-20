@@ -8,7 +8,7 @@ import { posts as postsApi, comments as commentsApi, type Post, type MediaAsset 
 import { useAuth } from "@/lib/auth-context";
 import EditedBadge from "@/components/EditedBadge";
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '../env';
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 

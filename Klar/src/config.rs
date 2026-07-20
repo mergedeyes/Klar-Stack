@@ -9,7 +9,6 @@ pub struct Config {
     // SMTP
     pub smtp_host: String,
     pub smtp_port: u16,
-    pub smtp_user: Option<String>,
     pub smtp_pass: Option<String>,
     pub smtp_from: String,
 }
@@ -38,7 +37,6 @@ impl Config {
                 .unwrap_or_else(|_| "1025".to_string())
                 .parse()
                 .expect("SMTP_PORT must be a number"),
-            smtp_user: std::env::var("SMTP_USER").ok(),
             smtp_pass: std::env::var("SMTP_PASS").ok(),
             smtp_from: std::env::var("SMTP_FROM")
                 .unwrap_or_else(|_| "noreply@klar.social".to_string()),

@@ -6,7 +6,7 @@ import { ImagePlus, Loader2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { tokens } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { ENV } from '../env';
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 

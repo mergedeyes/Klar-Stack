@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { chatsApi, type Conversation } from "@/lib/api";
 import { ArrowLeft, MessageSquarePlus, MessageCircle } from "lucide-react";
@@ -9,7 +9,7 @@ import { getMediaUrl } from "@/lib/utils/media";
 import ChatWindow from "@/components/ChatWindow";
 import NewChatModal from "@/components/NewChatModal";
 
-export default function UnifiedChatsPage() {
+function UnifiedChatsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -150,5 +150,19 @@ return (
         />
       )}
     </div>
+  );
+}
+
+export default function UnifiedChatsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-background text-muted-foreground">
+          Loading chats…
+        </div>
+      }
+    >
+      <UnifiedChatsPageContent />
+    </Suspense>
   );
 }

@@ -12,6 +12,9 @@ use crate::handlers::auth::AppState;
 use crate::models::LikeResponse;
 
 /// POST /posts/:post_id/comments/:comment_id/like — toggle like on a comment (auth required)
+///
+/// comments.like_count is maintained here in the same transaction as the
+/// insert/delete, same reasoning as posts.like_count.
 pub async fn toggle_comment_like(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -48,38 +51,54 @@ pub async fn toggle_comment_like(
         AppError::internal("Database error")
     })?;
 
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
+    let like_count: i64;
+
     // Toggle
     if already_liked {
         sqlx::query("DELETE FROM comment_likes WHERE user_id = $1 AND comment_id = $2")
             .bind(auth.user_id)
             .bind(comment_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to unlike comment: {}", e);
                 AppError::internal("Failed to unlike comment")
             })?;
+
+        like_count = sqlx::query_scalar::<_, i64>(
+            "UPDATE comments SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1 RETURNING like_count"
+        )
+        .bind(comment_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update comment like_count: {}", e); AppError::internal("Database error") })?;
     } else {
         sqlx::query("INSERT INTO comment_likes (user_id, comment_id) VALUES ($1, $2)")
             .bind(auth.user_id)
             .bind(comment_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to like comment: {}", e);
                 AppError::internal("Failed to like comment")
             })?;
+
+        like_count = sqlx::query_scalar::<_, i64>(
+            "UPDATE comments SET like_count = like_count + 1 WHERE id = $1 RETURNING like_count"
+        )
+        .bind(comment_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update comment like_count: {}", e); AppError::internal("Database error") })?;
     }
 
-    // Return updated count
-    let like_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM comment_likes WHERE comment_id = $1"
-    )
-    .bind(comment_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
         AppError::internal("Database error")
     })?;
 

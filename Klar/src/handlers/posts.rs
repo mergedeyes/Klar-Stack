@@ -13,6 +13,11 @@ use crate::handlers::auth::AppState;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
 
 /// POST /posts — create a new post (auth required)
+///
+/// On success: increments the author's post_count, and fans the post out
+/// to every current follower's feed_items row (fan-out-on-write) so their
+/// /feed reads are a single indexed lookup instead of a live join against
+/// the whole follows table.
 pub async fn create_post(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -22,6 +27,11 @@ pub async fn create_post(
     if input.caption.as_ref().map_or(true, |c| c.trim().is_empty()) {
         return Err(AppError::bad_request("Post must have a caption"));
     }
+
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
 
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
@@ -35,20 +45,50 @@ pub async fn create_post(
             caption,
             created_at,
             edited_at,
-            -- Add these dummy values so SQLx doesn't panic when mapping to PostResponse!
             NULL as thumb_url,
             NULL as medium_url,
             NULL as full_url,
-            0 as comment_count 
+            0 as comment_count,
+            0 as like_count
         "#
     )
     .bind(auth.user_id)
     .bind(&input.caption)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create post: {}", e);
         AppError::internal("Failed to create post")
+    })?;
+
+    sqlx::query("UPDATE users SET post_count = post_count + 1 WHERE id = $1")
+        .bind(auth.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+
+    // Fan-out: one row per current follower. A single INSERT..SELECT is a
+    // set-based operation, not a loop -- efficient even for accounts with
+    // many followers. (At true celebrity-account scale, this would move
+    // to an async job instead of running inline on the request; noted in
+    // the summary, not needed yet.)
+    sqlx::query(
+        r#"
+        INSERT INTO feed_items (user_id, post_id, created_at)
+        SELECT follower_id, $1, $2 FROM follows WHERE following_id = $3
+        ON CONFLICT DO NOTHING
+        "#
+    )
+    .bind(post.id)
+    .bind(post.created_at)
+    .bind(auth.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("Failed to fan out post: {}", e); AppError::internal("Database error") })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
+        AppError::internal("Database error")
     })?;
 
     tracing::info!("Post created: {} by user {}", post.id, auth.user_id);
@@ -64,7 +104,8 @@ pub async fn get_post(
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
         SELECT p.id, p.user_id, u.username, u.avatar_url, p.caption, p.created_at, p.edited_at,
-        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+            NULL::text as thumb_url, NULL::text as medium_url, NULL::text as full_url,
+            p.comment_count, p.like_count
         FROM posts p
         JOIN users u ON p.user_id = u.id
         WHERE p.id = $1
@@ -126,7 +167,12 @@ pub async fn edit_post(
             (SELECT avatar_url FROM users WHERE id = user_id) as avatar_url,
             caption,
             created_at,
-            edited_at
+            edited_at,
+            NULL::text as thumb_url,
+            NULL::text as medium_url,
+            NULL::text as full_url,
+            comment_count,
+            like_count
         "#
     )
     .bind(input.caption.trim())
@@ -143,6 +189,9 @@ pub async fn edit_post(
 }
 
 /// DELETE /posts/:id — delete a post (auth required, owner only)
+///
+/// feed_items rows for this post are cleaned up automatically via the
+/// ON DELETE CASCADE foreign key -- no explicit cleanup needed here.
 pub async fn delete_post(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -178,15 +227,31 @@ pub async fn delete_post(
         AppError::internal("Database error")
     })?;
 
-    // CASCADE handles likes, comments, and media_assets rows
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
+    // CASCADE handles likes, comments, media_assets, and feed_items rows
     sqlx::query("DELETE FROM posts WHERE id = $1")
         .bind(post_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             tracing::error!("Failed to delete post: {}", e);
             AppError::internal("Failed to delete post")
         })?;
+
+    sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
+        .bind(owner_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
 
     // Delete actual files from disk
     // We do this after the DB delete so if it fails, we have orphaned files
@@ -239,11 +304,12 @@ pub async fn get_user_posts(
                     m.thumb_key AS thumb_url,
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+                    p.comment_count,
+                    p.like_count
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN media_assets m ON m.post_id = p.id
-                WHERE u.username = $1 AND p.created_at < $2
+                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+                WHERE LOWER(u.username) = LOWER($1) AND p.created_at < $2
                 ORDER BY p.created_at DESC
                 LIMIT $3
                 "#
@@ -268,11 +334,12 @@ pub async fn get_user_posts(
                     m.thumb_key AS thumb_url,
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+                    p.comment_count,
+                    p.like_count
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
-                LEFT JOIN media_assets m ON m.post_id = p.id
-                WHERE u.username = $1
+                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+                WHERE LOWER(u.username) = LOWER($1)
                 ORDER BY p.created_at DESC
                 LIMIT $2
                 "#
@@ -291,7 +358,13 @@ pub async fn get_user_posts(
     Ok(Json(posts))
 }
 
-/// GET /feed — authenticated user's timeline
+/// GET /feed — authenticated user's timeline.
+///
+/// Reads from feed_items (fan-out-on-write) instead of live-joining
+/// follows x posts -- a single indexed lookup on this user's feed
+/// partition instead of a join across the whole social graph. Strictly
+/// chronological: ordered by the post's own created_at (copied at
+/// fan-out time), no ranking involved.
 pub async fn get_feed(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -315,15 +388,15 @@ pub async fn get_feed(
                     m.thumb_key AS thumb_url,
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
-                FROM posts p
-                JOIN users u ON p.user_id = u.id
-                LEFT JOIN media_assets m ON m.post_id = p.id
-                WHERE p.user_id IN (
-                    SELECT following_id FROM follows WHERE follower_id = $1
-                )
-                ORDER BY p.created_at DESC
-                LIMIT $2
+                    p.comment_count,
+                    p.like_count
+                FROM feed_items fi
+                JOIN posts p ON p.id = fi.post_id
+                JOIN users u ON u.id = p.user_id
+                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+                WHERE fi.user_id = $1 AND fi.created_at < $2
+                ORDER BY fi.created_at DESC, fi.post_id DESC
+                LIMIT $3
                 "#
             )
             .bind(auth.user_id)
@@ -346,14 +419,14 @@ pub async fn get_feed(
                     m.thumb_key AS thumb_url,
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
-                FROM posts p
-                JOIN users u ON p.user_id = u.id
-                LEFT JOIN media_assets m ON m.post_id = p.id
-                WHERE p.user_id IN (
-                    SELECT following_id FROM follows WHERE follower_id = $1
-                )
-                ORDER BY p.created_at DESC
+                    p.comment_count,
+                    p.like_count
+                FROM feed_items fi
+                JOIN posts p ON p.id = fi.post_id
+                JOIN users u ON u.id = p.user_id
+                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+                WHERE fi.user_id = $1
+                ORDER BY fi.created_at DESC, fi.post_id DESC
                 LIMIT $2
                 "#
             )

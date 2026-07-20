@@ -8,7 +8,7 @@ import { users as usersApi, follows, type User } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '../env';
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 

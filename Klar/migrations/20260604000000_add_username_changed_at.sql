@@ -1,2 +1,1 @@
-ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;
+-- Superseded by the 20260720 schema rewrite. See migrations/20260720000000_*.

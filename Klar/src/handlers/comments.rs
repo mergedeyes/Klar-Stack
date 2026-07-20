@@ -11,8 +11,11 @@ use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
-use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest};
+use crate::handlers::events::record_event;
+use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
 
+/// posts.comment_count is maintained here (create/delete) instead of a
+/// correlated COUNT(*) subquery per post on every feed/profile render.
 pub async fn create_comment(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -55,6 +58,11 @@ pub async fn create_comment(
         }
     }
 
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
     let comment = sqlx::query_as::<_, CommentResponse>(
         r#"
         INSERT INTO comments (post_id, user_id, parent_comment_id, body)
@@ -72,9 +80,22 @@ pub async fn create_comment(
     .bind(auth.user_id)
     .bind(input.parent_comment_id)
     .bind(input.body.trim())
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| { tracing::error!("Failed to create comment: {}", e); AppError::internal("Failed to create comment") })?;
+
+    sqlx::query("UPDATE posts SET comment_count = comment_count + 1 WHERE id = $1")
+        .bind(post_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update comment_count: {}", e); AppError::internal("Database error") })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
+    record_event(&state.db, Some(auth.user_id), post_id, EventType::Comment).await;
 
     Ok((StatusCode::CREATED, Json(comment)))
 }
@@ -86,14 +107,13 @@ pub async fn get_comments(
 ) -> Result<Json<Vec<CommentResponse>>, AppError> {
 
     let user_id = auth.user_id;
-    tracing::info!("get_comments called with user_id: {:?}", user_id);
 
     let comments = sqlx::query_as::<_, CommentResponse>(
         r#"
         SELECT
             c.id, c.post_id, c.user_id, u.username, u.avatar_url,
             c.parent_comment_id, c.body, c.created_at, c.edited_at,
-            COUNT(cl.user_id)::bigint AS like_count,
+            c.like_count,
             CASE
                 WHEN $2::uuid IS NULL THEN false
                 ELSE EXISTS(
@@ -103,10 +123,7 @@ pub async fn get_comments(
             END AS liked
         FROM comments c
         JOIN users u ON c.user_id = u.id
-        LEFT JOIN comment_likes cl ON c.id = cl.comment_id
         WHERE c.post_id = $1
-        GROUP BY c.id, c.post_id, c.user_id, u.username, u.avatar_url,
-                 c.parent_comment_id, c.body, c.created_at, c.edited_at
         ORDER BY c.created_at ASC
         "#
     )
@@ -156,7 +173,7 @@ pub async fn edit_comment(
             (SELECT username FROM users WHERE id = user_id) as username,
             (SELECT avatar_url FROM users WHERE id = user_id) as avatar_url,
             parent_comment_id, body, created_at, edited_at,
-            (SELECT COUNT(*) FROM comment_likes WHERE comment_id = $2)::bigint as like_count,
+            like_count,
             false as liked
         "#
     )
@@ -169,6 +186,7 @@ pub async fn edit_comment(
     Ok(Json(comment))
 }
 
+/// posts.comment_count is decremented here to match create_comment's increment.
 pub async fn delete_comment(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -201,11 +219,46 @@ pub async fn delete_comment(
         ));
     }
 
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
+    // Replies cascade-delete with their parent (parent_comment_id ON DELETE
+    // CASCADE), so comment_count must drop by the whole deleted subtree's
+    // size, not just 1 -- count it first via a recursive CTE.
+    let deleted_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH RECURSIVE subtree AS (
+            SELECT id FROM comments WHERE id = $1
+            UNION ALL
+            SELECT c.id FROM comments c JOIN subtree s ON c.parent_comment_id = s.id
+        )
+        SELECT COUNT(*) FROM subtree
+        "#
+    )
+    .bind(comment_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("Failed to count comment subtree: {}", e); AppError::internal("Database error") })?;
+
     sqlx::query("DELETE FROM comments WHERE id = $1")
         .bind(comment_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|e| { tracing::error!("Failed to delete comment: {}", e); AppError::internal("Failed to delete comment") })?;
+
+    sqlx::query("UPDATE posts SET comment_count = GREATEST(comment_count - $1, 0) WHERE id = $2")
+        .bind(deleted_count)
+        .bind(post_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update comment_count: {}", e); AppError::internal("Database error") })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
 
     Ok(StatusCode::NO_CONTENT)
 }

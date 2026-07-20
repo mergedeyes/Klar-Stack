@@ -25,6 +25,18 @@ pub struct AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
+        // Centralized logging: every error response gets logged here, so
+        // individual handlers don't each need to remember to call
+        // tracing::error!/warn! before returning an AppError. 5xx (our bugs
+        // or infra problems) log at ERROR; 4xx (expected client-side
+        // rejections like bad input or permission checks) log at WARN so
+        // they're still visible in the console without being alarm-level.
+        if self.status.is_server_error() {
+            tracing::error!(status = %self.status, "{}", self.message);
+        } else {
+            tracing::warn!(status = %self.status, "{}", self.message);
+        }
+
         let body = Json(ErrorResponse {
             error: self.message,
         });

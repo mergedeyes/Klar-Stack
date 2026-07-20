@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { User } from "@/lib/api";
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '../env';
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 

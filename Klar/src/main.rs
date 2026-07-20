@@ -40,14 +40,11 @@ async fn main() {
 
     let email = EmailService::new(
         provider,
-        &std::env::var("SMTP_HOST").expect("SMTP_HOST missing"),
-        std::env::var("SMTP_PORT")
-            .expect("SMTP_PORT missing")
-            .parse()
-            .expect("Invalid SMTP_PORT"),
-        &std::env::var("SMTP_FROM").expect("SMTP_FROM missing"),
-        std::env::var("SMTP_PASS").ok().as_deref(),
-        &std::env::var("BASE_URL").expect("BASE_URL missing"),
+        &config.smtp_host,
+        config.smtp_port,
+        &config.smtp_from,
+        config.smtp_pass.as_deref(),
+        &config.base_url,
     );
     tracing::info!("Email service ready (SMTP: {}:{})", config.smtp_host, config.smtp_port);
 

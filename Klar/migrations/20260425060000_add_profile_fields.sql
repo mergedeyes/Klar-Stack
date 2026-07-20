@@ -1,4 +1,1 @@
--- Add profile fields to users
-ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(50);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+-- Superseded by the 20260720 schema rewrite. See migrations/20260720000000_*.

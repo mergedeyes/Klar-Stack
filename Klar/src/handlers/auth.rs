@@ -119,7 +119,11 @@ pub async fn register(
         return Err(AppError::bad_request("All fields are required"));
     }
 
-    if input.username.len() > 30 {
+    // Case is preserved exactly as entered -- uniqueness and lookups are
+    // case-insensitive (see idx_users_username_ci), not the stored value.
+    let username = input.username.trim().to_string();
+
+    if username.len() > 30 {
         return Err(AppError::bad_request("Username must be 30 characters or less"));
     }
 
@@ -137,7 +141,7 @@ pub async fn register(
     let user = sqlx::query_as::<_, UserRow>(
         "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING *"
     )
-    .bind(&input.username)
+    .bind(&username)
     .bind(&input.email)
     .bind(&password_hash)
     .fetch_one(&state.db)

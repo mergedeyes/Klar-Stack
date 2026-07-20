@@ -2,22 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { 
-  Grid3X3, 
-  PlusSquare, 
-  Search, 
-  Bell, 
-  MessageCircle, 
-  Settings, 
-  LogOut 
-} from "lucide-react";
+import { Grid3X3 } from "lucide-react";
 import Image from "next/image";
 import {
   users as usersApi,
   follows,
   blocks as blocksApi,
   posts as postsApi,
-  auth,
   type User,
   type ProfileStats,
   type Post,
@@ -28,9 +19,7 @@ import { Button } from "@/components/ui/button";
 import PostModal from "@/components/PostModal";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import UserListModal from "@/components/UserListModal";
-import { useRef } from "react";
-import CreatePostModal from "@/components/CreatePostModal";
-import { useNotifications } from "@/hooks/use-notifications";
+import TopNav from "@/components/TopNav";
 
 // ── Post grid cell ────────────────────────────────────────────────────────────
 
@@ -88,28 +77,12 @@ export default function ProfilePage() {
   const [following, setFollowing] = useState<User[]>([]);
   const [modalType, setModalType] = useState<"followers" | "following" | null>(null);
 
-  // --- States für Create & Notifications (wie im Feed) ---
-  const [showCreate, setShowCreate] = useState(false);
-  const { notifications, unreadCount, markAllAsRead } = useNotifications();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const isMe = !!me && !!profile && me.id === profile.id;
 
-  // Click-outside listener für Notifications
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
-    }
-    if (showNotifications) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showNotifications]);
-
-  const isMe = me?.username === username;
+  const refreshPosts = useCallback(() => {
+    if (!username) return;
+    postsApi.userPosts(username, undefined, 50).then(setUserPosts);
+  }, [username]);
 
   useEffect(() => {
     if (!username) return;
@@ -207,15 +180,6 @@ export default function ProfilePage() {
     }
   }, [me, followLoading, isFollowing, username]);
 
-  const handleLogout = async () => {
-    try {
-      await auth.logout();
-      window.location.href = "/login";
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -241,81 +205,23 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background pb-12">
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <div className="flex items-center gap-3">
+      {/* Own profile uses the shared primary nav; viewing someone else uses a back-button header */}
+      {isMe ? (
+        <TopNav active="profile" onPostCreated={refreshPosts} />
+      ) : (
+        <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
             <SmartBackButton aria-label="Back" />
             <span className="font-semibold">{profile.username}</span>
           </div>
-          
-          {/* Eigene Profil Header-Aktionen */}
-          {isMe && (
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Button variant="ghost" size="icon" onClick={() => router.push("/search")} aria-label="Search">
-                <Search size={20} />
-              </Button>
-              
-              {/* Öffnet das Create Modal */}
-              <Button variant="ghost" size="icon" onClick={() => setShowCreate(true)} aria-label="New post">
-                <PlusSquare size={20} />
-              </Button>
-
-              {/* Notification Dropdown (Exakt wie im Feed) */}
-              <div className="relative" ref={dropdownRef}>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    if (!showNotifications) markAllAsRead();
-                  }}
-                  aria-label="Notifications"
-                >
-                  <Bell size={20} />
-                  {unreadCount > 0 && (
-                    <span className="absolute right-2 top-2 flex h-2 w-2 rounded-full bg-red-500" />
-                  )}
-                </Button>
-
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-72 rounded-md border border-border bg-background shadow-lg z-50">
-                    <div className="p-3 text-sm font-semibold border-b border-border">Notifications</div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-muted-foreground">No notifications yet</div>
-                      ) : (
-                        notifications.map(n => (
-                          <div key={n.id} className={`p-3 text-sm border-b border-border last:border-0 ${!n.is_read ? 'bg-muted/50' : ''}`}>
-                            <span className="font-semibold">{n.actor.username}</span> 
-                            {n.type_name === 'post_like' ? ' liked your post' : ' interacted with you'}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Button variant="ghost" size="icon" onClick={() => router.push("/chats")} aria-label="Chats">
-                <MessageCircle size={20} />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => router.push("/settings")} aria-label="Settings">
-                <Settings size={20} />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Log out" className="text-destructive">
-                <LogOut size={20} />
-              </Button>
-            </div>
-          )}
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="mx-auto max-w-3xl">
-        {/* Profile info - Neues Layout */}
+        {/* Profile info */}
         <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center px-4 py-8">
           
-          {/* Avatar - Größer */}
+          {/* Avatar */}
           <div className="relative h-24 w-24 sm:h-32 sm:w-32 shrink-0 overflow-hidden rounded-full bg-muted">
             {profile.avatar_url ? (
               <Image
@@ -333,7 +239,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex-1 w-full">
-            {/* Namen */}
+            {/* Name */}
             <div className="mb-4">
               <h1 className="text-2xl font-bold">{profile.display_name || profile.username}</h1>
               <p className="text-muted-foreground">@{profile.username}</p>
@@ -388,7 +294,6 @@ export default function ProfilePage() {
                   {isFollowing ? "Following" : "Follow"}
                 </Button>
                 
-                {/* NEU: Message Button */}
                 <Button
                   variant="secondary"
                   className="flex-1 sm:flex-none min-w-[120px]"
@@ -444,16 +349,6 @@ export default function ProfilePage() {
           title={modalType === "followers" ? "Followers" : "Following"} 
           users={modalType === "followers" ? followers : following} 
           onClose={() => setModalType(null)} 
-        />
-      )}
-
-      {showCreate && (
-        <CreatePostModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => {
-            // Lade die eigenen Posts neu, wenn einer erstellt wurde
-            postsApi.userPosts(username!, undefined, 50).then(setUserPosts);
-          }}
         />
       )}
     </div>

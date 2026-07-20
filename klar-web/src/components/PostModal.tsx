@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import EditedBadge from "@/components/EditedBadge";
 import { useRouter } from "next/navigation";
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '../env';
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 

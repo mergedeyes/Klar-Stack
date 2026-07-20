@@ -47,14 +47,47 @@ pub async fn check_block(pool: &PgPool, user_a: Uuid, user_b: Uuid) -> Result<bo
     Ok(blocked)
 }
 
+/// Tears down one direction of a follow relationship: decrements both
+/// users' counters and cleans up the follower's feed_items for the
+/// followee's posts. Shared by block_user for whichever direction(s)
+/// actually existed.
+async fn teardown_follow(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    follower_id: Uuid,
+    following_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query("UPDATE users SET following_count = GREATEST(following_count - 1, 0) WHERE id = $1")
+        .bind(follower_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update following_count: {}", e); AppError::internal("Database error") })?;
+
+    sqlx::query("UPDATE users SET follower_count = GREATEST(follower_count - 1, 0) WHERE id = $1")
+        .bind(following_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update follower_count: {}", e); AppError::internal("Database error") })?;
+
+    sqlx::query(
+        "DELETE FROM feed_items WHERE user_id = $1 AND post_id IN (SELECT id FROM posts WHERE user_id = $2)"
+    )
+    .bind(follower_id)
+    .bind(following_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| { tracing::error!("Failed to clean up feed_items on block: {}", e); AppError::internal("Database error") })?;
+
+    Ok(())
+}
+
 /// POST /users/:username/block — block a user (auth required)
-/// Also removes follows in both directions.
+/// Also removes follows in both directions (with matching counter/feed_items cleanup).
 pub async fn block_user(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(username): Path<String>,
 ) -> Result<(StatusCode, Json<BlockResponse>), AppError> {
-    let target = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE username = $1")
+    let target = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
         .bind(&username)
         .fetch_optional(&state.db)
         .await
@@ -68,34 +101,56 @@ pub async fn block_user(
         return Err(AppError::bad_request("You can't block yourself"));
     }
 
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
     // Insert block (idempotent)
     sqlx::query(
         "INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
     .bind(auth.user_id)
     .bind(target)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to block user: {}", e);
         AppError::internal("Failed to block user")
     })?;
 
-    // Remove follows in both directions
-    sqlx::query(
-        r#"
-        DELETE FROM follows
-        WHERE (follower_id = $1 AND following_id = $2)
-           OR (follower_id = $2 AND following_id = $1)
-        "#,
+    // Remove follows in both directions, tracking which direction(s)
+    // actually existed so counters/feed_items only change for those.
+    let auth_followed_target = sqlx::query_scalar::<_, Uuid>(
+        "DELETE FROM follows WHERE follower_id = $1 AND following_id = $2 RETURNING follower_id"
     )
     .bind(auth.user_id)
     .bind(target)
-    .execute(&state.db)
+    .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to remove follows on block: {}", e);
-        AppError::internal("Failed to remove follows")
+    .map_err(|e| { tracing::error!("Failed to remove follow on block: {}", e); AppError::internal("Failed to remove follows") })?
+    .is_some();
+
+    let target_followed_auth = sqlx::query_scalar::<_, Uuid>(
+        "DELETE FROM follows WHERE follower_id = $1 AND following_id = $2 RETURNING follower_id"
+    )
+    .bind(target)
+    .bind(auth.user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("Failed to remove follow on block: {}", e); AppError::internal("Failed to remove follows") })?
+    .is_some();
+
+    if auth_followed_target {
+        teardown_follow(&mut tx, auth.user_id, target).await?;
+    }
+    if target_followed_auth {
+        teardown_follow(&mut tx, target, auth.user_id).await?;
+    }
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
+        AppError::internal("Database error")
     })?;
 
     tracing::info!("User {} blocked {}", auth.user_id, username);
@@ -113,7 +168,7 @@ pub async fn unblock_user(
     auth: AuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<BlockResponse>, AppError> {
-    let target = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE username = $1")
+    let target = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
         .bind(&username)
         .fetch_optional(&state.db)
         .await

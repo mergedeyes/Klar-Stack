@@ -2,6 +2,7 @@ pub mod auth;
 pub mod blocks;
 pub mod comment_likes;
 pub mod comments;
+pub mod events;
 pub mod follows;
 pub mod health;
 pub mod likes;

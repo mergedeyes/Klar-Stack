@@ -2,15 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Plus, Search, Settings, User, Bell, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { posts as postsApi, type Post } from "@/lib/api";
 import PostCard from "@/components/PostCard";
 import PostModal from "@/components/PostModal";
-import CreatePostModal from "@/components/CreatePostModal";
 import { Button } from "@/components/ui/button";
-import Link from 'next/link';
-import { useNotifications } from "@/hooks/use-notifications";
+import TopNav from "@/components/TopNav";
 
 function PostSkeleton() {
   return (
@@ -27,7 +24,7 @@ function PostSkeleton() {
 }
 
 export default function FeedPage() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
@@ -38,39 +35,12 @@ export default function FeedPage() {
   const cursorRef = useRef<string | undefined>(undefined);
 
   const [activePost, setActivePost] = useState<Post | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-
-  const { notifications, unreadCount, markAllAsRead } = useNotifications();
-  const [showNotifications, setShowNotifications] = useState(false);
-  
-  // Ref for the dropdown to detect clicks outside
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
-  // Click-outside listener for the notification dropdown
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
-    }
-
-    if (showNotifications) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showNotifications]);
-
-  useEffect(() => {
-    if (authLoading || !user) return;
-
-    let cancelled = false;
+  const refreshFeed = useCallback(() => {
     cursorRef.current = undefined;
     setLoading(true);
     setError(null);
@@ -78,7 +48,6 @@ export default function FeedPage() {
 
     postsApi.feed(undefined, 20)
       .then((page) => {
-        if (cancelled) return;
         setFeedPosts(page);
         if (page.length < 20) {
           setHasMore(false);
@@ -87,16 +56,17 @@ export default function FeedPage() {
         }
       })
       .catch((err) => {
-        if (cancelled) return;
         setError(err instanceof Error ? err.message : "Failed to load feed");
       })
       .finally(() => {
-        if (cancelled) return;
         setLoading(false);
       });
+  }, []);
 
-    return () => { cancelled = true; };
-  }, [authLoading, user]);
+  useEffect(() => {
+    if (authLoading || !user) return;
+    refreshFeed();
+  }, [authLoading, user, refreshFeed]);
 
   const loadMore = useCallback(async () => {
     if (!cursorRef.current) return;
@@ -140,85 +110,11 @@ export default function FeedPage() {
     []
   );
 
-  const handleLogout = async () => {
-    await logout();
-    router.push("/login");
-  };
-
   const showSkeletons = authLoading || loading;
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <Link href="/feed" className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity">
-            Klar
-          </Link>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => router.push("/search")} aria-label="Search">
-              <Search size={20} />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setShowCreate(true)} aria-label="New post">
-              <Plus size={20} />
-            </Button>
-
-            {/* Notification container gets the ref */}
-            <div className="relative" ref={dropdownRef}>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => {
-                  setShowNotifications(!showNotifications);
-                  if (!showNotifications) markAllAsRead();
-                }}
-                aria-label="Notifications"
-              >
-                <Bell size={20} />
-                {unreadCount > 0 && (
-                  <span className="absolute right-2 top-2 flex h-2 w-2 rounded-full bg-red-500" />
-                )}
-              </Button>
-
-              {showNotifications && (
-                <div className="absolute right-0 mt-2 w-72 rounded-md border border-border bg-background shadow-lg">
-                  <div className="p-3 text-sm font-semibold border-b border-border">Notifications</div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">No notifications yet</div>
-                    ) : (
-                      notifications.map(n => (
-                        <div key={n.id} className={`p-3 text-sm border-b border-border last:border-0 ${!n.is_read ? 'bg-muted/50' : ''}`}>
-                          <span className="font-semibold">{n.actor.username}</span> 
-                          {n.type_name === 'post_like' ? ' liked your post' : ' interacted with you'}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push("/chats")}
-              aria-label="Chats"
-            >
-              <MessageCircle size={20} />
-            </Button>
-
-            <Button variant="ghost" size="icon" onClick={() => user && router.push(`/users/${user.username}`)} aria-label="Profile">
-              <User size={20} />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => router.push("/settings")} aria-label="Settings">
-              <Settings size={20} />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Log out">
-              <LogOut size={20} />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <TopNav active="feed" onPostCreated={refreshFeed} />
 
       <main className="mx-auto max-w-3xl px-4">
         {showSkeletons && (
@@ -272,23 +168,6 @@ export default function FeedPage() {
           )}
         </div>
       </main>
-
-      {showCreate && (
-        <CreatePostModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => {
-            setFeedPosts([]);
-            setHasMore(true);
-            cursorRef.current = undefined;
-            setLoading(true);
-            postsApi.feed(undefined, 20).then((page) => {
-              setFeedPosts(page);
-              if (page.length < 20) setHasMore(false);
-              else cursorRef.current = page[page.length - 1].created_at;
-            }).finally(() => setLoading(false));
-          }}
-        />
-      )}
 
       {activePost && (
         <PostModal

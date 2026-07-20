@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
       // Hier ist der neue Eintrag für dein Bunny CDN
       {
         protocol: "https",
-        hostname: "cdn.klarsocial.de",
+        hostname: "cdn.klarsocial.eu",
       },
     ],
   },

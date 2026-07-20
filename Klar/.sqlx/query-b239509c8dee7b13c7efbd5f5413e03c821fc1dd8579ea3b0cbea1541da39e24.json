@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT 1 as has_reacted FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "has_reacted",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b239509c8dee7b13c7efbd5f5413e03c821fc1dd8579ea3b0cbea1541da39e24"
+}

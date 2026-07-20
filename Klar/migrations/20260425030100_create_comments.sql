@@ -1,15 +1,1 @@
--- Comments table with threading (replies)
--- parent_comment_id is NULL for top-level comments, set for replies
-CREATE TABLE IF NOT EXISTS comments (
-    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    post_id           UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
-    body              TEXT NOT NULL,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- "All comments on this post" — the main query
-CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments (post_id);
--- "All replies to this comment"
-CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments (parent_comment_id);
+-- Superseded by the 20260720 schema rewrite. See migrations/20260720000000_*.

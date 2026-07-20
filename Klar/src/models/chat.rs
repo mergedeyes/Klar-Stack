@@ -20,13 +20,6 @@ pub struct ToggleReactionRequest {
     pub emoji: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ReactionEntry {
-    pub emoji: String,
-    pub user_id: Uuid,
-    pub username: String,
-}
-
 #[derive(Debug, Serialize, Clone)]
 pub struct ConversationResponse {
     pub id: Uuid,

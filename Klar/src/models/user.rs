@@ -17,6 +17,18 @@ pub struct UserRow {
     pub email_verified: bool,
     pub created_at: DateTime<Utc>,
     pub username_changed_at: Option<DateTime<Utc>>,
+    // Denormalized counters -- maintained by the app alongside the
+    // follow/post writes that change them, instead of COUNT(*) at read time.
+    // Not read directly anywhere yet (get_user_stats queries them via a
+    // separate, lighter tuple query instead of this struct) -- but they
+    // must stay on UserRow regardless, since every `SELECT * FROM users`
+    // query needs the struct to match all columns or it fails at runtime.
+    #[allow(dead_code)]
+    pub follower_count: i64,
+    #[allow(dead_code)]
+    pub following_count: i64,
+    #[allow(dead_code)]
+    pub post_count: i64,
 }
 
 #[derive(Serialize)]

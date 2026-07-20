@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) as count \n        FROM follows \n        WHERE (follower_id = $1 AND following_id = $2)\n           OR (follower_id = $2 AND following_id = $1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "97802d43d3f7ae39b0626adb2cac1eb24a64db3b7e3aa8a3d536afca26478ea0"
+}

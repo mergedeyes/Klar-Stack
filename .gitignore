@@ -39,8 +39,6 @@ target
 .env
 *.sublime-project
 *.sublime-workspace
-test.fish
 uploads
 *.iml
 *.log
-.sqlx

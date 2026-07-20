@@ -1,14 +1,14 @@
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
     Json,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::models::post::PostResponse;
 
 #[derive(Deserialize)]
 pub struct FeedQuery {
@@ -20,18 +20,9 @@ pub struct FeedQuery {
     pub cursor_id: Option<Uuid>,
 }
 
-#[derive(Serialize, FromRow)]
-pub struct PostDto {
-    pub id: Uuid,
-    pub content: String,
-    pub created_at: DateTime<Utc>,
-    pub username: String,
-    // Hier können später Likes, Comments, etc. aus der DB aggregiert werden
-}
-
 #[derive(Serialize)]
 pub struct FeedResponse {
-    pub data: Vec<PostDto>,
+    pub data: Vec<PostResponse>,
     /// Wenn dieser Wert null ist, ist der User am Ende des Feeds angelangt
     pub next_cursor: Option<CursorData>,
 }
@@ -45,7 +36,7 @@ pub struct CursorData {
 pub async fn get_global_feed(
     State(state): State<AppState>,
     Query(params): Query<FeedQuery>,
-) -> Result<Json<FeedResponse>, (StatusCode, String)> {
+) -> Result<Json<FeedResponse>, AppError> {
     
     // Wir cappen das Limit serverseitig auf maximal 50, um Missbrauch zu verhindern
     let limit = params.limit.unwrap_or(20).clamp(1, 50);
@@ -57,12 +48,24 @@ pub async fn get_global_feed(
         (Some(c_time), Some(c_id)) => {
             // PFAD 1: Der User scrollt (Nachladen mit Cursor)
             // Nutzt den Composite Index (created_at DESC, id DESC) extrem effizient (O(1))
-            sqlx::query_as::<_, PostDto>(
+            sqlx::query_as::<_, PostResponse>(
                 r#"
-                SELECT 
-                    p.id, p.content, p.created_at, u.username
+                SELECT
+                    p.id,
+                    p.user_id,
+                    u.username,
+                    u.avatar_url,
+                    p.caption,
+                    p.created_at,
+                    p.edited_at,
+                    m.thumb_key AS thumb_url,
+                    m.medium_key AS medium_url,
+                    m.full_key AS full_url,
+                    p.comment_count,
+                    p.like_count
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
+                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE (p.created_at, p.id) < ($1, $2)
                 ORDER BY p.created_at DESC, p.id DESC
                 LIMIT $3
@@ -76,12 +79,24 @@ pub async fn get_global_feed(
         }
         _ => {
             // PFAD 2: Erster Aufruf (Start des Feeds)
-            sqlx::query_as::<_, PostDto>(
+            sqlx::query_as::<_, PostResponse>(
                 r#"
-                SELECT 
-                    p.id, p.content, p.created_at, u.username
+                SELECT
+                    p.id,
+                    p.user_id,
+                    u.username,
+                    u.avatar_url,
+                    p.caption,
+                    p.created_at,
+                    p.edited_at,
+                    m.thumb_key AS thumb_url,
+                    m.medium_key AS medium_url,
+                    m.full_key AS full_url,
+                    p.comment_count,
+                    p.like_count
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
+                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 ORDER BY p.created_at DESC, p.id DESC
                 LIMIT $1
                 "#
@@ -93,8 +108,8 @@ pub async fn get_global_feed(
     };
 
     let posts = query_result.map_err(|e| {
-        tracing::error!("Failed to fetch feed: {:?}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+        tracing::error!("Failed to fetch discovery feed: {:?}", e);
+        AppError::internal("Database error")
     })?;
 
     // Wir nehmen das letzte Element aus der Datenbank-Antwort und bauen den Cursor für den nächsten Request

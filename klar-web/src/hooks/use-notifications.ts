@@ -1,41 +1,27 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from "@/lib/auth-context";
-import { ENV } from '../env';
+import { notifications as notificationsApi, type AppNotification } from "@/lib/api";
+import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
 
-export interface AppNotification {
-  id: string;
-  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like';
-  is_read: boolean;
-  created_at: string;
-  post_id: string | null;
-  actor: {
-    id: string;
-    username: string;
-    avatar_url: string | null;
-  };
-}
+export type { AppNotification };
 
 export function useNotifications() {
   const { user } = useAuth(); // <-- 2. User-State holen
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Initial fetch
+  // Initial fetch — goes through the shared `request()` helper in lib/api.ts
+  // so an expired access-token cookie gets silently refreshed and retried,
+  // same as every other authenticated call. A raw fetch() here would just
+  // throw on a 401 with no retry.
   useEffect(() => {
     // 3. WICHTIG: Wenn noch kein User geladen ist, gar nicht erst fetchen!
-    if (!user) return; 
+    if (!user) return;
 
-    fetch(`${API_URL}/notifications`, {
-      credentials: "include",
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        const text = await res.text();
-        return text ? JSON.parse(text) : [];
-      })
-      .then((data: AppNotification[]) => {
+    notificationsApi.list()
+      .then((data) => {
         setNotifications(data);
         setUnreadCount(data.filter(n => !n.is_read).length);
       })
@@ -70,14 +56,9 @@ export function useNotifications() {
     setUnreadCount(0);
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
 
-    fetch(`${API_URL}/notifications/read`, {
-      method: 'PATCH',
-      credentials: "include" 
-    })
-    .then(res => {
-      if (!res.ok) console.error("Failed to mark notifications as read", res.status);
-    })
-    .catch(console.error);
+    notificationsApi.markRead().catch(err =>
+      console.error("Failed to mark notifications as read", err)
+    );
   }, [unreadCount, user]);
 
   return { notifications, unreadCount, markAllAsRead };

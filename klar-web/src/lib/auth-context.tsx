@@ -21,6 +21,12 @@ interface AuthContextValue {
     password: string
   ) => Promise<void>;
   logout: () => Promise<void>;
+  /** Re-fetches the current user from the server and updates the cached
+   * value. Call this after any change that could affect what's displayed
+   * elsewhere from this cached object (avatar, username, display name,
+   * bio) -- otherwise other pages (e.g. "is this my own profile") keep
+   * comparing against stale data until a full reload. */
+  refreshUser: () => Promise<void>;
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -92,8 +98,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const me = await users.me();
+      setUser(me);
+    } catch {
+      // If this fails (e.g. token expired mid-session), leave the cached
+      // user as-is rather than clearing it out from under the page.
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

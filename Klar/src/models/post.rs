@@ -18,6 +18,7 @@ pub struct PostResponse {
     pub medium_url: Option<String>,
     pub full_url: Option<String>,
     pub comment_count: i64,
+    pub like_count: i64,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

@@ -1,4 +1,4 @@
-import { ENV } from '../env';
+import { ENV } from '@/env';
 const API_URL = ENV.API_URL
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -48,6 +48,29 @@ export interface ProfileStats {
 export interface LikeResponse {
   liked: boolean;
   like_count: number;
+}
+
+export interface AppNotification {
+  id: string;
+  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like';
+  is_read: boolean;
+  created_at: string;
+  post_id: string | null;
+  actor: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+  };
+}
+
+export interface DiscoveryCursor {
+  time: string;
+  id: string;
+}
+
+export interface DiscoveryFeedResponse {
+  data: Post[];
+  next_cursor: DiscoveryCursor | null;
 }
 
 export interface Comment {
@@ -121,7 +144,13 @@ async function request<T>(
       return new Promise<T>((resolve, reject) => {
         failedQueue.push({
           resolve: () => {
-            resolve(fetch(`${API_URL}${path}`, fetchOptions).then(r => r.status === 204 ? undefined as T : r.json()));
+            resolve(
+              fetch(`${API_URL}${path}`, fetchOptions).then(async (r) => {
+                if (r.status === 204) return undefined as T;
+                const text = await r.text();
+                return (text ? JSON.parse(text) : undefined) as T;
+              })
+            );
           },
           reject: (err) => reject(err),
         });
@@ -145,7 +174,8 @@ async function request<T>(
       // Retry the original request
       const retryRes = await fetch(`${API_URL}${path}`, fetchOptions);
       if (retryRes.status === 204) return undefined as T;
-      return await retryRes.json() as T;
+      const retryText = await retryRes.text();
+      return (retryText ? JSON.parse(retryText) : undefined) as T;
 
     } catch (error) {
       processQueue(error as Error);
@@ -157,10 +187,13 @@ async function request<T>(
 
   if (res.status === 204) return undefined as T;
 
-  const data = await res.json();
+  // Some endpoints (e.g. chat edit/reaction) return 200 with an empty body —
+  // read as text first so JSON.parse isn't called on an empty string.
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : undefined;
 
   if (!res.ok) {
-    throw new Error((data as ApiError).error ?? "Something went wrong");
+    throw new Error((data as ApiError)?.error ?? "Something went wrong");
   }
 
   return data as T;
@@ -277,6 +310,15 @@ export const posts = {
     return request<Post[]>(`/feed?${params}`, {}, true);
   },
 
+  discoveryFeed: (cursor?: DiscoveryCursor, limit = 15) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) {
+      params.set("cursor_time", cursor.time);
+      params.set("cursor_id", cursor.id);
+    }
+    return request<DiscoveryFeedResponse>(`/feed/discovery?${params}`, {}, true);
+  },
+
   get: (id: string) => request<Post>(`/posts/${id}`),
 
   userPosts: (username: string, cursor?: string, limit = 20) => {
@@ -299,6 +341,11 @@ export const posts = {
 };
 
 // ── Block endpoints ──────────────────────────────────────────────────────────
+
+export const notifications = {
+  list: () => request<AppNotification[]>("/notifications", {}, true),
+  markRead: () => request<{ message: string }>("/notifications/read", { method: "PATCH" }, true),
+};
 
 export const blocks = {
   block: (username: string) =>
@@ -378,57 +425,36 @@ export interface ChatMessage {
 }
 
 export const chatsApi = {
-  getConversations: async (): Promise<Conversation[]> => {
-    const res = await fetch(`${API_URL}/chats`, { credentials: "include" });
-    if (!res.ok) throw new Error("Failed to fetch conversations");
-    return res.json();
-  },
-  
-  getMessages: async (conversationId: string): Promise<ChatMessage[]> => {
-    const res = await fetch(`${API_URL}/chats/${conversationId}/messages`, { credentials: "include" });
-    if (!res.ok) throw new Error("Failed to fetch messages");
-    return res.json();
-  },
+  getConversations: () =>
+    request<Conversation[]>("/chats", {}, true),
 
-  sendMessage: async (receiverId: string, body: string, replyToId?: string): Promise<ChatMessage> => {
-    const res = await fetch(`${API_URL}/chats/send`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ receiver_id: receiverId, body, reply_to_message_id: replyToId || null }),
-    });
-    if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to send message");
-    }
-    return res.json();
-  },
+  getMessages: (conversationId: string) =>
+    request<ChatMessage[]>(`/chats/${conversationId}/messages`, {}, true),
 
-  editMessage: async (messageId: string, body: string): Promise<void> => {
-    const res = await fetch(`${API_URL}/chats/messages/${messageId}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
-    if (!res.ok) throw new Error("Failed to edit message");
-  },
+  sendMessage: (receiverId: string, body: string, replyToId?: string) =>
+    request<ChatMessage>(
+      "/chats/send",
+      {
+        method: "POST",
+        body: JSON.stringify({ receiver_id: receiverId, body, reply_to_message_id: replyToId || null }),
+      },
+      true
+    ),
 
-  deleteMessage: async (messageId: string): Promise<void> => {
-    const res = await fetch(`${API_URL}/chats/messages/${messageId}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Failed to delete message");
-  },
+  editMessage: (messageId: string, body: string) =>
+    request<void>(
+      `/chats/messages/${messageId}`,
+      { method: "PATCH", body: JSON.stringify({ body }) },
+      true
+    ),
 
-  toggleReaction: async (messageId: string, emoji: string): Promise<void> => {
-    const res = await fetch(`${API_URL}/chats/messages/${messageId}/reactions`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emoji }),
-    });
-    if (!res.ok) throw new Error("Failed to toggle reaction");
-  }
+  deleteMessage: (messageId: string) =>
+    request<void>(`/chats/messages/${messageId}`, { method: "DELETE" }, true),
+
+  toggleReaction: (messageId: string, emoji: string) =>
+    request<void>(
+      `/chats/messages/${messageId}/reactions`,
+      { method: "POST", body: JSON.stringify({ emoji }) },
+      true
+    ),
 };

@@ -70,7 +70,7 @@ pub async fn get_user(
     Path(username): Path<String>,
 ) -> Result<Json<UserPublicResponse>, AppError> {
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE username = $1"
+        "SELECT * FROM users WHERE LOWER(username) = LOWER($1)"
     )
     .bind(&username)
     .fetch_optional(&state.db)
@@ -126,10 +126,12 @@ pub async fn update_profile(
 
     // 2. Handle Username Logic (Validation)
     if let Some(new_username) = &input.username {
-        let formatted_username = new_username.trim().to_lowercase();
+        // Case is preserved exactly as entered for storage; only the
+        // comparison below (and the "taken" check) is case-insensitive.
+        let formatted_username = new_username.trim().to_string();
         final_username = Some(formatted_username.clone());
-        
-        if formatted_username != current_user.username {
+
+        if formatted_username.to_lowercase() != current_user.username.to_lowercase() {
             // Check length/format
             if formatted_username.len() < 3 || formatted_username.len() > 30 {
                 return Err(AppError::bad_request("Username must be between 3 and 30 characters"));
@@ -146,9 +148,14 @@ pub async fn update_profile(
                 }
             }
 
-            // Check if username is taken
-            let taken = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+            // Check if username is taken (case-insensitively; excluding the
+            // current user so re-casing your own name never conflicts with
+            // yourself, e.g. "johndoe" -> "JohnDoe")
+            let taken = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) AND id != $2)"
+            )
                 .bind(&formatted_username)
+                .bind(auth.user_id)
                 .fetch_one(&state.db)
                 .await
                 .unwrap_or(true);
@@ -165,7 +172,7 @@ pub async fn update_profile(
         UPDATE users 
         SET 
             username = COALESCE($1, username),
-            username_changed_at = CASE WHEN $1 IS NOT NULL AND $1 != username THEN NOW() ELSE username_changed_at END,
+            username_changed_at = CASE WHEN $1 IS NOT NULL AND LOWER($1) != LOWER(username) THEN NOW() ELSE username_changed_at END,
             display_name = COALESCE($2, display_name),
             bio = COALESCE($3, bio)
         WHERE id = $4
