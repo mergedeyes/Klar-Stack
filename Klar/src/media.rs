@@ -4,8 +4,15 @@
 /// re-encode it as WebP, all metadata (GPS, device info, timestamps)
 /// is dropped. The image crate doesn't copy EXIF on re-encode.
 /// This is a core privacy feature of Klar.
+///
+/// One piece of EXIF *is* read before it's discarded, though: the
+/// orientation tag. Phone cameras commonly store photos using the
+/// sensor's native (often landscape) orientation and rely on this tag
+/// to say "rotate/flip this for display" — image decoders don't apply
+/// that automatically, so without reading it first, a portrait photo
+/// silently comes out sideways once EXIF is stripped on re-encode.
 
-use image::{DynamicImage, ImageFormat, ImageReader};
+use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use std::io::Cursor;
 
 /// The three variants we generate for every uploaded image
@@ -33,12 +40,30 @@ impl std::fmt::Display for ProcessingError {
 /// Process an uploaded image: validate, resize, and generate all variants.
 /// Returns the processed variants as byte vectors ready to be saved.
 pub fn process_image(raw_bytes: &[u8]) -> Result<ProcessedImage, ProcessingError> {
-    // Decode the image — this also validates that it's actually an image
-    let img = ImageReader::new(Cursor::new(raw_bytes))
+    // Decode via the two-step decoder API (rather than the one-shot
+    // ImageReader::decode() convenience method) specifically so we can
+    // read the EXIF orientation tag before it's gone.
+    let decoder = ImageReader::new(Cursor::new(raw_bytes))
         .with_guessed_format()
         .map_err(|e| ProcessingError(format!("Failed to read image: {}", e)))?
-        .decode()
+        .into_decoder()
         .map_err(|e| ProcessingError(format!("Failed to decode image: {}", e)))?;
+
+    // Formats without EXIF support (or images with no orientation tag at
+    // all) fall back to NoTransforms — i.e. use the pixels exactly as
+    // decoded, which is the correct behavior for those cases anyway.
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+
+    let mut img = DynamicImage::from_decoder(decoder)
+        .map_err(|e| ProcessingError(format!("Failed to decode image: {}", e)))?;
+
+    // Rearranges the actual pixel data to match how the photo was meant
+    // to be viewed. From here on the image is "correctly" oriented, so
+    // every downstream step (crop, resize, encode) just works on pixels
+    // with no further EXIF-awareness needed.
+    img.apply_orientation(orientation);
 
     let width = img.width();
     let height = img.height();
