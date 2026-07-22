@@ -7,7 +7,7 @@
 /// which is already open for everything else (image pulls, DB, etc).
 
 use lettre::{
-    message::header::ContentType,
+    message::{header::ContentType, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
@@ -52,6 +52,205 @@ impl std::str::FromStr for EmailProvider {
             _ => Err(format!("Unknown email provider: {}", s)),
         }
     }
+}
+
+/// Wraps email content in the shared HTML template (adapted from the
+/// well-known htmlemail.io transactional template). Keeps a single place
+/// for the CSS/layout so verification and password-reset emails stay
+/// visually consistent.
+fn render_html_email(preheader: &str, intro: &str, button_label: &str, button_url: &str, note: &str) -> String {
+    format!(
+        r#"<!doctype html>
+<html lang="de">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Klar</title>
+    <style media="all" type="text/css">
+    body {{
+      font-family: Helvetica, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      font-size: 16px;
+      line-height: 1.3;
+      -ms-text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
+      background-color: #f4f5f6;
+      margin: 0;
+      padding: 0;
+    }}
+    table {{
+      border-collapse: separate;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+      width: 100%;
+    }}
+    table td {{
+      font-family: Helvetica, sans-serif;
+      font-size: 16px;
+      vertical-align: top;
+    }}
+    .body {{
+      background-color: #f4f5f6;
+      width: 100%;
+    }}
+    .container {{
+      margin: 0 auto !important;
+      max-width: 600px;
+      padding: 0;
+      padding-top: 24px;
+      width: 600px;
+    }}
+    .content {{
+      box-sizing: border-box;
+      display: block;
+      margin: 0 auto;
+      max-width: 600px;
+      padding: 0;
+    }}
+    .main {{
+      background: #ffffff;
+      border: 1px solid #eaebed;
+      border-radius: 16px;
+      width: 100%;
+    }}
+    .wrapper {{
+      box-sizing: border-box;
+      padding: 24px;
+    }}
+    .footer {{
+      clear: both;
+      padding-top: 24px;
+      text-align: center;
+      width: 100%;
+    }}
+    .footer td, .footer p, .footer span, .footer a {{
+      color: #9a9ea6;
+      font-size: 14px;
+      text-align: center;
+    }}
+    p {{
+      font-family: Helvetica, sans-serif;
+      font-size: 16px;
+      font-weight: normal;
+      margin: 0;
+      margin-bottom: 16px;
+    }}
+    a {{
+      color: #0867ec;
+      text-decoration: underline;
+    }}
+    .btn {{
+      box-sizing: border-box;
+      min-width: 100% !important;
+      width: 100%;
+    }}
+    .btn > tbody > tr > td {{
+      padding-bottom: 16px;
+    }}
+    .btn table {{
+      width: auto;
+    }}
+    .btn table td {{
+      background-color: #ffffff;
+      border-radius: 4px;
+      text-align: center;
+    }}
+    .btn a {{
+      background-color: #ffffff;
+      border: solid 2px #0867ec;
+      border-radius: 4px;
+      box-sizing: border-box;
+      color: #0867ec;
+      cursor: pointer;
+      display: inline-block;
+      font-size: 16px;
+      font-weight: bold;
+      margin: 0;
+      padding: 12px 24px;
+      text-decoration: none;
+      text-transform: capitalize;
+    }}
+    .btn-primary table td {{
+      background-color: #0867ec;
+    }}
+    .btn-primary a {{
+      background-color: #0867ec;
+      border-color: #0867ec;
+      color: #ffffff;
+    }}
+    .preheader {{
+      color: transparent;
+      display: none;
+      height: 0;
+      max-height: 0;
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      mso-hide: all;
+      visibility: hidden;
+      width: 0;
+    }}
+    @media only screen and (max-width: 640px) {{
+      .wrapper {{ padding: 8px !important; }}
+      .content {{ padding: 0 !important; }}
+      .container {{ padding: 0 !important; padding-top: 8px !important; width: 100% !important; }}
+      .main {{ border-left-width: 0 !important; border-radius: 0 !important; border-right-width: 0 !important; }}
+      .btn table, .btn a {{ max-width: 100% !important; width: 100% !important; }}
+    }}
+    </style>
+  </head>
+  <body>
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="body">
+      <tr>
+        <td>&nbsp;</td>
+        <td class="container">
+          <div class="content">
+            <span class="preheader">{preheader}</span>
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="main">
+              <tr>
+                <td class="wrapper">
+                  <p>{intro}</p>
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
+                    <tbody>
+                      <tr>
+                        <td align="left">
+                          <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                            <tbody>
+                              <tr>
+                                <td> <a href="{button_url}" target="_blank">{button_label}</a> </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p>{note}</p>
+                </td>
+              </tr>
+            </table>
+            <div class="footer">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td class="content-block">
+                    Diese E-Mail wurde automatisch von Klar versendet.
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </div>
+        </td>
+        <td>&nbsp;</td>
+      </tr>
+    </table>
+  </body>
+</html>"#,
+        preheader = preheader,
+        intro = intro,
+        button_url = button_url,
+        button_label = button_label,
+        note = note,
+    )
 }
 
 impl EmailService {
@@ -106,7 +305,7 @@ impl EmailService {
     pub async fn send_verification(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
         let verify_url = format!("{}/verify-email?token={}", self.base_url, token);
 
-        let body = format!(
+        let text = format!(
             "Willkommen bei Klar!\n\n\
              Bitte bestaetige deine E-Mail-Adresse:\n\n\
              {}\n\n\
@@ -115,14 +314,22 @@ impl EmailService {
             verify_url
         );
 
-        self.send(to_email, "Bestaetige deine E-Mail bei Klar", &body).await
+        let html = render_html_email(
+            "Bestaetige deine E-Mail-Adresse bei Klar",
+            "Willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse, um loszulegen.",
+            "E-Mail bestaetigen",
+            &verify_url,
+            "Der Link ist 24 Stunden gueltig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
+        );
+
+        self.send(to_email, "Bestaetige deine E-Mail bei Klar", &text, &html).await
     }
 
     /// Send password reset link
     pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
         let reset_url = format!("{}/reset-password?token={}", self.base_url, token);
 
-        let body = format!(
+        let text = format!(
             "Passwort zuruecksetzen\n\n\
              Klicke auf den folgenden Link, um dein Passwort zurueckzusetzen:\n\n\
              {}\n\n\
@@ -131,19 +338,38 @@ impl EmailService {
             reset_url
         );
 
-        self.send(to_email, "Passwort zuruecksetzen bei Klar", &body).await
+        let html = render_html_email(
+            "Setze dein Passwort bei Klar zurueck",
+            "Du hast angefragt, dein Passwort bei Klar zurueckzusetzen.",
+            "Passwort zuruecksetzen",
+            &reset_url,
+            "Der Link ist 1 Stunde gueltig. Wenn du diese Anfrage nicht gestellt hast, ignoriere diese E-Mail.",
+        );
+
+        self.send(to_email, "Passwort zuruecksetzen bei Klar", &text, &html).await
     }
 
-    /// Send a plain text email
-    async fn send(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError> {
+    /// Send an email with both plain-text and HTML alternatives
+    async fn send(&self, to: &str, subject: &str, text: &str, html: &str) -> Result<(), EmailError> {
         match &self.transport {
             Transport::Smtp(mailer) => {
                 let email = Message::builder()
                     .from(self.from_address.parse().map_err(|e| EmailError(format!("Invalid from: {}", e)))?)
                     .to(to.parse().map_err(|e| EmailError(format!("Invalid to: {}", e)))?)
                     .subject(subject)
-                    .header(ContentType::TEXT_PLAIN)
-                    .body(body.to_string())
+                    .multipart(
+                        MultiPart::alternative()
+                            .singlepart(
+                                SinglePart::builder()
+                                    .header(ContentType::TEXT_PLAIN)
+                                    .body(text.to_string()),
+                            )
+                            .singlepart(
+                                SinglePart::builder()
+                                    .header(ContentType::TEXT_HTML)
+                                    .body(html.to_string()),
+                            ),
+                    )
                     .map_err(|e| EmailError(format!("Failed to build email: {}", e)))?;
 
                 mailer
@@ -158,7 +384,8 @@ impl EmailService {
                     [to],
                     subject,
                 )
-                .with_text(body);
+                .with_html(html)
+                .with_text(text);
 
                 resend
                     .emails
