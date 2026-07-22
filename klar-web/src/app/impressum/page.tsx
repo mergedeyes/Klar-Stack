@@ -38,14 +38,6 @@ export default function ImpressumPage() {
         </p>
       </section>
 
-      <!--<section className="mb-6">
-        <h2 className="mb-2 font-semibold">Umsatzsteuer-ID</h2>
-        <p>
-          [Falls vorhanden: USt-IdNr. gemäß § 27a UStG. Falls Kleinunternehmer
-          oder privates Projekt ohne UStID: diesen Abschnitt entfernen.]
-        </p>
-      </section>-->
-
       <section className="mb-6">
         <h2 className="mb-2 font-semibold">Streitschlichtung</h2>
         <p>
