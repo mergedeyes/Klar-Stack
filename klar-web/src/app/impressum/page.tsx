@@ -19,7 +19,10 @@ export default function ImpressumPage() {
       <section className="mb-6">
         <h2 className="mb-2 font-semibold">Kontakt</h2>
         <p>
-          E-Mail: [kontakt@klarsocial.eu]
+          E-Mail:{" "}
+          <a href="mailto:kontakt@klarsocial.eu" className="underline">
+            kontakt@klarsocial.eu
+          </a>
         </p>
       </section>
 
