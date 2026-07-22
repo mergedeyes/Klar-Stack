@@ -6,11 +6,23 @@ export default function DatenschutzPage() {
       <section className="mb-6">
         <h2 className="mb-2 font-semibold">1. Verantwortlicher</h2>
         <p>
-          [Name]
+          Jan Motulla
           <br />
-          [Anschrift]
+          Benzstr. 1
           <br />
-          E-Mail: [kontakt@klarsocial.eu]
+          88250, Weingarten
+          <br />
+          Deutschland
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">Kontakt</h2>
+        <p>
+          E-Mail:{" "}
+          <a href="mailto:kontakt@klarsocial.eu" className="underline">
+            kontakt@klarsocial.eu
+          </a>
         </p>
       </section>
 
