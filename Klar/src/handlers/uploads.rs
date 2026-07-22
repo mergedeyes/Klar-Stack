@@ -5,7 +5,9 @@
 /// 2. Server validates the image (type, size)
 /// 3. Server processes: strip EXIF by re-encoding, generate 3 variants
 /// 4. Server saves variants to local storage
-/// 5. Server creates post + media_asset records in DB
+/// 5. Server creates post + media_asset records in DB, fans out to
+///    followers' feed_items, and bumps the author's post_count — all in
+///    one transaction, matching handlers::posts::create_post
 /// 6. Server returns the post with media URLs
 
 use axum::{
@@ -123,6 +125,17 @@ pub async fn upload_post(
     state.storage.save(&full_key, &processed.full).await
         .map_err(|e| AppError::internal(format!("Failed to save full image: {:?}", e)))?;
 
+    // Everything from here on is one transaction — post + media_asset +
+    // post_count + feed fan-out all succeed together or not at all.
+    // Previously these ran as separate un-transacted queries against
+    // state.db directly, and the fan-out/post_count steps were simply
+    // missing entirely — this is why photo posts (the only kind real
+    // users create) never showed up in followers' feeds.
+    let mut tx = state.db.begin().await.map_err(|e| {
+        tracing::error!("Failed to start transaction: {}", e);
+        AppError::internal("Database error")
+    })?;
+
     // Create post in database
     let post = sqlx::query_as::<_, NewPostResponse>(
         r#"
@@ -140,7 +153,7 @@ pub async fn upload_post(
     )
     .bind(auth.user_id)
     .bind(&caption)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create post: {}", e);
@@ -180,11 +193,41 @@ pub async fn upload_post(
     .bind(&thumb_url)
     .bind(&medium_url)
     .bind(&full_url)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create media asset: {}", e);
         AppError::internal("Failed to save media record")
+    })?;
+
+    // Keep the author's denormalized post_count in sync (create_post does
+    // this too; this handler was missing it entirely before)
+    sqlx::query("UPDATE users SET post_count = post_count + 1 WHERE id = $1")
+        .bind(auth.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+
+    // Fan-out: one feed_items row per current follower, same as
+    // handlers::posts::create_post — this was the missing piece that made
+    // photo posts never appear in followers' feeds.
+    sqlx::query(
+        r#"
+        INSERT INTO feed_items (user_id, post_id, created_at)
+        SELECT follower_id, $1, $2 FROM follows WHERE following_id = $3
+        ON CONFLICT DO NOTHING
+        "#
+    )
+    .bind(post.id)
+    .bind(post.created_at)
+    .bind(auth.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("Failed to fan out post: {}", e); AppError::internal("Database error") })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit transaction: {}", e);
+        AppError::internal("Database error")
     })?;
 
     tracing::info!("Post with media created: {} by user {}", post.id, auth.user_id);

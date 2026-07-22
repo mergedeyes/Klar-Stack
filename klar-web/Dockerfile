@@ -30,7 +30,13 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-RUN useradd --system --create-home --shell /usr/sbin/nologin appuser
+RUN useradd --system --create-home --shell /usr/sbin/nologin appuser \
+    # Next's image optimizer writes to .next/cache at runtime — everything
+    # copied above is root-owned by default, so without this, appuser gets
+    # EACCES trying to mkdir it the first time an image is requested.
+    && mkdir -p .next/cache \
+    && chown -R appuser:appuser /app
+
 USER appuser
 
 ENV PORT=3000
