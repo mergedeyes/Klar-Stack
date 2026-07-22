@@ -38,8 +38,12 @@ rand = "0.9"
 hex = "0.4"
 # SHA-256 for refresh token hashing (fast lookup, not password-level security needed)
 sha2 = "0.10"
-# Email sending (SMTP)
+# Email sending (SMTP) — used for local/MailHog dev only now; production uses Resend
 lettre = { version = "0.11", features = ["tokio1-native-tls", "builder", "smtp-transport"] }
+# Resend — HTTPS-based transactional email API. Bunny Magic Containers blocks
+# outbound SMTP ports (25/465/587/2525) by default, so raw SMTP relays (like
+# IONOS) time out in production; Resend's API runs over plain HTTPS (443).
+resend-rs = "0.24"
 # Rate limiting
 governor = { version = "0.8", features = ["dashmap"] }
 futures = "0.3.32"
