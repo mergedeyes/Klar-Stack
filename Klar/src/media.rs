@@ -43,7 +43,7 @@ pub fn process_image(raw_bytes: &[u8]) -> Result<ProcessedImage, ProcessingError
     // Decode via the two-step decoder API (rather than the one-shot
     // ImageReader::decode() convenience method) specifically so we can
     // read the EXIF orientation tag before it's gone.
-    let decoder = ImageReader::new(Cursor::new(raw_bytes))
+    let mut decoder = ImageReader::new(Cursor::new(raw_bytes))
         .with_guessed_format()
         .map_err(|e| ProcessingError(format!("Failed to read image: {}", e)))?
         .into_decoder()
@@ -52,6 +52,7 @@ pub fn process_image(raw_bytes: &[u8]) -> Result<ProcessedImage, ProcessingError
     // Formats without EXIF support (or images with no orientation tag at
     // all) fall back to NoTransforms — i.e. use the pixels exactly as
     // decoded, which is the correct behavior for those cases anyway.
+    // orientation() takes &mut self, hence `mut decoder` above.
     let orientation = decoder
         .orientation()
         .unwrap_or(image::metadata::Orientation::NoTransforms);

@@ -3,7 +3,7 @@
 /// Actual queries live in handlers, close to where they're used.
 
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::{ConnectOptions, PgPool};
+use sqlx::PgPool;
 use std::str::FromStr;
 use std::time::Duration;
 
