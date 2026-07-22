@@ -175,8 +175,15 @@ pub async fn register(
         AppError::internal("Failed to create verification token")
     })?;
 
-    if let Err(e) = state.email.send_verification(&user.email, &email_token).await {
-        tracing::error!("Failed to send verification email: {}", e);
+    {
+        let email_service = state.email.clone();
+        let to_email = user.email.clone();
+        let token = email_token.clone();
+        tokio::spawn(async move {
+            if let Err(e) = email_service.send_verification(&to_email, &token).await {
+                tracing::error!("Failed to send verification email: {}", e);
+            }
+        });
     }
 
     // Create tokens
@@ -428,8 +435,15 @@ pub async fn forgot_password(
             AppError::internal("Failed to create reset token")
         })?;
 
-        if let Err(e) = state.email.send_password_reset(&user.email, &token).await {
-            tracing::error!("Failed to send reset email: {}", e);
+        {
+            let email_service = state.email.clone();
+            let to_email = user.email.clone();
+            let reset_token = token.clone();
+            tokio::spawn(async move {
+                if let Err(e) = email_service.send_password_reset(&to_email, &reset_token).await {
+                    tracing::error!("Failed to send reset email: {}", e);
+                }
+            });
         }
     }
 
@@ -564,8 +578,16 @@ pub async fn resend_verification(
         AppError::internal("Failed to create verification token")
     })?;
 
-    state.email.send_verification(&user.email, &token).await
-        .map_err(|e| AppError::internal(format!("Failed to send email: {}", e)))?;
+    {
+        let email_service = state.email.clone();
+        let to_email = user.email.clone();
+        let verify_token = token.clone();
+        tokio::spawn(async move {
+            if let Err(e) = email_service.send_verification(&to_email, &verify_token).await {
+                tracing::error!("Failed to send verification email: {}", e);
+            }
+        });
+    }
 
     Ok(Json(serde_json::json!({
         "message": "Verification email sent"
