@@ -34,43 +34,52 @@ pub struct AppState {
 fn build_auth_cookies(access: &str, refresh: &str) -> HeaderMap {
     // Prüfen, ob wir in Produktion sind (z.B. über eine ENV-Variable)
     let is_prod = std::env::var("ENV").unwrap_or_default() == "production";
-    
+
     // Lokal lassen wir "Secure" weg, online erzwingen wir es.
     let secure_flag = if is_prod { "Secure; " } else { "" };
 
+    // klarsocial.eu and klarsocial.de are genuinely different top-level
+    // domains — different "sites" per browser same-site rules — but both
+    // call the same api.klarsocial.eu backend. That makes every request
+    // cross-site, so SameSite=Lax is silently dropped by browsers on
+    // fetch()/XHR. SameSite=None (which requires Secure, already handled
+    // above) is required for cross-site cookies to actually be sent.
+    let same_site = if is_prod { "None" } else { "Lax" };
+
     let mut headers = HeaderMap::new();
-    
+
     headers.insert(
         axum::http::header::SET_COOKIE,
         HeaderValue::from_str(&format!(
-            "klar_access_token={}; HttpOnly; {}SameSite=Lax; Path=/; Max-Age=900",
-            access, secure_flag
+            "klar_access_token={}; HttpOnly; {}SameSite={}; Path=/; Max-Age=900",
+            access, secure_flag, same_site
         )).unwrap(),
     );
-    
+
     headers.append(
         axum::http::header::SET_COOKIE,
         HeaderValue::from_str(&format!(
-            "klar_refresh_token={}; HttpOnly; {}SameSite=Lax; Path=/; Max-Age=2592000",
-            refresh, secure_flag
+            "klar_refresh_token={}; HttpOnly; {}SameSite={}; Path=/; Max-Age=2592000",
+            refresh, secure_flag, same_site
         )).unwrap(),
     );
-    
+
     headers
 }
 
 fn build_clear_cookies() -> HeaderMap {
     let is_prod = std::env::var("ENV").unwrap_or_default() == "production";
     let secure_flag = if is_prod { "Secure; " } else { "" };
+    let same_site = if is_prod { "None" } else { "Lax" };
 
     let mut headers = HeaderMap::new();
     headers.insert(
         axum::http::header::SET_COOKIE,
-        HeaderValue::from_str(&format!("klar_access_token=; HttpOnly; {}SameSite=Lax; Path=/; Max-Age=0", secure_flag)).unwrap(),
+        HeaderValue::from_str(&format!("klar_access_token=; HttpOnly; {}SameSite={}; Path=/; Max-Age=0", secure_flag, same_site)).unwrap(),
     );
     headers.append(
         axum::http::header::SET_COOKIE,
-        HeaderValue::from_str(&format!("klar_refresh_token=; HttpOnly; {}SameSite=Lax; Path=/; Max-Age=0", secure_flag)).unwrap(),
+        HeaderValue::from_str(&format!("klar_refresh_token=; HttpOnly; {}SameSite={}; Path=/; Max-Age=0", secure_flag, same_site)).unwrap(),
     );
     headers
 }
@@ -310,7 +319,7 @@ pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
-    
+
     let cookie_header = headers.get(axum::http::header::COOKIE).and_then(|v| v.to_str().ok());
     if let Some(raw_refresh_token) = cookie_header
         .and_then(|h| h.split(';').map(|s| s.trim()).find(|s| s.starts_with("klar_refresh_token=")))
