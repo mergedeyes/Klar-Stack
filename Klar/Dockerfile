@@ -10,26 +10,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache dependencies separately from source for faster rebuilds.
-# Copying only manifests first means this layer is reused unless deps change.
+# Copy manifests and full source together — no dummy-build caching trick.
+# With no persisted BuildKit cache across CI runs, that trick only cost a
+# wasted double-compile for zero benefit, and was the source of a bug where
+# Cargo's object cache relinked a stale artifact from the placeholder main.rs.
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release --locked || true
-RUN rm -rf src
-
-# Now copy the real source, .sqlx (needed since build has no live DB access),
-# and migrations (bundled into the binary or run at startup, depending on your setup)
 COPY src ./src
 COPY .sqlx ./.sqlx
 COPY migrations ./migrations
 
 # SQLX_OFFLINE=true forces sqlx macros to verify queries against .sqlx/
 # instead of connecting to a live database during compilation
-# Delete the placeholder binary before the real build — otherwise Cargo's
-# fingerprint cache can occasionally conclude nothing changed and skip
-# relinking, silently leaving the dummy "fn main() {}" binary in the image.
-RUN rm -f target/release/Klar
-
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --locked
 
