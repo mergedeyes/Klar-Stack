@@ -41,17 +41,15 @@ export default function NewChatModal({ onClose, existingConversations }: NewChat
   }, [user]);
 
   const handleStartChat = (selectedUser: User) => {
-    // Prüfen, ob wir mit der Person schon einen Chat haben
-    const existingConv = existingConversations.find(c => c.other_user_id === selectedUser.id);
-    
+    // /chats reads all state from query params (?uid=&un=&av=) — it has no
+    // dynamic [id]/[new] route at all, so navigating to /chats/<id> or
+    // /chats/new (path segments) 404s. The page itself already looks up
+    // whether a conversation exists by matching `uid` against the fetched
+    // conversation list, so there's nothing an existing conversation's id
+    // needs to add here — same query string works for both cases.
     const queryParams = `?uid=${selectedUser.id}&un=${encodeURIComponent(selectedUser.username)}&av=${encodeURIComponent(selectedUser.avatar_url || '')}`;
 
-    if (existingConv) {
-      router.push(`/chats/${existingConv.id}${queryParams}`);
-    } else {
-      // Wenn neu: Wir nutzen "new" als Platzhalter für die ID
-      router.push(`/chats/new${queryParams}`);
-    }
+    router.push(`/chats${queryParams}`);
     onClose();
   };
 
