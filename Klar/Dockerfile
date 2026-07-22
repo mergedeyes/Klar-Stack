@@ -25,6 +25,11 @@ COPY migrations ./migrations
 
 # SQLX_OFFLINE=true forces sqlx macros to verify queries against .sqlx/
 # instead of connecting to a live database during compilation
+# Delete the placeholder binary before the real build — otherwise Cargo's
+# fingerprint cache can occasionally conclude nothing changed and skip
+# relinking, silently leaving the dummy "fn main() {}" binary in the image.
+RUN rm -f target/release/Klar
+
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --locked
 
