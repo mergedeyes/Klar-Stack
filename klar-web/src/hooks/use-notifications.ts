@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from "@/lib/auth-context";
-import { notifications as notificationsApi, type AppNotification } from "@/lib/api";
+import { notifications as notificationsApi, tokens, type AppNotification } from "@/lib/api";
 import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
@@ -33,7 +33,17 @@ export function useNotifications() {
     // Auch der Stream darf erst starten, wenn der User da ist
     if (!user) return;
 
-    const eventSource = new EventSource(`${API_URL}/notifications/stream`, {
+    // EventSource can't set custom headers (no Authorization: Bearer) and,
+    // since klarsocial.eu/.de calling api.klarsocial.eu is genuinely
+    // cross-site, its cookie may be blocked by third-party cookie policy
+    // too. The access token goes as a query param instead — the backend's
+    // auth extractor checks this as a fallback specifically for this case.
+    const accessToken = tokens.getAccess();
+    const streamUrl = accessToken
+      ? `${API_URL}/notifications/stream?token=${encodeURIComponent(accessToken)}`
+      : `${API_URL}/notifications/stream`;
+
+    const eventSource = new EventSource(streamUrl, {
       withCredentials: true
     });
 

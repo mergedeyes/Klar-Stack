@@ -97,13 +97,37 @@ export interface ApiError {
   error: string;
 }
 
-// ── Token storage (Stubs so existing files don't break) ───────────────
+// ── Token storage ─────────────────────────────────────────────────────────────
+// klarsocial.eu and klarsocial.de are genuinely different top-level domains
+// sharing one backend (api.klarsocial.eu) — every request is cross-site.
+// Browsers increasingly block third-party cookies outright regardless of
+// SameSite/Secure config (privacy-hardened Chromium forks, Safari ITP,
+// Firefox ETP), so cookies can't be relied on as the sole auth mechanism.
+// Tokens are stored in localStorage and sent explicitly via
+// Authorization: Bearer instead — this bypasses cookie policy entirely,
+// at the accepted tradeoff of XSS-exposed storage vs. httpOnly cookies.
+
+const ACCESS_KEY = "klar_access_token";
+const REFRESH_KEY = "klar_refresh_token";
+
+function safeGetItem(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(key);
+}
 
 export const tokens = {
-  getAccess: () => "cookie-auth-active",
-  getRefresh: () => "cookie-auth-active",
-  set: (_access: string, _refresh: string) => {},
-  clear: () => {},
+  getAccess: () => safeGetItem(ACCESS_KEY),
+  getRefresh: () => safeGetItem(REFRESH_KEY),
+  set: (access: string, refresh: string) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ACCESS_KEY, access);
+    window.localStorage.setItem(REFRESH_KEY, refresh);
+  },
+  clear: () => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(ACCESS_KEY);
+    window.localStorage.removeItem(REFRESH_KEY);
+  },
 };
 
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
@@ -119,23 +143,34 @@ function processQueue(error: Error | null) {
   failedQueue = [];
 }
 
+function buildFetchOptions(options: RequestInit): RequestInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  const accessToken = tokens.getAccess();
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
+  return {
+    ...options,
+    headers,
+    // Kept for same-site/local-dev cases where the cookie does work — costs
+    // nothing to also send it, and the Authorization header above is what
+    // actually carries auth across the cross-site production domains.
+    credentials: "include",
+  };
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   authenticated = false,
   _isRetry = false
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
-  };
-
-  // ALL requests must include credentials so cookies are sent automatically
-  const fetchOptions: RequestInit = {
-    ...options,
-    headers,
-    credentials: "include", 
-  };
+  const fetchOptions = buildFetchOptions(options);
 
   const res = await fetch(`${API_URL}${path}`, fetchOptions);
 
@@ -145,7 +180,7 @@ async function request<T>(
         failedQueue.push({
           resolve: () => {
             resolve(
-              fetch(`${API_URL}${path}`, fetchOptions).then(async (r) => {
+              fetch(`${API_URL}${path}`, buildFetchOptions(options)).then(async (r) => {
                 if (r.status === 204) return undefined as T;
                 const text = await r.text();
                 return (text ? JSON.parse(text) : undefined) as T;
@@ -160,25 +195,32 @@ async function request<T>(
     isRefreshing = true;
 
     try {
-      // The browser will automatically attach the httpOnly refresh_token cookie
+      // Cookie is sent as a best-effort fallback (credentials: include),
+      // but the refresh_token in the body is what actually carries this
+      // cross-site, since third-party cookies may be blocked entirely.
       const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ refresh_token: tokens.getRefresh() ?? undefined }),
       });
 
       if (!refreshRes.ok) throw new Error("Refresh failed");
-      
+
+      const refreshed = (await refreshRes.json()) as { access_token: string; refresh_token: string };
+      tokens.set(refreshed.access_token, refreshed.refresh_token);
+
       processQueue(null);
 
-      // Retry the original request
-      const retryRes = await fetch(`${API_URL}${path}`, fetchOptions);
+      // Retry the original request with the freshly stored access token
+      const retryRes = await fetch(`${API_URL}${path}`, buildFetchOptions(options));
       if (retryRes.status === 204) return undefined as T;
       const retryText = await retryRes.text();
       return (retryText ? JSON.parse(retryText) : undefined) as T;
 
     } catch (error) {
       processQueue(error as Error);
+      tokens.clear();
       throw new Error("Session expired. Please log in again.");
     } finally {
       isRefreshing = false;
@@ -214,14 +256,16 @@ export const auth = {
       body: JSON.stringify({ email, password }),
     }),
 
-  logout: (_ignored?: string) =>
+  logout: (refreshToken?: string | null) =>
     request<void>("/auth/logout", {
       method: "POST",
+      body: JSON.stringify({ refresh_token: refreshToken ?? tokens.getRefresh() ?? undefined }),
     }),
 
-  refresh: (_ignored?: string) =>
+  refresh: (refreshToken?: string | null) =>
     request<{ access_token: string; refresh_token: string }>("/auth/refresh", {
       method: "POST",
+      body: JSON.stringify({ refresh_token: refreshToken ?? tokens.getRefresh() ?? undefined }),
     }),
 
   forgotPassword: (email: string) =>
@@ -277,9 +321,13 @@ export const users = {
   uploadAvatar: async (file: File): Promise<User> => {
     const form = new FormData();
     form.append("avatar", file);
+    const headers: Record<string, string> = {};
+    const accessToken = tokens.getAccess();
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
     const res = await fetch(`${API_URL}/users/me/avatar`, {
       method: "POST",
-      credentials: "include", 
+      credentials: "include",
+      headers,
       body: form,
     });
     const data = await res.json();

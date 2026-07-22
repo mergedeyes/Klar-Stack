@@ -103,7 +103,14 @@ where
     }
 }
 
-/// Shared helper — pulls the token from the Cookie, falling back to Authorization header.
+/// Shared helper — pulls the token from the Cookie, falling back to the
+/// Authorization header, falling back to a `?token=` query parameter.
+///
+/// The query-param fallback exists specifically for EventSource (used by
+/// the /notifications/stream SSE endpoint): browsers' EventSource API can't
+/// set custom headers at all, and with klarsocial.eu/.de being genuinely
+/// cross-site, third-party cookie blocking means EventSource's cookie may
+/// never arrive either. A query param is the only channel left it can use.
 fn extract_user_id(parts: &Parts) -> Option<Uuid> {
     let secret = std::env::var("JWT_SECRET").ok()?;
     let mut token_str = None;
@@ -124,6 +131,21 @@ fn extract_user_id(parts: &Parts) -> Option<Uuid> {
     if token_str.is_none() {
         if let Some(auth_header) = parts.headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
             token_str = auth_header.strip_prefix("Bearer ");
+        }
+    }
+
+    // 3. Fallback to a `token` query parameter (EventSource can't set headers,
+    // and may not reliably receive the cookie cross-site either). JWTs are
+    // base64url-encoded (RFC 4648 §5), which is already URL-safe, so no
+    // percent-decoding is needed for this specific token format.
+    if token_str.is_none() {
+        if let Some(query) = parts.uri.query() {
+            token_str = query.split('&').find_map(|pair| {
+                let mut kv = pair.splitn(2, '=');
+                let key = kv.next()?;
+                let val = kv.next()?;
+                if key == "token" { Some(val) } else { None }
+            });
         }
     }
 

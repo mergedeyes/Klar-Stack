@@ -41,9 +41,13 @@ fn build_auth_cookies(access: &str, refresh: &str) -> HeaderMap {
     // klarsocial.eu and klarsocial.de are genuinely different top-level
     // domains — different "sites" per browser same-site rules — but both
     // call the same api.klarsocial.eu backend. That makes every request
-    // cross-site, so SameSite=Lax is silently dropped by browsers on
-    // fetch()/XHR. SameSite=None (which requires Secure, already handled
-    // above) is required for cross-site cookies to actually be sent.
+    // cross-site. SameSite=None (paired with Secure) is required for the
+    // cookie to even be considered — but a growing share of browsers
+    // (privacy-hardened Chromium forks, Safari ITP, Firefox ETP) block
+    // third-party cookies outright regardless of these attributes. Cookies
+    // are kept here as a best-effort/same-site convenience, but the real
+    // auth path for cross-site clients is the Authorization: Bearer header
+    // (see AuthResponse/RefreshResponse below, and auth.rs's extractor).
     let same_site = if is_prod { "None" } else { "Lax" };
 
     let mut headers = HeaderMap::new();
@@ -204,8 +208,11 @@ pub async fn register(
         StatusCode::CREATED,
         build_auth_cookies(&access_token, &refresh_token),
         Json(AuthResponse {
-            access_token: "".to_string(), // Keep struct signature for backward compatibility
-            refresh_token: "".to_string(),
+            // Returned in the body now (not blanked) so cross-site clients
+            // that can't rely on third-party cookies can store these and
+            // send them explicitly via Authorization: Bearer.
+            access_token,
+            refresh_token,
             user: UserResponse::from(user),
         }),
     ))
@@ -252,26 +259,41 @@ pub async fn login(
     Ok((
         build_auth_cookies(&access_token, &refresh_token),
         Json(AuthResponse {
-            access_token: "".to_string(),
-            refresh_token: "".to_string(),
+            access_token,
+            refresh_token,
             user: UserResponse::from(user),
         }),
     ))
+}
+
+/// Body for /auth/refresh — refresh_token is optional here because same-site
+/// clients rely on the httpOnly cookie instead; cross-site clients (blocked
+/// from receiving that cookie by third-party cookie policies) send it explicitly.
+/// Frontend always sends at least `{}` so this extractor never sees a truly
+/// empty/missing body.
+#[derive(Debug, Deserialize, Default)]
+pub struct RefreshRequest {
+    pub refresh_token: Option<String>,
 }
 
 /// POST /auth/refresh
 pub async fn refresh(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Json(body): Json<RefreshRequest>,
 ) -> Result<(HeaderMap, Json<RefreshResponse>), AppError> {
 
     let cookie_header = headers.get(axum::http::header::COOKIE).and_then(|v| v.to_str().ok());
-    let raw_refresh_token = cookie_header
+    let cookie_token = cookie_header
         .and_then(|h| h.split(';').map(|s| s.trim()).find(|s| s.starts_with("klar_refresh_token=")))
         .and_then(|s| s.strip_prefix("klar_refresh_token="))
-        .ok_or_else(|| AppError::unauthorized("No refresh token found in cookies"))?;
+        .map(|s| s.to_string());
 
-    let token_hash = hash_refresh_token(raw_refresh_token);
+    let raw_refresh_token = cookie_token
+        .or(body.refresh_token)
+        .ok_or_else(|| AppError::unauthorized("No refresh token found"))?;
+
+    let token_hash = hash_refresh_token(&raw_refresh_token);
 
     let token_row = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid)>(
         r#"
@@ -308,24 +330,35 @@ pub async fn refresh(
     Ok((
         build_auth_cookies(&access_token, &new_refresh_token),
         Json(RefreshResponse {
-            access_token: "".to_string(),
-            refresh_token: "".to_string(),
+            access_token,
+            refresh_token: new_refresh_token,
         })
     ))
+}
+
+/// Body for /auth/logout — same rationale as RefreshRequest. Frontend always
+/// sends at least `{}`, so this is required (not Option<Json<..>>) to avoid
+/// depending on axum's optional-body extractor support.
+#[derive(Debug, Deserialize, Default)]
+pub struct LogoutRequest {
+    pub refresh_token: Option<String>,
 }
 
 /// POST /auth/logout
 pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Json(body): Json<LogoutRequest>,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
 
     let cookie_header = headers.get(axum::http::header::COOKIE).and_then(|v| v.to_str().ok());
-    if let Some(raw_refresh_token) = cookie_header
+    let cookie_token = cookie_header
         .and_then(|h| h.split(';').map(|s| s.trim()).find(|s| s.starts_with("klar_refresh_token=")))
         .and_then(|s| s.strip_prefix("klar_refresh_token="))
-    {
-        let token_hash = hash_refresh_token(raw_refresh_token);
+        .map(|s| s.to_string());
+
+    if let Some(raw_refresh_token) = cookie_token.or(body.refresh_token) {
+        let token_hash = hash_refresh_token(&raw_refresh_token);
         let _ = sqlx::query("DELETE FROM refresh_tokens WHERE token_hash = $1")
             .bind(&token_hash)
             .execute(&state.db)
