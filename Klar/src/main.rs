@@ -17,6 +17,7 @@ use tokio::sync::broadcast;
 
 #[tokio::main]
 async fn main() {
+    eprintln!("=== KLAR BACKEND: main() started ===");
     tracing_subscriber::fmt::init();
     dotenvy::dotenv().ok();
 
@@ -64,6 +65,7 @@ async fn main() {
     let app = routes::create_router(state);
     tracing::info!("Server running on http://{}", addr);
 
+    eprintln!("=== KLAR BACKEND: about to bind {} ===", addr);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("Failed to bind to address");
