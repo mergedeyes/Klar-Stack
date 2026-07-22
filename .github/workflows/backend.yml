@@ -29,7 +29,7 @@ jobs:
         with:
           context: ./Klar
           push: true
-          tags: ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
+          tags: ghcr.io/klar-backend:${{ github.sha }}
 
       - name: Update container image on Magic Containers
         if: vars.APP_ID != ''
