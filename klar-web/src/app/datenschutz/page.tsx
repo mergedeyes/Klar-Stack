@@ -1,0 +1,125 @@
+export default function DatenschutzPage() {
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-10 text-sm leading-relaxed">
+      <h1 className="mb-6 text-2xl font-bold">Datenschutzerklärung</h1>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">1. Verantwortlicher</h2>
+        <p>
+          [Name]
+          <br />
+          [Anschrift]
+          <br />
+          E-Mail: [kontakt@klarsocial.eu]
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">2. Registrierung und Nutzerkonto</h2>
+        <p>
+          Bei der Registrierung erheben wir Benutzername, E-Mail-Adresse und
+          ein gehashtes Passwort (Argon2 — das Klartext-Passwort wird nicht
+          gespeichert). Rechtsgrundlage ist die Erfüllung des
+          Nutzungsvertrags (Art. 6 Abs. 1 lit. b DSGVO).
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">3. Inhalte (Fotos, Beiträge, Nachrichten)</h2>
+        <p>
+          Hochgeladene Fotos werden serverseitig verarbeitet: Wir entfernen
+          automatisch alle EXIF-Metadaten (u. a. Standortdaten, Geräteinfo,
+          Aufnahmezeitpunkt), bevor das Bild gespeichert wird. Beiträge,
+          Kommentare und Direktnachrichten werden gespeichert, um die
+          Kernfunktion des Dienstes bereitzustellen (Art. 6 Abs. 1 lit. b
+          DSGVO).
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">4. Hosting und Auftragsverarbeiter</h2>
+        <p className="mb-2">
+          Wir setzen folgende Dienstleister ein, mit denen jeweils ein
+          Auftragsverarbeitungsvertrag (Art. 28 DSGVO) besteht bzw. bestehen
+          sollte:
+        </p>
+        <ul className="list-disc pl-5 space-y-2">
+          <li>
+            <strong>Bunny.net</strong> (Hosting der Anwendung, CDN und
+            Speicherung von Bild-Dateien). Speicherung erfolgt in einem
+            deutschen Rechenzentrum.
+          </li>
+          <li>
+            <strong>Neon</strong> (Datenbank-Hosting, PostgreSQL). Die
+            Datenbank läuft in der AWS-Region eu-central-1 (Frankfurt,
+            Deutschland).
+          </li>
+          <li>
+            <strong>Resend</strong> (Versand von Transaktions-E-Mails, z. B.
+            Registrierungsbestätigung und Passwort-Reset). Resend ist ein
+            US-amerikanisches Unternehmen. Der E-Mail-Versand selbst erfolgt
+            über ein Rechenzentrum in Irland, jedoch werden Konto- und
+            Metadaten (u. a. E-Mail-Adressen, Versandprotokolle) in den USA
+            gespeichert und verarbeitet. Diese Übermittlung in ein
+            Drittland erfolgt auf Grundlage von EU-Standardvertragsklauseln
+            (Art. 46 DSGVO) mit Resend. [Bitte vor Live-Gang prüfen, ob ein
+            aktueller Auftragsverarbeitungsvertrag inkl. SCC mit Resend
+            abgeschlossen wurde.]
+          </li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">5. Cookies und lokaler Speicher</h2>
+        <p>
+          Zur Anmeldung verwenden wir Zugriffs- und Refresh-Token, die im
+          <code className="mx-1 rounded bg-muted px-1">localStorage</code>
+          deines Browsers abgelegt werden, sowie ergänzend Cookies. Dies ist
+          technisch erforderlich, um dich eingeloggt zu halten (Art. 6 Abs. 1
+          lit. b DSGVO). Es werden keine Tracking- oder Werbe-Cookies
+          eingesetzt.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">6. Server-Logs</h2>
+        <p>
+          Beim Aufruf der Anwendung werden technisch bedingt Zugriffsprotokolle
+          (IP-Adresse, Zeitpunkt, aufgerufene Route, Statuscode) auf
+          Ebene unseres CDN- und Hosting-Anbieters (Bunny.net) verarbeitet,
+          um den Betrieb sicherzustellen und Fehler zu erkennen (Art. 6 Abs.
+          1 lit. f DSGVO — berechtigtes Interesse am sicheren Betrieb).
+          IP-Adressen werden dabei standardmäßig anonymisiert gespeichert.
+          Diese Protokolle werden automatisch nach maximal 3 Tagen gelöscht;
+          eine darüber hinausgehende, dauerhafte Speicherung findet nicht
+          statt.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">7. Deine Rechte</h2>
+        <p>
+          Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art.
+          16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18),
+          Datenübertragbarkeit (Art. 20) sowie Widerspruch (Art. 21) gegen
+          die Verarbeitung deiner Daten. Wende dich dazu an [kontakt@klarsocial.eu].
+          Außerdem steht dir ein Beschwerderecht bei einer
+          Datenschutz-Aufsichtsbehörde zu.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-2 font-semibold">8. Löschung deines Kontos</h2>
+        <p>
+          Du kannst dein Konto jederzeit in den Einstellungen löschen. Dabei
+          werden dein Profil, deine Beiträge, Kommentare und Nachrichten
+          gemäß unserer Datenbankstruktur entfernt.
+        </p>
+      </section>
+
+      <p className="text-xs text-muted-foreground">
+        Stand: 23.07.2026
+      </p>
+    </div>
+  );
+}
