@@ -1,10 +1,12 @@
 /// Email service — sends verification and password reset emails.
 ///
 /// Dev: MailHog on localhost:1025, view emails at http://localhost:8025
-/// Prod: Resend (HTTPS API) — Bunny Magic Containers blocks outbound SMTP
-/// ports (25/465/587/2525) by default, so raw SMTP relays (like IONOS) time
-/// out from inside the container. Resend's API runs over plain HTTPS (443),
-/// which is already open for everything else (image pulls, DB, etc).
+/// Prod: Resend or Scaleway TEM (HTTPS APIs) — Bunny Magic Containers blocks
+/// outbound SMTP ports (25/465/587/2525) by default, so raw SMTP relays
+/// (like IONOS) time out from inside the container. Both providers' APIs
+/// run over plain HTTPS (443), which is already open for everything else
+/// (image pulls, DB, etc). Scaleway TEM is the EU-data-residency option —
+/// unlike Resend, both sending *and* account/log data stay in the EU.
 
 use lettre::{
     message::{header::ContentType, MultiPart, SinglePart},
@@ -24,6 +26,12 @@ pub struct EmailService {
 enum Transport {
     Smtp(AsyncSmtpTransport<Tokio1Executor>),
     Resend(Resend),
+    ScalewayTem {
+        client: reqwest::Client,
+        secret_key: String,
+        project_id: String,
+        region: String,
+    },
 }
 
 #[derive(Debug)]
@@ -40,6 +48,7 @@ pub enum EmailProvider {
     Local,
     Ionos,
     Resend,
+    ScalewayTem,
 }
 
 impl std::str::FromStr for EmailProvider {
@@ -49,6 +58,7 @@ impl std::str::FromStr for EmailProvider {
             "local" => Ok(Self::Local),
             "ionos" => Ok(Self::Ionos),
             "resend" => Ok(Self::Resend),
+            "scaleway" | "tem" | "scaleway_tem" => Ok(Self::ScalewayTem),
             _ => Err(format!("Unknown email provider: {}", s)),
         }
     }
@@ -259,8 +269,14 @@ impl EmailService {
         smtp_host: &str,
         smtp_port: u16,
         smtp_from: &str,
-        // Reused as the Resend API key when provider == Resend (set via
-        // SMTP_PASS env var either way — see config.rs)
+        // Reused across providers rather than adding new fn params:
+        // - Ionos: SMTP password
+        // - Resend: API key
+        // - ScalewayTem: "SECRET_KEY|PROJECT_ID" (Scaleway needs both a
+        //   secret key and a project ID to send — packed into this one
+        //   slot since EmailService::new()'s signature is otherwise shared
+        //   across every provider). smtp_host doubles as the region
+        //   (e.g. "fr-par"), defaulting to "fr-par" if left empty.
         smtp_pass: Option<&str>,
         base_url: &str,
     ) -> Self {
@@ -291,6 +307,22 @@ impl EmailService {
             EmailProvider::Resend => {
                 let api_key = smtp_pass.expect("SMTP_PASS (Resend API key) required");
                 Transport::Resend(Resend::new(api_key))
+            }
+
+            EmailProvider::ScalewayTem => {
+                let packed = smtp_pass.expect("SMTP_PASS (\"SECRET_KEY|PROJECT_ID\") required for Scaleway TEM");
+                let (secret_key, project_id) = packed
+                    .split_once('|')
+                    .expect("SMTP_PASS for Scaleway TEM must be \"SECRET_KEY|PROJECT_ID\"");
+
+                let region = if smtp_host.is_empty() { "fr-par" } else { smtp_host };
+
+                Transport::ScalewayTem {
+                    client: reqwest::Client::new(),
+                    secret_key: secret_key.to_string(),
+                    project_id: project_id.to_string(),
+                    region: region.to_string(),
+                }
             }
         };
 
@@ -392,6 +424,49 @@ impl EmailService {
                     .send(email)
                     .await
                     .map_err(|e| EmailError(format!("Resend API error: {}", e)))?;
+            }
+
+            Transport::ScalewayTem { client, secret_key, project_id, region } => {
+                // Scaleway TEM has no official Rust SDK, so this calls its
+                // plain REST API directly. Schema per their docs:
+                // POST /transactional-email/v1alpha1/regions/{region}/emails
+                // Auth via X-Auth-Token header (not Bearer).
+                // Note: Scaleway requires subjects to be at least 10
+                // characters — both of ours already clear that easily.
+                let payload = serde_json::json!({
+                    "from": { "email": self.from_address },
+                    "to": [{ "email": to }],
+                    "subject": subject,
+                    "text": text,
+                    "html": html,
+                    "project_id": project_id,
+                });
+
+                let body_bytes = serde_json::to_vec(&payload)
+                    .map_err(|e| EmailError(format!("Failed to serialize request: {}", e)))?;
+
+                let url = format!(
+                    "https://api.scaleway.com/transactional-email/v1alpha1/regions/{}/emails",
+                    region
+                );
+
+                let response = client
+                    .post(&url)
+                    .header("X-Auth-Token", secret_key)
+                    .header("Content-Type", "application/json")
+                    .body(body_bytes)
+                    .send()
+                    .await
+                    .map_err(|e| EmailError(format!("Scaleway TEM request failed: {}", e)))?;
+
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let text_body = response.text().await.unwrap_or_default();
+                    return Err(EmailError(format!(
+                        "Scaleway TEM API error ({}): {}",
+                        status, text_body
+                    )));
+                }
             }
         }
 
