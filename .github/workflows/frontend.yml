@@ -33,6 +33,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
             NEXT_PUBLIC_STORAGE_URL=${{ vars.NEXT_PUBLIC_STORAGE_URL }}
+            NEXT_PUBLIC_ADMIN_USER_ID=${{ vars.NEXT_PUBLIC_ADMIN_USER_ID }}
 
       - name: Update container image on Magic Containers
         if: vars.APP_ID != ''

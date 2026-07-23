@@ -12,10 +12,15 @@ COPY . .
 
 # Public env vars must be present at BUILD time — Next.js inlines
 # NEXT_PUBLIC_* values into the client bundle during `next build`.
+# Setting these as runtime env vars on Bunny (or anywhere else the
+# already-built container just runs) has zero effect -- the build
+# happens here, in GitHub Actions, before the image is ever pushed.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_STORAGE_URL
+ARG NEXT_PUBLIC_ADMIN_USER_ID
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_STORAGE_URL=$NEXT_PUBLIC_STORAGE_URL
+ENV NEXT_PUBLIC_ADMIN_USER_ID=$NEXT_PUBLIC_ADMIN_USER_ID
 
 RUN npm run build
 
