@@ -19,6 +19,13 @@ pub struct PostResponse {
     pub full_url: Option<String>,
     pub comment_count: i64,
     pub like_count: i64,
+    /// "visible" | "flagged" | "hidden" -- see handlers/reports.rs.
+    /// "hidden" posts are already excluded from every list/detail query
+    /// for non-owners at the SQL level; this field's real job on the
+    /// frontend is rendering the "flagged" interstitial. Owners still
+    /// see their own hidden/flagged posts (with this field set) so they
+    /// know something's under review.
+    pub moderation_status: String,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

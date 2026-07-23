@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, Send, Trash2, X } from "lucide-react";
+import { Heart, Send, Trash2, X, Flag, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
   posts as postsApi,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import EditedBadge from "@/components/EditedBadge";
+import ReportModal from "@/components/ReportModal";
 import { useRouter } from "next/navigation";
 import { getMediaUrl } from "@/lib/utils/media";
 import { ENV } from '@/env';
@@ -231,6 +232,12 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
   const { user } = useAuth();
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  // Reported (violence/self-harm/sexual-content severity) posts are
+  // gated behind this until the viewer explicitly clicks through --
+  // never auto-set true for the post's own owner, who should always be
+  // able to see their own content (just with a heads-up banner instead).
+  const [viewAnyway, setViewAnyway] = useState(false);
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -244,11 +251,18 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLInputElement>(null);
 
+  const isOwner = user?.username === post.username;
+  const isFlagged = post.moderation_status === "flagged";
+  const showInterstitial = isFlagged && !isOwner && !viewAnyway;
+
   useEffect(() => {
+    // Skip fetching likes/media/comments while the interstitial is up --
+    // no reason to load content the viewer hasn't agreed to see yet.
+    if (showInterstitial) return;
     postsApi.getLikes(post.id).then((res) => { setLiked(res.liked); setLikeCount(res.like_count); }).catch(() => {});
     postsApi.media(post.id).then((res) => { setMedia(res.filter((a) => a.medium_url)); }).catch(() => {});
     commentsApi.list(post.id).then(setAllComments).catch(() => {}).finally(() => setLoadingComments(false));
-  }, [post.id]);
+  }, [post.id, showInterstitial]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -388,123 +402,164 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl md:flex-row">
-        {user?.username === post.username && (
+        {user?.username === post.username && !showInterstitial && (
           <button
             onClick={handleDeletePost}
             disabled={deleting}
-            className="absolute right-12 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-destructive disabled:opacity-50"
+            className="absolute right-20 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-destructive disabled:opacity-50"
             aria-label="Delete post"
           >
             <Trash2 size={18} />
+          </button>
+        )}
+        {user && !isOwner && !showInterstitial && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="absolute right-12 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground"
+            aria-label="Report post"
+          >
+            <Flag size={18} />
           </button>
         )}
         <button onClick={onClose} className="absolute right-3 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground" aria-label="Close">
           <X size={18} />
         </button>
 
-        {/* image panel */}
-        {firstImage?.medium_url && (
-          <div className="flex w-full shrink-0 items-center justify-center bg-black md:w-[58%]">
-            <Image
-              src={getMediaUrl(firstImage.medium_url)}
-              alt={post.caption ?? "Post image"}
-              width={firstImage.width ?? 1080}
-              height={firstImage.height ?? 1080}
-              className="h-auto w-full object-contain max-h-[50vh] md:max-h-[90vh]"
-              unoptimized
-            />
-          </div>
-        )}
-
-        {/* Detail panel */}
-        <div className={`flex min-h-0 flex-1 flex-col ${firstImage?.medium_url ? "" : "w-full"}`}>
-
-          {/* Author header */}
-          <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-            <Link href={`/users/${post.username}`} onClick={onClose}>
-              <Avatar username={post.username} avatarUrl={post.avatar_url ?? null} size={9} />
-            </Link>
+        {showInterstitial ? (
+          <div className="flex w-full flex-col items-center justify-center gap-4 px-8 py-16 text-center">
+            <ShieldAlert size={40} className="text-muted-foreground" />
             <div>
-              <Link href={`/users/${post.username}`} onClick={onClose} className="text-sm font-semibold hover:underline">
-                {post.username}
-              </Link>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {timeAgo(post.created_at)}
-                {post.edited_at && <><span>·</span><EditedBadge editedAt={post.edited_at} /></>}
+              <p className="font-semibold">This post may violate our guidelines</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                It&apos;s been reported and is pending review.
               </p>
             </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>Go back</Button>
+              <Button variant="secondary" onClick={() => setViewAnyway(true)}>View anyway</Button>
+            </div>
           </div>
+        ) : (
+          <>
+            {isFlagged && isOwner && (
+              <div className="absolute left-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
+                Pending review — only visible to you and people who click through
+              </div>
+            )}
 
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-4 py-3">
-            {/* Caption */}
-            {post.caption && (
-              <div className="mb-3 flex gap-2.5">
-                <Avatar username={post.username} avatarUrl={post.avatar_url ?? null} size={8} />
-                <p className="text-sm leading-snug">
-                  <Link href={`/users/${post.username}`} onClick={onClose} className="mr-1.5 font-semibold hover:underline">
+            {/* image panel */}
+            {firstImage?.medium_url && (
+              <div className="flex w-full shrink-0 items-center justify-center bg-black md:w-[58%]">
+                <Image
+                  src={getMediaUrl(firstImage.medium_url)}
+                  alt={post.caption ?? "Post image"}
+                  width={firstImage.width ?? 1080}
+                  height={firstImage.height ?? 1080}
+                  className="h-auto w-full object-contain max-h-[50vh] md:max-h-[90vh]"
+                  unoptimized
+                />
+              </div>
+            )}
+
+            {/* Detail panel */}
+            <div className={`flex min-h-0 flex-1 flex-col ${firstImage?.medium_url ? "" : "w-full"}`}>
+
+              {/* Author header */}
+              <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+                <Link href={`/users/${post.username}`} onClick={onClose}>
+                  <Avatar username={post.username} avatarUrl={post.avatar_url ?? null} size={9} />
+                </Link>
+                <div>
+                  <Link href={`/users/${post.username}`} onClick={onClose} className="text-sm font-semibold hover:underline">
                     {post.username}
                   </Link>
-                  <CommentText body={post.caption} />
-                </p>
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {timeAgo(post.created_at)}
+                    {post.edited_at && <><span>·</span><EditedBadge editedAt={post.edited_at} /></>}
+                  </p>
+                </div>
               </div>
-            )}
 
-            {/* Comments */}
-            {loadingComments && (
-              <div className="flex justify-center py-4">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-4 py-3">
+                {/* Caption */}
+                {post.caption && (
+                  <div className="mb-3 flex gap-2.5">
+                    <Avatar username={post.username} avatarUrl={post.avatar_url ?? null} size={8} />
+                    <p className="text-sm leading-snug">
+                      <Link href={`/users/${post.username}`} onClick={onClose} className="mr-1.5 font-semibold hover:underline">
+                        {post.username}
+                      </Link>
+                      <CommentText body={post.caption} />
+                    </p>
+                  </div>
+                )}
+
+                {/* Comments */}
+                {loadingComments && (
+                  <div className="flex justify-center py-4">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+                  </div>
+                )}
+                {!loadingComments && allComments.length === 0 && (
+                  <p className="py-4 text-center text-xs text-muted-foreground">No comments yet. Be the first!</p>
+                )}
+                {renderComments(topLevel)}
+                <div ref={commentsEndRef} />
               </div>
-            )}
-            {!loadingComments && allComments.length === 0 && (
-              <p className="py-4 text-center text-xs text-muted-foreground">No comments yet. Be the first!</p>
-            )}
-            {renderComments(topLevel)}
-            <div ref={commentsEndRef} />
-          </div>
 
-          {/* Like bar */}
-          <div className="border-t border-border px-4 py-3">
-            <button onClick={handleLike} disabled={!user || liking} className="flex items-center gap-2 text-sm disabled:cursor-not-allowed">
-              <Heart size={20} className={liked ? "fill-red-500 stroke-red-500" : "text-muted-foreground"} />
-              <span className={liked ? "font-semibold" : "text-muted-foreground"}>
-                {likeCount > 0 ? `${likeCount} like${likeCount === 1 ? "" : "s"}` : "Be the first to like this"}
-              </span>
-            </button>
-          </div>
-
-          {/* Comment input */}
-          {user && (
-            <div className="border-t border-border px-4 py-3">
-              {replyTo && (
-                <div className="mb-2 flex items-center justify-between rounded bg-muted px-2 py-1">
-                  <span className="text-xs text-muted-foreground">
-                    Replying to <span className="font-semibold text-foreground">@{replyTo.username}</span>
+              {/* Like bar */}
+              <div className="border-t border-border px-4 py-3">
+                <button onClick={handleLike} disabled={!user || liking} className="flex items-center gap-2 text-sm disabled:cursor-not-allowed">
+                  <Heart size={20} className={liked ? "fill-red-500 stroke-red-500" : "text-muted-foreground"} />
+                  <span className={liked ? "font-semibold" : "text-muted-foreground"}>
+                    {likeCount > 0 ? `${likeCount} like${likeCount === 1 ? "" : "s"}` : "Be the first to like this"}
                   </span>
-                  <button onClick={clearReply} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                </button>
+              </div>
+
+              {/* Comment input */}
+              {user && (
+                <div className="border-t border-border px-4 py-3">
+                  {replyTo && (
+                    <div className="mb-2 flex items-center justify-between rounded bg-muted px-2 py-1">
+                      <span className="text-xs text-muted-foreground">
+                        Replying to <span className="font-semibold text-foreground">@{replyTo.username}</span>
+                      </span>
+                      <button onClick={clearReply} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={commentInputRef}
+                      value={commentBody}
+                      onChange={(e) => setCommentBody(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(); }
+                      }}
+                      placeholder={replyTo ? `Reply to @${replyTo.username}…` : "Add a comment…"}
+                      maxLength={2000}
+                      className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                      disabled={submitting}
+                    />
+                    <Button size="sm" variant="ghost" onClick={handleSubmitComment} disabled={!commentBody.trim() || submitting} aria-label="Post comment">
+                      <Send size={16} />
+                    </Button>
+                  </div>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <input
-                  ref={commentInputRef}
-                  value={commentBody}
-                  onChange={(e) => setCommentBody(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(); }
-                  }}
-                  placeholder={replyTo ? `Reply to @${replyTo.username}…` : "Add a comment…"}
-                  maxLength={2000}
-                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                  disabled={submitting}
-                />
-                <Button size="sm" variant="ghost" onClick={handleSubmitComment} disabled={!commentBody.trim() || submitting} aria-label="Post comment">
-                  <Send size={16} />
-                </Button>
-              </div>
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
+
+      {showReportModal && (
+        <ReportModal
+          targetType="post"
+          targetId={post.id}
+          onClose={() => setShowReportModal(false)}
+        />
+      )}
     </div>
   );
 }

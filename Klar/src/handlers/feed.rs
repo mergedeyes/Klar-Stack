@@ -44,6 +44,11 @@ pub struct CursorData {
 /// follower (binding None for an anonymous viewer correctly excludes all
 /// private accounts, since `u.id = NULL` and the follows EXISTS subquery
 /// both evaluate to false/no-match).
+///
+/// "Hidden" posts (auto-hidden via a CSAM report) are excluded outright,
+/// even for their own author -- this is a discovery surface, not "my own
+/// content" view, so there's no case here where showing it to anyone
+/// (owner included) makes sense while it's hidden.
 pub async fn get_global_feed(
     State(state): State<AppState>,
     auth: OptionalAuthUser,
@@ -75,11 +80,13 @@ pub async fn get_global_feed(
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
                     p.comment_count,
-                    p.like_count
+                    p.like_count,
+                    p.moderation_status::text
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE (p.created_at, p.id) < ($1, $2)
+                  AND p.moderation_status != 'hidden'
                   AND (
                     u.is_private = FALSE
                     OR u.id = $4
@@ -112,11 +119,13 @@ pub async fn get_global_feed(
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
                     p.comment_count,
-                    p.like_count
+                    p.like_count,
+                    p.moderation_status::text
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
-                WHERE (
+                WHERE p.moderation_status != 'hidden'
+                  AND (
                     u.is_private = FALSE
                     OR u.id = $2
                     OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.following_id = u.id)

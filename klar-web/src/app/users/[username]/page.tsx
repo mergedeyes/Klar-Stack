@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Grid3X3, Lock } from "lucide-react";
+import { Grid3X3, Lock, Flag } from "lucide-react";
 import Image from "next/image";
 import {
   users as usersApi,
@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getMediaUrl } from "@/lib/utils/media";
 import { Button } from "@/components/ui/button";
 import PostModal from "@/components/PostModal";
+import ReportModal from "@/components/ReportModal";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import UserListModal from "@/components/UserListModal";
 import TopNav from "@/components/TopNav";
@@ -74,6 +75,7 @@ export default function ProfilePage() {
   const [blockLoading, setBlockLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activePost, setActivePost] = useState<Post | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const [followers, setFollowers] = useState<User[]>([]);
   const [following, setFollowing] = useState<User[]>([]);
@@ -248,7 +250,16 @@ export default function ProfilePage() {
         <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
             <SmartBackButton aria-label="Back" />
-            <span className="font-semibold">{profile.username}</span>
+            <span className="font-semibold flex-1">{profile.username}</span>
+            {!isMe && me && (
+              <button
+                onClick={() => setShowReportModal(true)}
+                aria-label="Report user"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <Flag size={18} />
+              </button>
+            )}
           </div>
         </header>
       )}
@@ -431,6 +442,14 @@ export default function ProfilePage() {
           title={modalType === "followers" ? "Followers" : "Following"} 
           users={modalType === "followers" ? followers : following} 
           onClose={() => setModalType(null)} 
+        />
+      )}
+
+      {showReportModal && (
+        <ReportModal
+          targetType="user"
+          targetId={profile.id}
+          onClose={() => setShowReportModal(false)}
         />
       )}
     </div>

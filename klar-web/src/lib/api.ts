@@ -38,6 +38,10 @@ export interface Post {
   thumb_url?: string | null;
   medium_url?: string | null;
   full_url?: string | null;
+  // "hidden" posts never reach the client at all (server-side filtered)
+  // except for the owner viewing their own profile -- "flagged" ones do
+  // reach the client, and should render behind an interstitial warning.
+  moderation_status?: 'visible' | 'flagged' | 'hidden';
 }
 
 export interface MediaAsset {
@@ -430,6 +434,46 @@ export const followRequestsApi = {
     request<void>(`/users/me/follow-requests/${requesterUsername}/accept`, { method: "POST" }, true),
   reject: (requesterUsername: string) =>
     request<void>(`/users/me/follow-requests/${requesterUsername}/reject`, { method: "POST" }, true),
+};
+
+// ── Reporting & moderation ────────────────────────────────────────────────────
+
+export type ReportReason =
+  | 'spam' | 'harassment' | 'hate_speech' | 'violence'
+  | 'self_harm' | 'sexual_content' | 'csam' | 'impersonation' | 'other';
+
+export type ReportTargetType = 'post' | 'comment' | 'user';
+
+export interface AdminReport {
+  id: string;
+  reporter_id: string;
+  reporter_username: string;
+  target_type: ReportTargetType;
+  target_id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: 'pending' | 'dismissed' | 'actioned';
+  created_at: string;
+  target_preview: string | null;
+  target_thumb_url: string | null;
+  target_username: string | null;
+}
+
+export const reportsApi = {
+  create: (targetType: ReportTargetType, targetId: string, reason: ReportReason, details?: string) =>
+    request<{ id: string }>(
+      "/reports",
+      { method: "POST", body: JSON.stringify({ target_type: targetType, target_id: targetId, reason, details: details || null }) },
+      true
+    ),
+};
+
+export const adminReportsApi = {
+  list: () => request<AdminReport[]>("/admin/reports", {}, true),
+  dismiss: (reportId: string) =>
+    request<void>(`/admin/reports/${reportId}/dismiss`, { method: "POST" }, true),
+  remove: (reportId: string) =>
+    request<void>(`/admin/reports/${reportId}/remove`, { method: "POST" }, true),
 };
 
 // ── Post endpoints ────────────────────────────────────────────────────────────

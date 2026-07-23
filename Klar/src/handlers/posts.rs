@@ -71,7 +71,8 @@ pub async fn create_post(
             NULL as medium_url,
             NULL as full_url,
             0 as comment_count,
-            0 as like_count
+            0 as like_count,
+            moderation_status::text
         "#
     )
     .bind(auth.user_id)
@@ -119,6 +120,10 @@ pub async fn create_post(
 
 /// GET /posts/:id — view a single post. Public route, but gated for
 /// private accounts: only the owner or an accepted follower can see it.
+/// Also gated for moderation: a "hidden" (auto-hidden via a CSAM report)
+/// post is treated as not found for anyone but its owner -- same
+/// not-found response as a nonexistent post, so a hidden post's
+/// existence isn't distinguishable from one that was never there.
 pub async fn get_post(
     State(state): State<AppState>,
     auth: OptionalAuthUser,
@@ -143,17 +148,20 @@ pub async fn get_post(
         return Err(AppError::forbidden("This account is private"));
     }
 
+    let is_owner = auth.user_id == Some(owner_id);
+
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
         SELECT p.id, p.user_id, u.username, u.avatar_url, p.caption, p.created_at, p.edited_at,
             NULL::text as thumb_url, NULL::text as medium_url, NULL::text as full_url,
-            p.comment_count, p.like_count
+            p.comment_count, p.like_count, p.moderation_status::text
         FROM posts p
         JOIN users u ON p.user_id = u.id
-        WHERE p.id = $1
+        WHERE p.id = $1 AND (p.moderation_status != 'hidden' OR $2)
         "#
     )
     .bind(post_id)
+    .bind(is_owner)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
@@ -214,7 +222,8 @@ pub async fn edit_post(
             NULL::text as medium_url,
             NULL::text as full_url,
             comment_count,
-            like_count
+            like_count,
+            moderation_status::text
         "#
     )
     .bind(input.caption.trim())
@@ -324,7 +333,10 @@ pub async fn delete_post(
 
 /// GET /users/:username/posts — all posts by a user (public, paginated).
 /// Gated the same way as get_post -- private accounts only show posts to
-/// the owner themselves or an accepted follower.
+/// the owner themselves or an accepted follower. Also excludes "hidden"
+/// posts (auto-hidden via a CSAM report) for anyone but the owner; a
+/// "flagged" post (lower-severity report) still appears here since the
+/// interstitial warning is a frontend concern, not a visibility gate.
 pub async fn get_user_posts(
     State(state): State<AppState>,
     auth: OptionalAuthUser,
@@ -352,6 +364,8 @@ pub async fn get_user_posts(
         return Err(AppError::forbidden("This account is private"));
     }
 
+    let is_owner = auth.user_id == Some(owner_id);
+
     let posts = match query.cursor {
         Some(cursor) => {
             sqlx::query_as::<_, PostResponse>(
@@ -368,11 +382,13 @@ pub async fn get_user_posts(
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
                     p.comment_count,
-                    p.like_count
+                    p.like_count,
+                    p.moderation_status::text
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE LOWER(u.username) = LOWER($1) AND p.created_at < $2
+                    AND (p.moderation_status != 'hidden' OR $4)
                 ORDER BY p.created_at DESC
                 LIMIT $3
                 "#
@@ -380,6 +396,7 @@ pub async fn get_user_posts(
             .bind(&username)
             .bind(cursor)
             .bind(limit)
+            .bind(is_owner)
             .fetch_all(&state.db)
             .await
         }
@@ -398,17 +415,20 @@ pub async fn get_user_posts(
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
                     p.comment_count,
-                    p.like_count
+                    p.like_count,
+                    p.moderation_status::text
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE LOWER(u.username) = LOWER($1)
+                    AND (p.moderation_status != 'hidden' OR $3)
                 ORDER BY p.created_at DESC
                 LIMIT $2
                 "#
             )
             .bind(&username)
             .bind(limit)
+            .bind(is_owner)
             .fetch_all(&state.db)
             .await
         }
@@ -430,7 +450,10 @@ pub async fn get_user_posts(
 /// fan-out time), no ranking involved. Private accounts need no extra
 /// gating here -- feed_items rows only ever get created for an *accepted*
 /// follow (see follows.rs's establish_follow), never for a pending
-/// request, so this table is already scoped correctly.
+/// request, so this table is already scoped correctly. "Hidden" posts
+/// (auto-hidden via a CSAM report) are excluded outright -- your own
+/// feed never contains hidden posts even if you follow the author,
+/// since this isn't the "is this my content" case get_user_posts has.
 pub async fn get_feed(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -455,12 +478,14 @@ pub async fn get_feed(
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
                     p.comment_count,
-                    p.like_count
+                    p.like_count,
+                    p.moderation_status::text
                 FROM feed_items fi
                 JOIN posts p ON p.id = fi.post_id
                 JOIN users u ON u.id = p.user_id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE fi.user_id = $1 AND fi.created_at < $2
+                    AND p.moderation_status != 'hidden'
                 ORDER BY fi.created_at DESC, fi.post_id DESC
                 LIMIT $3
                 "#
@@ -486,12 +511,14 @@ pub async fn get_feed(
                     m.medium_key AS medium_url,
                     m.full_key AS full_url,
                     p.comment_count,
-                    p.like_count
+                    p.like_count,
+                    p.moderation_status::text
                 FROM feed_items fi
                 JOIN posts p ON p.id = fi.post_id
                 JOIN users u ON u.id = p.user_id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE fi.user_id = $1
+                    AND p.moderation_status != 'hidden'
                 ORDER BY fi.created_at DESC, fi.post_id DESC
                 LIMIT $2
                 "#

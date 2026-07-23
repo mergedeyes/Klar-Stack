@@ -151,6 +151,13 @@ pub fn create_router(state: AppState) -> Router {
         // Interaction event log (client-reported views)
         .route("/events", post(handlers::events::create_event))
 
+        // ── Reporting & moderation ───────────────────────────────
+        .route("/reports", post(handlers::reports::create_report))
+        .route("/admin/reports", get(handlers::reports::get_reports))
+        .route("/admin/reports/{report_id}/dismiss", post(handlers::reports::dismiss_report))
+        .route("/admin/reports/{report_id}/remove", post(handlers::reports::remove_reported_content))
+        // ────────────────────────────────────────────────────────────
+
         .route_layer(middleware::from_fn_with_state(
             general_limiter,
             rate_limit::rate_limit_middleware,
