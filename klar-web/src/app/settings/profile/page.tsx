@@ -281,18 +281,26 @@ export default function EditProfilePage() {
               </p>
             </div>
           </div>
+          {/* Knob position bug: the base classes never set an explicit
+              `left`, so the "off" translate-x-0.5 had no reliable anchor
+              to translate *from* -- the browser's default static
+              position isn't guaranteed to be the track's left edge. Now
+              `left-0.5` is the actual base position, and translate-x-5
+              (20px) moves it flush to the right inset -- both consistent
+              with the 44px track / 20px knob / 2px inset math. */}
           <button
+            type="button"
             role="switch"
             aria-checked={isPrivate}
             onClick={() => setIsPrivate((v) => !v)}
             disabled={saving}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              isPrivate ? "bg-primary" : "bg-muted"
+            className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors disabled:opacity-60 ${
+              isPrivate ? "border-primary bg-primary" : "border-border bg-input"
             }`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform ${
-                isPrivate ? "translate-x-5" : "translate-x-0.5"
+              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full border border-border/50 bg-white shadow transition-transform ${
+                isPrivate ? "translate-x-5" : "translate-x-0"
               }`}
             />
           </button>
