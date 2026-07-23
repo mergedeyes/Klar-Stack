@@ -64,6 +64,7 @@ struct NotificationRow {
     email_verified: bool,
     actor_created: chrono::DateTime<chrono::Utc>,
     actor_username_changed_at: Option<chrono::DateTime<chrono::Utc>>,
+    actor_is_private: bool,
     post_thumb_url: Option<String>,
 }
 
@@ -122,6 +123,7 @@ pub async fn get_notifications(
             u.display_name as actor_display, u.bio as actor_bio, 
             u.avatar_url as actor_avatar, u.email_verified, u.created_at as actor_created,
             u.username_changed_at as actor_username_changed_at,
+            u.is_private as actor_is_private,
             m.thumb_key as post_thumb_url
         FROM notifications n
         JOIN users u ON n.actor_id = u.id
@@ -156,6 +158,7 @@ pub async fn get_notifications(
             email_verified: rec.email_verified,
             created_at: rec.actor_created,
             username_changed_at: rec.actor_username_changed_at,
+            is_private: rec.actor_is_private,
         },
     }).collect();
 

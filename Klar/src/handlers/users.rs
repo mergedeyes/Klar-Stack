@@ -91,17 +91,25 @@ pub async fn get_user(
     let profile_id = user.id;
     let mut response = UserPublicResponse::from(user);
 
-    response.viewer_relationship = match auth.user_id {
-        None => None,
-        Some(viewer_id) if viewer_id == profile_id => Some("self".to_string()),
+    match auth.user_id {
+        None => {}
+        Some(viewer_id) if viewer_id == profile_id => {
+            response.viewer_relationship = Some("self".to_string());
+        }
         Some(viewer_id) => {
-            if is_following(&state.db, viewer_id, profile_id).await? {
+            response.viewer_relationship = if is_following(&state.db, viewer_id, profile_id).await? {
                 Some("following".to_string())
             } else if has_pending_follow_request(&state.db, viewer_id, profile_id).await? {
                 Some("requested".to_string())
             } else {
                 Some("not_following".to_string())
-            }
+            };
+
+            // Reverse direction: does *this profile* have a pending
+            // request to follow *me* (the viewer)? Lets accept/decline
+            // show up directly on the requester's own profile page, not
+            // only in the notification dropdown.
+            response.incoming_follow_request = has_pending_follow_request(&state.db, profile_id, viewer_id).await?;
         }
     };
 

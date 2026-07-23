@@ -7,6 +7,7 @@ import Image from "next/image";
 import {
   users as usersApi,
   follows,
+  followRequestsApi,
   blocks as blocksApi,
   posts as postsApi,
   type User,
@@ -68,6 +69,7 @@ export default function ProfilePage() {
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [postsBlocked, setPostsBlocked] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [requestActionLoading, setRequestActionLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockLoading, setBlockLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -195,6 +197,25 @@ export default function ProfilePage() {
     }
   }, [me, profile, followLoading, isFollowing, isRequested, username]);
 
+  // This profile (someone else) has sent *me* a pending follow request --
+  // accept/decline it right here, same as in the notification dropdown.
+  const handleRequestResponse = useCallback(async (accept: boolean) => {
+    if (!profile || requestActionLoading) return;
+    setRequestActionLoading(true);
+    try {
+      if (accept) {
+        await followRequestsApi.accept(profile.username);
+      } else {
+        await followRequestsApi.reject(profile.username);
+      }
+      setProfile((p) => p ? { ...p, incoming_follow_request: false } : p);
+    } catch {
+      // leave as-is on failure
+    } finally {
+      setRequestActionLoading(false);
+    }
+  }, [profile, requestActionLoading]);
+
   if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -292,6 +313,24 @@ export default function ProfilePage() {
             {/* Bio */}
             {profile.bio && (
               <p className="whitespace-pre-wrap text-sm mb-6">{profile.bio}</p>
+            )}
+
+            {/* This person wants to follow me -- accept/decline right here,
+                same as in the notification dropdown. */}
+            {!isMe && profile.incoming_follow_request && (
+              <div className="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
+                <span className="text-sm">
+                  <strong>{profile.username}</strong> wants to follow you
+                </span>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => handleRequestResponse(true)} disabled={requestActionLoading}>
+                    Accept
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleRequestResponse(false)} disabled={requestActionLoading}>
+                    Decline
+                  </Button>
+                </div>
+              </div>
             )}
 
             {/* Action buttons */}

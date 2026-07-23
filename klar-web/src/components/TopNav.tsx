@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
 import CreatePostModal from "@/components/CreatePostModal";
 import { getMediaUrl } from "@/lib/utils/media";
-import type { AppNotification } from "@/lib/api";
+import { followRequestsApi, type AppNotification } from "@/lib/api";
 
 export type TopNavSection = "feed" | "discovery" | "chats" | "search" | "profile";
 
@@ -44,10 +44,10 @@ function notificationText(typeName: string): string {
 }
 
 /** Where clicking a notification should go: the post for like/comment
- * types, the actor's profile for a follow (or an accepted request), and
- * the follow-requests management page for a new request. */
+ * types, the actor's profile for a follow (or an accepted request). A
+ * follow_request itself isn't a link target -- it has its own
+ * accept/decline buttons instead (see below). */
 function notificationHref(n: AppNotification): string {
-  if (n.type_name === "follow_request") return "/follow-requests";
   if (n.type_name === "follow" || n.type_name === "follow_accepted") return `/users/${n.actor.username}`;
   if (n.post_id) return `/posts/${n.post_id}`;
   return "#";
@@ -104,6 +104,14 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
   const [showCreate, setShowCreate] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Follow-request notifications the user has just acted on -- hidden
+  // locally rather than mutating the shared notifications list (which
+  // lives in the app-wide provider), since once accepted/declined they're
+  // no longer actionable and showing stale Accept/Decline buttons would
+  // be confusing.
+  const [handledRequestIds, setHandledRequestIds] = useState<Set<string>>(new Set());
+  const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
+
   useOutsideClick(dropdownRef, showNotifications, () => setShowNotifications(false));
 
   const handleLogout = async () => {
@@ -111,10 +119,28 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
     router.push("/login");
   };
 
+  const handleRequestAction = async (n: AppNotification, accept: boolean) => {
+    setRequestActionLoading(n.id);
+    try {
+      if (accept) {
+        await followRequestsApi.accept(n.actor.username);
+      } else {
+        await followRequestsApi.reject(n.actor.username);
+      }
+      setHandledRequestIds((prev) => new Set(prev).add(n.id));
+    } catch (err) {
+      console.error("Failed to respond to follow request", err);
+    } finally {
+      setRequestActionLoading(null);
+    }
+  };
+
   // Every icon defaults to muted (grey); only the icon matching the
   // page's active section gets highlighted to the foreground color.
   const iconClass = (section?: TopNavSection) =>
     section && active === section ? "text-foreground bg-muted" : "text-muted-foreground";
+
+  const visibleNotifications = notifications.filter((n) => !handledRequestIds.has(n.id));
 
   return (
     <>
@@ -173,23 +199,62 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
               <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-background shadow-lg">
                 <div className="p-3 text-sm font-semibold border-b border-border">Notifications</div>
                 <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
+                  {visibleNotifications.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">No notifications yet</div>
                   ) : (
-                    notifications.map((n) => (
-                      <Link
-                        key={n.id}
-                        href={notificationHref(n)}
-                        onClick={() => setShowNotifications(false)}
-                        className={`flex items-center gap-3 p-3 text-sm border-b border-border last:border-0 hover:bg-muted/70 ${!n.is_read ? "bg-muted/50" : ""}`}
-                      >
-                        <NotificationPreview n={n} />
-                        <span className="min-w-0">
-                          <span className="font-semibold">{n.actor.username}</span>
-                          {notificationText(n.type_name)}
-                        </span>
-                      </Link>
-                    ))
+                    visibleNotifications.map((n) =>
+                      n.type_name === "follow_request" ? (
+                        // Own row layout (not a whole-row Link) so the
+                        // Accept/Decline buttons can sit as siblings next
+                        // to the clickable name, rather than nested
+                        // inside a link.
+                        <div
+                          key={n.id}
+                          className={`flex items-center gap-3 p-3 text-sm border-b border-border last:border-0 ${!n.is_read ? "bg-muted/50" : ""}`}
+                        >
+                          <Link
+                            href={`/users/${n.actor.username}`}
+                            onClick={() => setShowNotifications(false)}
+                            className="flex flex-1 items-center gap-3 min-w-0 hover:opacity-80"
+                          >
+                            <NotificationPreview n={n} />
+                            <span className="min-w-0 truncate">
+                              <span className="font-semibold">{n.actor.username}</span>
+                              {notificationText(n.type_name)}
+                            </span>
+                          </Link>
+                          <div className="flex shrink-0 gap-1">
+                            <button
+                              onClick={() => handleRequestAction(n, true)}
+                              disabled={requestActionLoading === n.id}
+                              className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleRequestAction(n, false)}
+                              disabled={requestActionLoading === n.id}
+                              className="rounded border border-border px-2 py-1 text-xs font-medium disabled:opacity-50"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Link
+                          key={n.id}
+                          href={notificationHref(n)}
+                          onClick={() => setShowNotifications(false)}
+                          className={`flex items-center gap-3 p-3 text-sm border-b border-border last:border-0 hover:bg-muted/70 ${!n.is_read ? "bg-muted/50" : ""}`}
+                        >
+                          <NotificationPreview n={n} />
+                          <span className="min-w-0">
+                            <span className="font-semibold">{n.actor.username}</span>
+                            {notificationText(n.type_name)}
+                          </span>
+                        </Link>
+                      )
+                    )
                   )}
                 </div>
               </div>

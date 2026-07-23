@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { chatsApi, type Conversation, type ChatMessage } from "@/lib/api";
 import { MessageSquarePlus, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -167,11 +168,14 @@ return (
     // forcing a scroll to see it. h-dvh tracks the real visible viewport.
     <div className="h-dvh w-full flex flex-col bg-background overflow-hidden">
 
-      {/* 2. Shared top nav, same as every other primary page -- also gives
-         this page its own SSE-backed notification state (via the
-         NotificationsProvider mounted in layout.tsx), which is what
-         ChatWindow relies on for live message updates. */}
-      <TopNav active="chats" />
+      {/* 2. Shared top nav, wrapped in flex-none so it can never be
+         compressed by flex-shrink if content below overflows -- without
+         this, a flex-col container's default flex-shrink:1 on every
+         child (including the header) means overflow pressure from main
+         could squeeze the nav instead of just scrolling/clipping main. */}
+      <div className="flex-none">
+        <TopNav active="chats" />
+      </div>
 
       {/* 3. Main: flex-1 nimmt sich den restlichen Platz. overflow-hidden verhindert Scrollen. */}
       <main className="flex-1 w-full flex overflow-hidden px-[50px] min-h-0">
@@ -196,27 +200,39 @@ return (
             )}
 
             {conversations.map((conv) => (
-              <button
+              // A plain div (not a button) here on purpose: the avatar is
+              // its own Link to the profile, and nesting a link inside a
+              // button isn't valid HTML. Clicking the avatar goes to the
+              // profile (stopPropagation keeps the row click from also
+              // firing); clicking anywhere else in the row opens the chat.
+              <div
                 key={conv.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => selectConversation(conv)}
-                className={`w-full flex items-center p-3 rounded-xl transition-colors text-left ${
+                onKeyDown={(e) => { if (e.key === "Enter") selectConversation(conv); }}
+                className={`w-full flex items-center p-3 rounded-xl transition-colors text-left cursor-pointer ${
                   activeChat?.id === conv.id ? "bg-primary/10" : "hover:bg-muted"
                 }`}
               >
-                <div className="w-12 h-12 bg-background border rounded-full flex-shrink-0 mr-4 flex items-center justify-center overflow-hidden">
+                <Link
+                  href={`/users/${conv.other_username}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-12 h-12 bg-background border rounded-full flex-shrink-0 mr-4 flex items-center justify-center overflow-hidden"
+                >
                   {conv.other_avatar_url ? (
                     <img src={getMediaUrl(conv.other_avatar_url)} alt={conv.other_username} className="w-full h-full object-cover" />
                   ) : (
                     <span className="font-bold">{conv.other_username.charAt(0).toUpperCase()}</span>
                   )}
-                </div>
+                </Link>
                 <div className="flex-1 min-w-0">
                   <h2 className="font-semibold truncate">{conv.other_username}</h2>
                   <p className="text-sm text-muted-foreground truncate">
                     {previewText(conv, user?.id)}
                   </p>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>

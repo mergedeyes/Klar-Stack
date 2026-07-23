@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 import { chatsApi, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -50,7 +51,7 @@ function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (e
 
 export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent }: ChatWindowProps) {
   const { user } = useAuth();
-  const { lastMessageEvent } = useNotifications();
+  const { lastMessageEvent, refreshChatUnreadCount } = useNotifications();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -79,6 +80,12 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
   // payload into state. Cheap enough at this traffic level, and avoids
   // duplicating message-shape logic between the SSE payload and the
   // regular GET /chats/:id/messages response.
+  //
+  // Also immediately marks the conversation read + refreshes the shared
+  // badge count: the SSE handler bumps chatUnreadCount for *every*
+  // "message" event regardless of context, so without this, the Chat
+  // icon's red dot would incorrectly light up even while you're actively
+  // looking at the exact conversation the message just arrived in.
   useEffect(() => {
     if (!lastMessageEvent) return;
     if (!conversationId || conversationId === "new") return;
@@ -87,7 +94,11 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
     chatsApi.getMessages(conversationId)
       .then(setMessages)
       .catch(err => console.error("Could not refresh messages:", err));
-  }, [lastMessageEvent, conversationId, receiverId]);
+
+    chatsApi.markConversationRead(conversationId)
+      .then(() => refreshChatUnreadCount())
+      .catch(err => console.error("Failed to mark conversation as read", err));
+  }, [lastMessageEvent, conversationId, receiverId, refreshChatUnreadCount]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -158,11 +169,21 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
     }
   };
 
+  // Reply should immediately move focus to the message box -- otherwise
+  // you have to click into the input yourself after picking a message.
+  const handleReply = (msg: ChatMessage) => {
+    setReplyingTo(msg);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
 return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
       
-      {/* Header */}
-      <div className="h-20 flex-none p-4 border-b flex items-center gap-3 bg-background/95 backdrop-blur">
+      {/* Header -- clickable through to the other person's profile */}
+      <Link
+        href={`/users/${receiverUsername}`}
+        className="h-20 flex-none p-4 border-b flex items-center gap-3 bg-background/95 backdrop-blur hover:bg-muted/40 transition-colors"
+      >
         <div className="w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
           {receiverAvatar ? (
             <img src={getMediaUrl(receiverAvatar)} alt={receiverUsername} className="w-full h-full object-cover" />
@@ -174,7 +195,7 @@ return (
           <span className="font-semibold">{receiverUsername}</span>
           <div className="text-xs text-muted-foreground">End-to-End Encrypted</div>
         </div>
-      </div>
+      </Link>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -222,7 +243,7 @@ return (
 
                 {!isMe && (
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button onClick={() => setReplyingTo(msg)} className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
+                    <button onClick={() => handleReply(msg)} className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}

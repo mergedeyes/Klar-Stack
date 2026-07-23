@@ -19,6 +19,11 @@ export interface User {
   // return a User-shaped object (search, followers/following lists) omit
   // it, since computing it per-row there would be N extra lookups.
   viewer_relationship?: 'self' | 'following' | 'requested' | 'not_following' | null;
+  // Reverse direction: does *this* profile have a pending request to
+  // follow *me*? Lets accept/decline show up right on their profile page,
+  // not just in the notification dropdown. Always false for your own
+  // profile or when logged out.
+  incoming_follow_request?: boolean;
 }
 
 export interface Post {

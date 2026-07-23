@@ -46,6 +46,12 @@ pub struct UserPublicResponse {
     /// a follows/follow_requests lookup), so it's populated by the
     /// handler after conversion, not by the From<UserRow> impl below.
     pub viewer_relationship: Option<String>,
+    /// The *reverse* direction: does THIS profile have a pending request
+    /// to follow the caller? Lets "accept/decline" show up right on the
+    /// requester's own profile page, not just in the notification
+    /// dropdown. Always false for unauthenticated viewers or your own
+    /// profile.
+    pub incoming_follow_request: bool,
 }
 
 /// Public API response
@@ -95,6 +101,7 @@ impl From<UserRow> for UserPublicResponse {
             avatar_url: row.avatar_url,
             is_private: row.is_private,
             viewer_relationship: None,
+            incoming_follow_request: false,
         }
     }
 }
