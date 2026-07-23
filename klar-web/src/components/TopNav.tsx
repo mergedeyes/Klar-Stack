@@ -27,6 +27,18 @@ interface TopNavProps {
   onPostCreated?: () => void;
 }
 
+/** Human-readable text for each notification type. 'message' never
+ * reaches this dropdown (see use-notifications.ts), so it's not listed. */
+function notificationText(typeName: string): string {
+  switch (typeName) {
+    case "post_like": return " liked your post";
+    case "comment": return " commented on your post";
+    case "comment_like": return " liked your comment";
+    case "follow": return " started following you";
+    default: return " interacted with you";
+  }
+}
+
 /**
  * Shared top bar for the app's primary destinations (Feed, Discovery, ...).
  * Not used on sub-pages like Settings or Search results, which use their
@@ -36,7 +48,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
-  const { notifications, unreadCount, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAllAsRead, chatUnreadCount } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -110,7 +122,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                         className={`p-3 text-sm border-b border-border last:border-0 ${!n.is_read ? "bg-muted/50" : ""}`}
                       >
                         <span className="font-semibold">{n.actor.username}</span>
-                        {n.type_name === "post_like" ? " liked your post" : " interacted with you"}
+                        {notificationText(n.type_name)}
                       </div>
                     ))
                   )}
@@ -119,15 +131,20 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             )}
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className={iconClass("chats")}
-            onClick={() => router.push("/chats")}
-            aria-label="Chats"
-          >
-            <MessageCircle size={20} />
-          </Button>
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={iconClass("chats")}
+              onClick={() => router.push("/chats")}
+              aria-label="Chats"
+            >
+              <MessageCircle size={20} />
+            </Button>
+            {chatUnreadCount > 0 && (
+              <span className="pointer-events-none absolute right-2 top-2 flex h-2 w-2 rounded-full bg-red-500" />
+            )}
+          </div>
 
           <Button
             variant="ghost"

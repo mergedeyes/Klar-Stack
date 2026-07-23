@@ -59,3 +59,17 @@ aws-sdk-s3 = "=1.112.0"
 aws-smithy-types = "=1.4.0"
 reqwest = "0.13.4"
 dotenvy = "0.15.7"
+# Redis pub/sub — fans real-time notifications out across backend replicas.
+# The in-process broadcast::channel only reaches SSE subscribers connected
+# to the same replica that handled the triggering request; Redis PUBLISH/
+# SUBSCRIBE is the shared layer every replica listens to.
+#
+# Backed by Upstash (managed, TLS-by-default) rather than self-hosted on
+# Bunny — Magic Containers apps are fully isolated pods with no private
+# network between separate apps, so a self-hosted standalone Redis app
+# would sit on the open internet with only password auth protecting it.
+# Notification payloads include actor email addresses, so that's real PII
+# in transit, not just cache data. tls-native-tls + tokio-native-tls-comp
+# below is what lets the `rediss://` scheme (TLS) actually connect —
+# without it, a rediss:// URL fails at runtime even though it compiles.
+redis = { version = "1", features = ["tokio-comp", "connection-manager", "tls-native-tls", "tokio-native-tls-comp"] }

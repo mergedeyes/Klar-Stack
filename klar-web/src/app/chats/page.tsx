@@ -45,6 +45,13 @@ function UnifiedChatsPageContent() {
             un: queryUn,
             av: queryAv || null
           });
+          // Coming from a profile link straight into an existing
+          // conversation counts as opening it too.
+          if (existing?.id) {
+            chatsApi.markConversationRead(existing.id).catch(err =>
+              console.error("Failed to mark conversation as read", err)
+            );
+          }
         }
       })
       .catch((err) => setError(err.message))
@@ -58,6 +65,12 @@ function UnifiedChatsPageContent() {
       un: conv.other_username,
       av: conv.other_avatar_url
     });
+    // Opening a conversation clears its unread messages -- fire-and-forget,
+    // since the Chat icon badge (rendered by TopNav elsewhere, not on this
+    // page) will pick up the fresh count next time it mounts.
+    chatsApi.markConversationRead(conv.id).catch(err =>
+      console.error("Failed to mark conversation as read", err)
+    );
     // URL säubern ohne neuladen
     window.history.replaceState({}, '', '/chats');
   };

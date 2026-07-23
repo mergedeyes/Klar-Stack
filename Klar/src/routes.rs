@@ -127,7 +127,9 @@ pub fn create_router(state: AppState) -> Router {
         // ── Chats ──────────────────────────────────────────────
         .route("/chats", get(handlers::chats::get_conversations))
         .route("/chats/send", post(handlers::chats::send_message))
+        .route("/chats/unread-count", get(handlers::chats::get_unread_count))
         .route("/chats/{conversation_id}/messages", get(handlers::chats::get_messages))
+        .route("/chats/{conversation_id}/read", patch(handlers::chats::mark_conversation_read))
         .route("/chats/messages/{message_id}", 
             patch(handlers::chats::edit_message)
             .delete(handlers::chats::delete_message))

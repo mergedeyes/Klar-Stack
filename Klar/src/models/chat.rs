@@ -42,3 +42,13 @@ pub struct MessageResponse {
     pub reply_to_message_id: Option<Uuid>,
     pub reactions: serde_json::Value,
 }
+
+/// GET /chats/unread-count response — total unread messages across every
+/// conversation the caller is part of, for the chat icon's badge. Kept as
+/// a single lightweight endpoint rather than folding into
+/// ConversationResponse, since the badge only needs a yes/no-ish number,
+/// not the full conversation list.
+#[derive(Debug, Serialize)]
+pub struct UnreadCountResponse {
+    pub count: i64,
+}

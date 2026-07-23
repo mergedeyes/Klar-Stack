@@ -11,6 +11,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
+use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{EventType, LikeResponse};
 
 /// POST /posts/:post_id/like — toggle like on a post (auth required)
@@ -58,6 +59,11 @@ pub async fn toggle_like(
     })?;
 
     let like_count: i64;
+    // Built inside the transaction (needs the notification id + actor row),
+    // but published to Redis only after commit succeeds below — publishing
+    // while the transaction is still open would hold the DB connection/
+    // locks for the duration of a network round-trip to Redis for no reason.
+    let mut pending_notification: Option<NotificationEvent> = None;
 
     if already_liked {
         sqlx::query("DELETE FROM likes WHERE user_id = $1 AND post_id = $2")
@@ -113,9 +119,9 @@ pub async fn toggle_like(
 
             if let Some(nid) = notif_id {
                 if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
-                    let event = crate::handlers::notifications::NotificationEvent {
+                    pending_notification = Some(NotificationEvent {
                         target_user_id: post_owner,
-                        notification: crate::handlers::notifications::NotificationResponse {
+                        notification: NotificationResponse {
                             id: nid,
                             type_name: "post_like".to_string(),
                             is_read: false,
@@ -123,8 +129,7 @@ pub async fn toggle_like(
                             post_id: Some(post_id),
                             actor: crate::models::UserResponse::from(actor_row),
                         }
-                    };
-                    let _ = state.notification_tx.send(event);
+                    });
                 }
             }
         }
@@ -134,6 +139,14 @@ pub async fn toggle_like(
         tracing::error!("Failed to commit transaction: {}", e);
         AppError::internal("Database error")
     })?;
+
+    // Only publish once the row is durably committed — publishes to Redis,
+    // which every backend replica (including this one) is subscribed to,
+    // so the notification reaches the target user's SSE connection
+    // regardless of which replica it's attached to.
+    if let Some(event) = pending_notification {
+        publish_notification(&state, &event).await;
+    }
 
     record_event(
         &state.db,

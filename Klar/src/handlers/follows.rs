@@ -12,6 +12,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
+use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::UserResponse;
 
 /// Response for follow/unfollow actions
@@ -85,6 +86,11 @@ pub async fn follow_user(
     })?
     .is_some();
 
+    // Built inside the transaction (needs the notification id + actor
+    // row), published to Redis only after commit — same reasoning as
+    // likes.rs: don't hold the DB transaction open across a network call.
+    let mut pending_notification: Option<NotificationEvent> = None;
+
     if newly_followed {
         sqlx::query("UPDATE users SET following_count = following_count + 1 WHERE id = $1")
             .bind(auth.user_id)
@@ -113,12 +119,48 @@ pub async fn follow_user(
         .execute(&mut *tx)
         .await
         .map_err(|e| { tracing::error!("Failed to backfill feed_items on follow: {}", e); AppError::internal("Database error") })?;
+
+        // Notify the followee. post_id/comment_id are both NULL for a
+        // 'follow' notification -- the dedup index COALESCEs them to a
+        // sentinel, so repeated follow/unfollow/follow cycles don't spam
+        // duplicate rows.
+        let notif_id = sqlx::query_scalar::<_, Uuid>(
+            "INSERT INTO notifications (user_id, actor_id, type)
+             VALUES ($1, $2, 'follow'::notification_type)
+             ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
+             DO NOTHING RETURNING id"
+        )
+        .bind(target)
+        .bind(auth.user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .unwrap_or_default();
+
+        if let Some(nid) = notif_id {
+            if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
+                pending_notification = Some(NotificationEvent {
+                    target_user_id: target,
+                    notification: NotificationResponse {
+                        id: nid,
+                        type_name: "follow".to_string(),
+                        is_read: false,
+                        created_at: chrono::Utc::now(),
+                        post_id: None,
+                        actor: UserResponse::from(actor_row),
+                    }
+                });
+            }
+        }
     }
 
     tx.commit().await.map_err(|e| {
         tracing::error!("Failed to commit transaction: {}", e);
         AppError::internal("Database error")
     })?;
+
+    if let Some(event) = pending_notification {
+        publish_notification(&state, &event).await;
+    }
 
     tracing::info!("User {} followed {}", auth.user_id, username);
     Ok((

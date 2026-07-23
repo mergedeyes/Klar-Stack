@@ -2,6 +2,7 @@ use axum::{extract::{State, Path}, http::StatusCode, Json};
 use uuid::Uuid;
 use chrono::Utc;
 use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
+use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 
 pub async fn get_conversations(
     State(state): State<AppState>,
@@ -135,6 +136,33 @@ pub async fn send_message(
     .await
     .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
 
+    // Piggyback on the same Redis-backed SSE pipeline used for
+    // notifications, rather than standing up a second channel/stream just
+    // for this. type_name "message" is never written to the `notifications`
+    // table (chat messages aren't persisted there) -- this is purely a
+    // live signal for the chat icon's unread badge; the frontend's SSE
+    // listener special-cases this type_name instead of adding it to the
+    // notification dropdown list. `id` here is the message's own id, not
+    // a notifications-table row id, since none exists.
+    if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
+        .bind(auth.user_id)
+        .fetch_one(&state.db)
+        .await
+    {
+        let event = NotificationEvent {
+            target_user_id: payload.receiver_id,
+            notification: NotificationResponse {
+                id: message_id,
+                type_name: "message".to_string(),
+                is_read: false,
+                created_at: Utc::now(),
+                post_id: None,
+                actor: crate::models::UserResponse::from(actor_row),
+            }
+        };
+        publish_notification(&state, &event).await;
+    }
+
     Ok(Json(message))
 }
 
@@ -214,4 +242,61 @@ pub async fn toggle_reaction(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// PATCH /chats/:conversation_id/read — mark every message in this
+/// conversation that isn't the caller's own as read. Called by the
+/// frontend when a conversation is opened, so the unread badge clears.
+pub async fn mark_conversation_read(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(conversation_id): Path<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let has_access = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM conversations WHERE id = $1 AND (user1_id = $2 OR user2_id = $2))"
+    )
+    .bind(conversation_id)
+    .bind(auth.user_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+
+    if !has_access {
+        return Err(AppError::forbidden("Access denied to this conversation"));
+    }
+
+    sqlx::query(
+        "UPDATE messages SET is_read = TRUE WHERE conversation_id = $1 AND sender_id != $2 AND is_read = FALSE"
+    )
+    .bind(conversation_id)
+    .bind(auth.user_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /chats/unread-count — total unread messages across all of the
+/// caller's conversations, for the Chat icon's red-dot badge.
+pub async fn get_unread_count(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<UnreadCountResponse>, AppError> {
+    let count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE (c.user1_id = $1 OR c.user2_id = $1)
+          AND m.sender_id != $1
+          AND m.is_read = FALSE
+        "#
+    )
+    .bind(auth.user_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+
+    Ok(Json(UnreadCountResponse { count }))
 }

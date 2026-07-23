@@ -41,7 +41,12 @@ pub struct UserPublicResponse {
 }
 
 /// Public API response
-#[derive(Debug, Serialize, Clone)]
+///
+/// Deserialize is needed alongside Serialize because NotificationEvent
+/// (which embeds this) now round-trips through JSON over Redis pub/sub —
+/// one replica serializes it to PUBLISH, every replica (including itself)
+/// deserializes it back after SUBSCRIBE.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserResponse {
     pub id: Uuid,
     pub username: String,

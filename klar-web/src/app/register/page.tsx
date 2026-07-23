@@ -45,6 +45,9 @@ const registerSchema = z
       .min(8, "Password must be at least 8 characters")
       .max(100, "Password too long"),
     confirmPassword: z.string(),
+    acceptTerms: z.boolean().refine((val) => val === true, {
+      message: "You must accept the Terms and Privacy Policy to continue",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",
@@ -68,6 +71,7 @@ export default function RegisterPage() {
       email: "",
       password: "",
       confirmPassword: "",
+      acceptTerms: false,
     },
   });
 
@@ -200,6 +204,36 @@ export default function RegisterPage() {
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="acceptTerms"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-start gap-2">
+                      <FormControl>
+                        <input
+                          type="checkbox"
+                          checked={field.value}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
+                        />
+                      </FormControl>
+                      <label className="text-sm text-muted-foreground leading-snug">
+                        I agree to the{" "}
+                        <Link href="/nutzungsbedingungen" className="underline" target="_blank">
+                          Terms of Service
+                        </Link>{" "}
+                        and{" "}
+                        <Link href="/datenschutz" className="underline" target="_blank">
+                          Privacy Policy
+                        </Link>
+                      </label>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

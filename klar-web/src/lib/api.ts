@@ -52,7 +52,11 @@ export interface LikeResponse {
 
 export interface AppNotification {
   id: string;
-  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like';
+  // 'message' only ever arrives over the SSE stream (see use-notifications.ts)
+  // -- it's never persisted in the notifications table or returned by
+  // notifications.list(), so the hook special-cases it instead of adding
+  // it to the notification dropdown list.
+  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message';
   is_read: boolean;
   created_at: string;
   post_id: string | null;
@@ -540,4 +544,15 @@ export const chatsApi = {
       { method: "POST", body: JSON.stringify({ emoji }) },
       true
     ),
+
+  // Total unread messages across every conversation, for the Chat icon's
+  // red-dot badge (see use-notifications.ts, which also updates this
+  // count live via the 'message' SSE event without re-fetching).
+  getUnreadCount: () =>
+    request<{ count: number }>("/chats/unread-count", {}, true),
+
+  // Called when a conversation is opened, so its messages stop counting
+  // toward the unread badge.
+  markConversationRead: (conversationId: string) =>
+    request<void>(`/chats/${conversationId}/read`, { method: "PATCH" }, true),
 };

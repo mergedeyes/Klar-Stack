@@ -11,6 +11,10 @@ pub struct Config {
     pub smtp_port: u16,
     pub smtp_pass: Option<String>,
     pub smtp_from: String,
+    // Redis — used for cross-replica pub/sub (real-time notifications).
+    // Without this, SSE broadcast only reaches subscribers on the same
+    // replica that handled the triggering request.
+    pub redis_url: String,
 }
 
 impl Config {
@@ -40,6 +44,8 @@ impl Config {
             smtp_pass: std::env::var("SMTP_PASS").ok(),
             smtp_from: std::env::var("SMTP_FROM")
                 .unwrap_or_else(|_| "noreply@klar.social".to_string()),
+            redis_url: std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
         }
     }
 

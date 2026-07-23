@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::LikeResponse;
 
 /// POST /posts/:post_id/comments/:comment_id/like — toggle like on a comment (auth required)
@@ -21,22 +22,20 @@ pub async fn toggle_comment_like(
     Path((post_id, comment_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<LikeResponse>, AppError> {
 
-    // Verify comment exists on this post
-    let exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM comments WHERE id = $1 AND post_id = $2)"
+    // Also fetches the comment's author, needed below to notify them (and
+    // to know whether to skip notifying on a self-like).
+    let comment_author = sqlx::query_scalar::<_, Uuid>(
+        "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2"
     )
     .bind(comment_id)
     .bind(post_id)
-    .fetch_one(&state.db)
+    .fetch_optional(&state.db)
     .await
     .map_err(|e| {
         tracing::error!("Database error: {}", e);
         AppError::internal("Database error")
-    })?;
-
-    if !exists {
-        return Err(AppError::not_found("Comment not found"));
-    }
+    })?
+    .ok_or_else(|| AppError::not_found("Comment not found"))?;
 
     // Check if already liked
     let already_liked = sqlx::query_scalar::<_, bool>(
@@ -57,6 +56,10 @@ pub async fn toggle_comment_like(
     })?;
 
     let like_count: i64;
+    // Built inside the transaction (needs the notification id + actor
+    // row), published to Redis only after commit -- same reasoning as
+    // likes.rs/follows.rs/comments.rs.
+    let mut pending_notification: Option<NotificationEvent> = None;
 
     // Toggle
     if already_liked {
@@ -95,12 +98,49 @@ pub async fn toggle_comment_like(
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| { tracing::error!("Failed to update comment like_count: {}", e); AppError::internal("Database error") })?;
+
+        // Notify the comment's author, unless they're liking their own comment.
+        if auth.user_id != comment_author {
+            let notif_id = sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id)
+                 VALUES ($1, $2, 'comment_like'::notification_type, $3, $4)
+                 ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
+                 DO NOTHING RETURNING id"
+            )
+            .bind(comment_author)
+            .bind(auth.user_id)
+            .bind(post_id)
+            .bind(comment_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .unwrap_or_default();
+
+            if let Some(nid) = notif_id {
+                if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
+                    pending_notification = Some(NotificationEvent {
+                        target_user_id: comment_author,
+                        notification: NotificationResponse {
+                            id: nid,
+                            type_name: "comment_like".to_string(),
+                            is_read: false,
+                            created_at: chrono::Utc::now(),
+                            post_id: Some(post_id),
+                            actor: crate::models::UserResponse::from(actor_row),
+                        }
+                    });
+                }
+            }
+        }
     }
 
     tx.commit().await.map_err(|e| {
         tracing::error!("Failed to commit transaction: {}", e);
         AppError::internal("Database error")
     })?;
+
+    if let Some(event) = pending_notification {
+        publish_notification(&state, &event).await;
+    }
 
     Ok(Json(LikeResponse {
         liked: !already_liked,

@@ -13,6 +13,10 @@ export default function Footer() {
         <Link href="/datenschutz" className="hover:underline">
           Datenschutz
         </Link>
+        <span aria-hidden="true">·</span>
+        <Link href="/nutzungsbedingungen" className="hover:underline">
+          Nutzungsbedingungen
+        </Link>
       </nav>
     </footer>
   );

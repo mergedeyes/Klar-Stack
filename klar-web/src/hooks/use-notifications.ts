@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from "@/lib/auth-context";
-import { notifications as notificationsApi, auth, tokens, type AppNotification } from "@/lib/api";
+import { notifications as notificationsApi, chatsApi, auth, tokens, type AppNotification } from "@/lib/api";
 import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
@@ -11,6 +11,10 @@ export function useNotifications() {
   const { user } = useAuth(); // <-- 2. User-State holen
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Chat unread badge -- tracked here (not in a separate hook) so it can
+  // ride the same single SSE connection below instead of opening a
+  // second one just for this.
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   // Initial fetch — goes through the shared `request()` helper in lib/api.ts
   // so an expired access-token cookie gets silently refreshed and retried,
@@ -26,6 +30,14 @@ export function useNotifications() {
         setUnreadCount(data.filter(n => !n.is_read).length);
       })
       .catch(err => console.error("Notification fetch failed:", err));
+
+    // Fresh count every time this hook mounts (i.e. every page that shows
+    // TopNav) — since /chats doesn't render TopNav, this is naturally how
+    // the badge picks up "already read" after a visit to /chats, without
+    // this hook needing to know anything about individual conversations.
+    chatsApi.getUnreadCount()
+      .then((data) => setChatUnreadCount(data.count))
+      .catch(err => console.error("Chat unread count fetch failed:", err));
   }, [user]); // <-- 4. Hook neu ausführen, sobald der User (nach dem Refresh) da ist
 
   // SSE Stream
@@ -59,8 +71,19 @@ export function useNotifications() {
 
       eventSource.onmessage = (event) => {
         try {
-          const newNotification: AppNotification = JSON.parse(event.data);
-          setNotifications(prev => [newNotification, ...prev]);
+          const incoming: AppNotification = JSON.parse(event.data);
+
+          // 'message' events are a live chat signal piggybacked on this
+          // same stream (see chats.rs's send_message) -- they're never
+          // persisted in the notifications table, so they don't belong
+          // in the notification list/bell badge. Route to the chat badge
+          // instead and stop here.
+          if (incoming.type_name === "message") {
+            setChatUnreadCount(prev => prev + 1);
+            return;
+          }
+
+          setNotifications(prev => [incoming, ...prev]);
           setUnreadCount(prev => prev + 1);
         } catch (err) {
           console.error("Failed to parse SSE message", err);
@@ -109,5 +132,11 @@ export function useNotifications() {
     );
   }, [unreadCount, user]);
 
-  return { notifications, unreadCount, markAllAsRead };
+  // Note: there's no clearChatUnread() here. /chats renders its own header
+  // instead of TopNav, so marking a conversation read happens directly via
+  // chatsApi.markConversationRead() from that page — this hook (and its
+  // one SSE connection) only needs to exist on the pages that show
+  // TopNav, where it re-fetches a fresh count on mount anyway.
+
+  return { notifications, unreadCount, markAllAsRead, chatUnreadCount };
 }

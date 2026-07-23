@@ -27,7 +27,15 @@ pub struct AppState {
     pub jwt_secret: String,
     pub storage: Storage,
     pub email: EmailService,
+    // Local, in-process fan-out to this replica's own SSE subscribers.
+    // Never written to directly from request handlers anymore — always go
+    // through handlers::notifications::publish_notification(), which
+    // PUBLISHes to Redis first so every replica (not just this one) ends
+    // up delivering to its own local subscribers via this same channel.
     pub notification_tx: tokio::sync::broadcast::Sender<crate::handlers::notifications::NotificationEvent>,
+    // Cheap to clone, auto-reconnects — safe to hand a clone to every
+    // request handler that needs to PUBLISH a notification.
+    pub redis: redis::aio::ConnectionManager,
 }
 
 /// Helper to generate secure Set-Cookie headers
