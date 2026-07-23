@@ -8,23 +8,33 @@ pub async fn get_conversations(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<ConversationResponse>>, AppError> {
-    let convos = sqlx::query_as!(
-        ConversationResponse,
+    // Converted from the query_as! macro to a plain sqlx::query_as call
+    // (runtime-checked, not compile-time) so adding last_message_sender_id
+    // here doesn't require a cargo sqlx prepare run against a live DB to
+    // refresh the offline query cache before this builds in CI.
+    let convos = sqlx::query_as::<_, ConversationResponse>(
         r#"
         SELECT 
             c.id,
             u.id as other_user_id,
             u.username as other_username,
             u.avatar_url as other_avatar_url,
-            (SELECT body FROM messages m WHERE m.conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+            lm.body as last_message,
+            lm.sender_id as last_message_sender_id,
             c.updated_at
         FROM conversations c
         JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+        LEFT JOIN LATERAL (
+            SELECT body, sender_id FROM messages m
+            WHERE m.conversation_id = c.id
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        ) lm ON true
         WHERE c.user1_id = $1 OR c.user2_id = $1
         ORDER BY c.updated_at DESC
-        "#,
-        auth.user_id
+        "#
     )
+    .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
     .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;

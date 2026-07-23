@@ -20,13 +20,17 @@ pub struct ToggleReactionRequest {
     pub emoji: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, FromRow)]
 pub struct ConversationResponse {
     pub id: Uuid,
     pub other_user_id: Uuid,
     pub other_username: String,
     pub other_avatar_url: Option<String>,
     pub last_message: Option<String>,
+    /// Who sent last_message -- needed so the frontend can show "Me: ..."
+    /// vs. the plain message text depending on who sent it. None only
+    /// when there's no message yet (last_message is also None then).
+    pub last_message_sender_id: Option<Uuid>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 

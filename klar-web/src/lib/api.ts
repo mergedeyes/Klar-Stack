@@ -501,6 +501,9 @@ export interface Conversation {
   other_username: string;
   other_avatar_url: string | null;
   last_message: string | null;
+  // Who sent last_message — null only when last_message is also null (no
+  // messages yet). Used to render "Me: ..." vs. the plain message text.
+  last_message_sender_id: string | null;
   updated_at: string;
 }
 

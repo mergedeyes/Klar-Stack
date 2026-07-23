@@ -2,18 +2,40 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { chatsApi, type Conversation } from "@/lib/api";
+import { chatsApi, type Conversation, type ChatMessage } from "@/lib/api";
 import { MessageSquarePlus, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMediaUrl } from "@/lib/utils/media";
+import { useAuth } from "@/lib/auth-context";
+import { useNotifications } from "@/hooks/use-notifications";
 import ChatWindow from "@/components/ChatWindow";
 import NewChatModal from "@/components/NewChatModal";
 import TopNav from "@/components/TopNav";
 
+/** Sort newest-updated first -- same ordering the backend already
+ * returns, but re-applied client-side after a local, optimistic update
+ * (sending or receiving a message) moves a conversation to the top. */
+function sortByRecency(convos: Conversation[]): Conversation[] {
+  return [...convos].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  );
+}
+
+/** "Me: <message>" if the current user sent it, otherwise just the
+ * message text -- no "<username>: " prefix for the other person. */
+function previewText(conv: Conversation, currentUserId: string | undefined): string {
+  if (!conv.last_message) return "Neuer Chat";
+  return conv.last_message_sender_id === currentUserId
+    ? `Me: ${conv.last_message}`
+    : conv.last_message;
+}
+
 function UnifiedChatsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+  const { user } = useAuth();
+  const { lastMessageEvent, refreshChatUnreadCount } = useNotifications();
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,12 +74,26 @@ function UnifiedChatsPageContent() {
             chatsApi.markConversationRead(existing.id).catch(err =>
               console.error("Failed to mark conversation as read", err)
             );
+            refreshChatUnreadCount();
           }
         }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // A live "message" event arrived (see hooks/use-notifications.ts) --
+  // refetch the conversation list so its preview text/ordering reflects
+  // it instantly, rather than only on the next page load. A full refetch
+  // (vs. trying to patch just one row) also correctly handles a message
+  // arriving in a conversation that isn't in the list yet.
+  useEffect(() => {
+    if (!lastMessageEvent) return;
+    chatsApi.getConversations()
+      .then(setConversations)
+      .catch(err => console.error("Failed to refresh conversations:", err));
+  }, [lastMessageEvent]);
 
   const selectConversation = (conv: Conversation) => {
     setActiveChat({
@@ -66,14 +102,36 @@ function UnifiedChatsPageContent() {
       un: conv.other_username,
       av: conv.other_avatar_url
     });
-    // Opening a conversation clears its unread messages -- fire-and-forget,
-    // since the Chat icon badge (rendered by TopNav) will pick up the
-    // fresh count next time it mounts.
+    // Opening a conversation clears its unread messages. Fire-and-forget
+    // the mark-read call, but refresh the badge count immediately after —
+    // without this, the red dot on the Chat icon only cleared on the next
+    // full mount of the notification provider (e.g. a reload), since
+    // nothing else told it a conversation had just been read.
     chatsApi.markConversationRead(conv.id).catch(err =>
       console.error("Failed to mark conversation as read", err)
     );
+    refreshChatUnreadCount();
     // URL säubern ohne neuladen
     window.history.replaceState({}, '', '/chats');
+  };
+
+  // Called by ChatWindow right after *this* user successfully sends a
+  // message -- updates that conversation's preview instantly instead of
+  // waiting for anything else to trigger a refetch.
+  const handleMessageSent = (message: ChatMessage) => {
+    setConversations((prev) => {
+      const updated = prev.map((c) =>
+        c.id === message.conversation_id
+          ? {
+              ...c,
+              last_message: message.body,
+              last_message_sender_id: message.sender_id,
+              updated_at: message.created_at,
+            }
+          : c
+      );
+      return sortByRecency(updated);
+    });
   };
 
 return (
@@ -126,7 +184,7 @@ return (
                 <div className="flex-1 min-w-0">
                   <h2 className="font-semibold truncate">{conv.other_username}</h2>
                   <p className="text-sm text-muted-foreground truncate">
-                    {conv.last_message || "Neuer Chat"}
+                    {previewText(conv, user?.id)}
                   </p>
                 </div>
               </button>
@@ -144,6 +202,7 @@ return (
               receiverId={activeChat.uid}
               receiverUsername={activeChat.un}
               receiverAvatar={activeChat.av}
+              onMessageSent={handleMessageSent}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">

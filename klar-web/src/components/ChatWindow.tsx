@@ -14,9 +14,13 @@ interface ChatWindowProps {
   receiverId: string;
   receiverUsername: string;
   receiverAvatar: string | null;
+  /** Called right after a message is successfully sent, so the parent
+   * (the conversation list in /chats) can update that conversation's
+   * preview text instantly instead of waiting for a refetch. */
+  onMessageSent?: (message: ChatMessage) => void;
 }
 
-export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar }: ChatWindowProps) {
+export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent }: ChatWindowProps) {
   const { user } = useAuth();
   const { lastMessageEvent } = useNotifications();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -74,6 +78,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
         const newMsg = await chatsApi.sendMessage(receiverId, inputText, replyingTo?.id);
         setMessages(prev => [...prev, newMsg]);
         setReplyingTo(null);
+        onMessageSent?.(newMsg);
       }
       setInputText("");
     } catch (err: any) {

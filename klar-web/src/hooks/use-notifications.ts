@@ -25,6 +25,11 @@ interface NotificationsContextValue {
    * with, refetches — this is what makes an open chat update live
    * instead of only on reload. */
   lastMessageEvent: LastMessageEvent | null;
+  /** Re-fetches the true unread-message count from the server. Call this
+   * right after marking a conversation read — the badge otherwise only
+   * updates on the next full mount of this provider (e.g. a page reload),
+   * since nothing else tells it a conversation was just cleared. */
+  refreshChatUnreadCount: () => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -47,6 +52,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [lastMessageEvent, setLastMessageEvent] = useState<LastMessageEvent | null>(null);
 
+  const refreshChatUnreadCount = useCallback(() => {
+    if (!user) return;
+    chatsApi.getUnreadCount()
+      .then((data) => setChatUnreadCount(data.count))
+      .catch(err => console.error("Chat unread count refresh failed:", err));
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
 
@@ -57,10 +69,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       })
       .catch(err => console.error("Notification fetch failed:", err));
 
-    chatsApi.getUnreadCount()
-      .then((data) => setChatUnreadCount(data.count))
-      .catch(err => console.error("Chat unread count fetch failed:", err));
-  }, [user]);
+    refreshChatUnreadCount();
+  }, [user, refreshChatUnreadCount]);
 
   useEffect(() => {
     if (!user) return;
@@ -142,6 +152,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     markAllAsRead,
     chatUnreadCount,
     lastMessageEvent,
+    refreshChatUnreadCount,
   };
 
   return createElement(NotificationsContext.Provider, { value }, children);

@@ -18,7 +18,7 @@ export default function ImpressumPage() {
             <br />
             Benzstr. 1
             <br />
-            88250, Weingarten
+            88250 Weingarten
             <br />
             Deutschland
           </p>
