@@ -73,8 +73,22 @@ export default function DatenschutzPage() {
           <ul className="list-disc pl-5 space-y-2">
             <li>
               <strong>Bunny.net</strong> (Hosting der Anwendung, CDN und
-              Speicherung von Bild-Dateien). Speicherung erfolgt in einem
-              deutschen Rechenzentrum.
+              Speicherung von Bild-Dateien). Die Speicherung der Bild-Dateien
+              erfolgt in einem deutschen Rechenzentrum. Die Ausführung der
+              Anwendung selbst (Rechenleistung) wird dagegen automatisiert auf
+              mehrere Rechenzentren verteilt, um kurze Ladezeiten für
+              Nutzer:innen an unterschiedlichen Standorten zu ermöglichen —
+              aktuell handelt es sich dabei ausschließlich um Standorte
+              innerhalb der EU (u. a. Deutschland/Frankfurt als dauerhaft
+              aktiver Standort, sowie bedarfsabhängig Niederlande, Österreich,
+              Tschechien, Rumänien, Dänemark, Spanien, Frankreich,
+              Griechenland, Kroatien, Italien, Polen und Schweden) sowie um
+              das Vereinigte Königreich. Für das Vereinigte Königreich besteht
+              ein gültiger Angemessenheitsbeschluss der Europäischen
+              Kommission (zuletzt verlängert im Dezember 2025, gültig bis
+              Dezember 2031). Es findet daher keine Drittlandübermittlung im
+              Sinne von Art. 44 ff. DSGVO statt, für die zusätzliche Garantien
+              (z. B. Standardvertragsklauseln) erforderlich wären.
             </li>
             <li>
               <strong>Neon</strong> (Datenbank-Hosting, PostgreSQL). Die
