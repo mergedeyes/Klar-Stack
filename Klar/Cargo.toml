@@ -26,8 +26,13 @@ chrono = { version = "0.4", features = ["serde"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 # Password hashing — argon2 is the current best choice, resistant to GPU attacks
 argon2 = "0.5"
-# JWT tokens for stateless auth
-jsonwebtoken = "10"
+# JWT tokens for stateless auth.
+# v10 made the crypto backend pluggable — without picking one, every
+# encode()/decode() call panics at runtime with "Could not automatically
+# determine the process-level CryptoProvider" even though it compiles fine.
+# rust_crypto is the pure-Rust backend (no C toolchain needed in the Docker
+# build); we only use HS256 (HMAC), so it's all that's needed here.
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 # Need this for axum header extraction
 axum-extra = { version = "0.10", features = ["typed-header"] }
 # Image processing — resize, format conversion, EXIF stripping (by re-encoding)
