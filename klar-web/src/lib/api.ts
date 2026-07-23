@@ -461,6 +461,9 @@ export interface AdminReport {
   target_preview: string | null;
   target_thumb_url: string | null;
   target_username: string | null;
+  // Only set after review (dismiss/remove) -- always null in the pending
+  // queue itself, since get_reports only returns status='pending' rows.
+  review_note?: string | null;
 }
 
 export const reportsApi = {
@@ -474,10 +477,18 @@ export const reportsApi = {
 
 export const adminReportsApi = {
   list: () => request<AdminReport[]>("/admin/reports", {}, true),
-  dismiss: (reportId: string) =>
-    request<void>(`/admin/reports/${reportId}/dismiss`, { method: "POST" }, true),
-  remove: (reportId: string) =>
-    request<void>(`/admin/reports/${reportId}/remove`, { method: "POST" }, true),
+  dismiss: (reportId: string, note?: string) =>
+    request<void>(
+      `/admin/reports/${reportId}/dismiss`,
+      { method: "POST", body: JSON.stringify({ note: note || null }) },
+      true
+    ),
+  remove: (reportId: string, note?: string) =>
+    request<void>(
+      `/admin/reports/${reportId}/remove`,
+      { method: "POST", body: JSON.stringify({ note: note || null }) },
+      true
+    ),
 };
 
 // ── Post endpoints ────────────────────────────────────────────────────────────

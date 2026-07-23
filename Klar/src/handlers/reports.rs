@@ -229,9 +229,13 @@ pub async fn get_reports(
     Ok(Json(reports))
 }
 
-#[derive(Debug, Deserialize)]
+/// Optional note an admin can attach when dismissing or removing a
+/// report -- e.g. "false report, content is fine" or "removed per policy
+/// X". Frontend always sends at least `{}` (same pattern as
+/// auth.rs's LogoutRequest), so this is a required Json body, not an
+/// Option<Json<..>>.
+#[derive(Debug, Deserialize, Default)]
 pub struct ReviewNote {
-    #[allow(dead_code)]
     pub note: Option<String>,
 }
 
@@ -245,8 +249,15 @@ pub async fn dismiss_report(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(report_id): Path<Uuid>,
+    Json(input): Json<ReviewNote>,
 ) -> Result<StatusCode, AppError> {
     require_admin(&auth)?;
+
+    if let Some(note) = &input.note {
+        if note.chars().count() > 1000 {
+            return Err(AppError::bad_request("Review note must be under 1000 characters"));
+        }
+    }
 
     let report = sqlx::query_as::<_, (String, Uuid)>(
         "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending'"
@@ -260,9 +271,10 @@ pub async fn dismiss_report(
     let (target_type, target_id) = report;
 
     sqlx::query(
-        "UPDATE reports SET status = 'dismissed', reviewed_at = NOW(), reviewed_by = $1 WHERE id = $2"
+        "UPDATE reports SET status = 'dismissed', reviewed_at = NOW(), reviewed_by = $1, review_note = $2 WHERE id = $3"
     )
     .bind(auth.user_id)
+    .bind(&input.note)
     .bind(report_id)
     .execute(&state.db)
     .await
@@ -290,8 +302,15 @@ pub async fn remove_reported_content(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(report_id): Path<Uuid>,
+    Json(input): Json<ReviewNote>,
 ) -> Result<StatusCode, AppError> {
     require_admin(&auth)?;
+
+    if let Some(note) = &input.note {
+        if note.chars().count() > 1000 {
+            return Err(AppError::bad_request("Review note must be under 1000 characters"));
+        }
+    }
 
     let report = sqlx::query_as::<_, (String, Uuid)>(
         "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending'"
@@ -353,9 +372,10 @@ pub async fn remove_reported_content(
     }
 
     sqlx::query(
-        "UPDATE reports SET status = 'actioned', reviewed_at = NOW(), reviewed_by = $1 WHERE id = $2"
+        "UPDATE reports SET status = 'actioned', reviewed_at = NOW(), reviewed_by = $1, review_note = $2 WHERE id = $3"
     )
     .bind(auth.user_id)
+    .bind(&input.note)
     .bind(report_id)
     .execute(&state.db)
     .await

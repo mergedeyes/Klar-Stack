@@ -43,6 +43,9 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Which report currently has its note field open, and what's typed in
+  // it -- keyed by report id so multiple rows don't fight over one input.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
@@ -59,7 +62,7 @@ export default function AdminReportsPage() {
   const handleDismiss = async (report: AdminReport) => {
     setBusyId(report.id);
     try {
-      await adminReportsApi.dismiss(report.id);
+      await adminReportsApi.dismiss(report.id, noteDrafts[report.id]);
       setReports((prev) => prev.filter((r) => r.id !== report.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to dismiss report");
@@ -72,7 +75,7 @@ export default function AdminReportsPage() {
     if (!window.confirm("Remove this content? This can't be undone.")) return;
     setBusyId(report.id);
     try {
-      await adminReportsApi.remove(report.id);
+      await adminReportsApi.remove(report.id, noteDrafts[report.id]);
       setReports((prev) => prev.filter((r) => r.id !== report.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove content");
@@ -153,6 +156,18 @@ export default function AdminReportsPage() {
               {report.details && (
                 <p className="mb-2 rounded-md bg-muted/30 p-2 text-sm italic">&ldquo;{report.details}&rdquo;</p>
               )}
+
+              {/* Optional note attached to whichever decision (dismiss or
+                  remove) is made below -- e.g. "false report, content is
+                  fine" -- stored on the report for future reference. */}
+              <input
+                value={noteDrafts[report.id] ?? ""}
+                onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [report.id]: e.target.value }))}
+                placeholder="Add a note for your records (optional)"
+                maxLength={1000}
+                className="mb-2 w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
+                disabled={busyId === report.id}
+              />
 
               <div className="flex gap-2">
                 <Button
