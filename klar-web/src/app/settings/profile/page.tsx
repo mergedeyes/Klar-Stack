@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Camera } from "lucide-react";
+import { Camera, Lock } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi } from "@/lib/api";
@@ -11,9 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '@/env';
-
-const API_URL = ENV.API_URL;
 
 export default function EditProfilePage() {
   const { user, loading: authLoading, refreshUser } = useAuth();
@@ -22,6 +19,7 @@ export default function EditProfilePage() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -42,6 +40,7 @@ export default function EditProfilePage() {
     setUsername(user.username ?? "");
     setDisplayName(user.display_name ?? "");
     setBio(user.bio ?? "");
+    setIsPrivate(user.is_private ?? false);
   }, [user]);
 
   // Cooldown Calculation (14 days)
@@ -105,7 +104,8 @@ export default function EditProfilePage() {
       await usersApi.updateProfile(
         usernamePayload,
         displayName.trim() || null,
-        bio.trim() || null
+        bio.trim() || null,
+        isPrivate
       );
 
       // Refresh the cached user so other pages (e.g. "is this my own
@@ -168,7 +168,15 @@ export default function EditProfilePage() {
             className="group relative h-24 w-24 overflow-hidden rounded-full bg-muted focus:outline-none"
             aria-label="Change avatar"
           >
-            {user.avatar_url ? (
+            {avatarPreview ? (
+              <Image
+                src={avatarPreview}
+                alt="Avatar"
+                fill
+                className="object-cover"
+                unoptimized
+              />
+            ) : user.avatar_url ? (
               <Image
                 src={getMediaUrl(user.avatar_url)}
                 alt="Avatar"
@@ -256,6 +264,38 @@ export default function EditProfilePage() {
           <p className="text-xs text-muted-foreground">
             {bio.length}/500
           </p>
+        </div>
+
+        {/* Private account */}
+        <div className="flex items-center justify-between rounded-xl border border-border p-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+              <Lock size={16} />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Private account</p>
+              <p className="text-xs text-muted-foreground">
+                When on, only approved followers can see your posts. New
+                followers need your approval, and you can review pending
+                requests from your profile.
+              </p>
+            </div>
+          </div>
+          <button
+            role="switch"
+            aria-checked={isPrivate}
+            onClick={() => setIsPrivate((v) => !v)}
+            disabled={saving}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+              isPrivate ? "bg-primary" : "bg-muted"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform ${
+                isPrivate ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
         </div>
       </main>
     </div>

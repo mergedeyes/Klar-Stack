@@ -7,9 +7,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 use argon2::{Argon2, password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString}};
 
-use crate::auth::AuthUser;
+use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
 use chrono::{DateTime, Duration, Utc};
@@ -61,12 +62,18 @@ pub async fn search_users(
         AppError::internal("Search failed")
     })?;
 
+    // No viewer_relationship computed here (would be N extra lookups per
+    // result) -- search results only need is_private, to show a lock icon;
+    // the profile page itself computes the real relationship when opened.
     Ok(Json(users.into_iter().map(UserPublicResponse::from).collect()))
 }
 
-/// GET /users/:username — public profile
+/// GET /users/:username — public profile. Uses OptionalAuthUser (not
+/// AuthUser) since profiles are viewable while logged out -- viewer_relationship
+/// is just None in that case.
 pub async fn get_user(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<UserPublicResponse>, AppError> {
     let user = sqlx::query_as::<_, UserRow>(
@@ -74,16 +81,31 @@ pub async fn get_user(
     )
     .bind(&username)
     .fetch_optional(&state.db)
-    .await;
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        AppError::internal("Database error")
+    })?
+    .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
-    match user {
-        Ok(Some(user)) => Ok(Json(UserPublicResponse::from(user))),
-        Ok(None) => Err(AppError::not_found(format!("User '{}' not found", username))),
-        Err(e) => {
-            tracing::error!("Database error: {}", e);
-            Err(AppError::internal("Database error"))
+    let profile_id = user.id;
+    let mut response = UserPublicResponse::from(user);
+
+    response.viewer_relationship = match auth.user_id {
+        None => None,
+        Some(viewer_id) if viewer_id == profile_id => Some("self".to_string()),
+        Some(viewer_id) => {
+            if is_following(&state.db, viewer_id, profile_id).await? {
+                Some("following".to_string())
+            } else if has_pending_follow_request(&state.db, viewer_id, profile_id).await? {
+                Some("requested".to_string())
+            } else {
+                Some("not_following".to_string())
+            }
         }
-    }
+    };
+
+    Ok(Json(response))
 }
 
 /// GET /users/me — own profile (auth required)
@@ -103,7 +125,11 @@ pub async fn get_me(
     })?;
 
     match user {
-        Some(user) => Ok(Json(UserPublicResponse::from(user))),
+        Some(user) => {
+            let mut response = UserPublicResponse::from(user);
+            response.viewer_relationship = Some("self".to_string());
+            Ok(Json(response))
+        }
         None => Err(AppError::not_found("User not found")),
     }
 }
@@ -174,7 +200,8 @@ pub async fn update_profile(
             username = COALESCE($1, username),
             username_changed_at = CASE WHEN $1 IS NOT NULL AND LOWER($1) != LOWER(username) THEN NOW() ELSE username_changed_at END,
             display_name = COALESCE($2, display_name),
-            bio = COALESCE($3, bio)
+            bio = COALESCE($3, bio),
+            is_private = COALESCE($5, is_private)
         WHERE id = $4
         RETURNING *
         "#
@@ -183,6 +210,7 @@ pub async fn update_profile(
     .bind(&input.display_name)
     .bind(&input.bio)
     .bind(auth.user_id)
+    .bind(&input.is_private)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {

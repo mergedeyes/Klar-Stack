@@ -37,23 +37,31 @@ function notificationText(typeName: string): string {
     case "comment": return " commented on your post";
     case "comment_like": return " liked your comment";
     case "follow": return " started following you";
+    case "follow_request": return " wants to follow you";
+    case "follow_accepted": return " accepted your follow request";
     default: return " interacted with you";
   }
 }
 
 /** Where clicking a notification should go: the post for like/comment
- * types, the actor's profile for a follow. */
+ * types, the actor's profile for a follow (or an accepted request), and
+ * the follow-requests management page for a new request. */
 function notificationHref(n: AppNotification): string {
-  if (n.type_name === "follow") return `/users/${n.actor.username}`;
+  if (n.type_name === "follow_request") return "/follow-requests";
+  if (n.type_name === "follow" || n.type_name === "follow_accepted") return `/users/${n.actor.username}`;
   if (n.post_id) return `/posts/${n.post_id}`;
   return "#";
 }
 
 /** Small preview thumbnail for a notification row — the actor's avatar
- * (with a default letter-fallback) for a follow, or the post's first
- * image (if it has one) for like/comment types. */
+ * (with a default letter-fallback) for anything with no post involved
+ * (follow, follow_request, follow_accepted), or the post's first image
+ * (if it has one) for like/comment types. */
 function NotificationPreview({ n }: { n: AppNotification }) {
-  if (n.type_name === "follow") {
+  const noPostInvolved =
+    n.type_name === "follow" || n.type_name === "follow_request" || n.type_name === "follow_accepted";
+
+  if (noPostInvolved) {
     return (
       <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold uppercase">
         {n.actor.avatar_url ? (
@@ -105,10 +113,6 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
 
   // Every icon defaults to muted (grey); only the icon matching the
   // page's active section gets highlighted to the foreground color.
-  // Previously Plus/Bell/Settings/Log-out had no color class at all, so
-  // they rendered in the default (dark) text color while Discovery/
-  // Search/Chats/Profile rendered grey via this same function -- that
-  // mismatch was the "some icons grey, some black" inconsistency.
   const iconClass = (section?: TopNavSection) =>
     section && active === section ? "text-foreground bg-muted" : "text-muted-foreground";
 

@@ -20,6 +20,34 @@ interface ChatWindowProps {
   onMessageSent?: (message: ChatMessage) => void;
 }
 
+const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", "🎉"];
+
+/** Small popover of quick-react emojis, opened by the Smile button.
+ * Positioned so it doesn't run off either edge -- opens toward the
+ * center of the chat rather than always the same side, since "me"
+ * bubbles sit on the right and "them" bubbles sit on the left. */
+function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (emoji: string) => void }) {
+  return (
+    <div
+      className={`absolute bottom-full z-20 mb-1 flex gap-0.5 rounded-full border border-border bg-background p-1 shadow-lg ${
+        align === "right" ? "right-0" : "left-0"
+      }`}
+    >
+      {REACTION_EMOJIS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onPick(emoji)}
+          className="rounded-full p-1 text-base leading-none hover:bg-muted"
+          aria-label={`React with ${emoji}`}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent }: ChatWindowProps) {
   const { user } = useAuth();
   const { lastMessageEvent } = useNotifications();
@@ -31,6 +59,8 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
   // States für die neuen Features
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  // Which message's reaction picker is currently open, if any.
+  const [pickerForMessageId, setPickerForMessageId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -62,6 +92,14 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Close an open reaction picker on any click outside it.
+  useEffect(() => {
+    if (!pickerForMessageId) return;
+    const handler = () => setPickerForMessageId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [pickerForMessageId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +138,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!user) return;
+    setPickerForMessageId(null);
     try {
       await chatsApi.toggleReaction(messageId, emoji);
       // Optimistisches Update der UI
@@ -159,6 +198,17 @@ return (
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                     <button onClick={() => setEditingMessage(msg)} className="p-1 hover:bg-muted rounded text-muted-foreground"><Edit2 size={14} /></button>
                     <button onClick={() => handleDelete(msg.id)} className="p-1 hover:bg-destructive/10 rounded text-destructive"><Trash2 size={14} /></button>
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
+                        className="p-1 hover:bg-muted rounded text-muted-foreground"
+                      >
+                        <Smile size={14} />
+                      </button>
+                      {pickerForMessageId === msg.id && (
+                        <ReactionPicker align="right" onPick={(emoji) => handleReaction(msg.id, emoji)} />
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -173,7 +223,17 @@ return (
                 {!isMe && (
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                     <button onClick={() => setReplyingTo(msg)} className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
-                    <button onClick={() => handleReaction(msg.id, "❤️")} className="p-1 hover:bg-muted rounded text-muted-foreground"><Smile size={14} /></button>
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
+                        className="p-1 hover:bg-muted rounded text-muted-foreground"
+                      >
+                        <Smile size={14} />
+                      </button>
+                      {pickerForMessageId === msg.id && (
+                        <ReactionPicker align="left" onPick={(emoji) => handleReaction(msg.id, emoji)} />
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

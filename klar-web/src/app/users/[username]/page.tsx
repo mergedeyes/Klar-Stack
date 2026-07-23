@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Grid3X3 } from "lucide-react";
+import { Grid3X3, Lock } from "lucide-react";
 import Image from "next/image";
 import {
   users as usersApi,
@@ -66,7 +66,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<User | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [postsBlocked, setPostsBlocked] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockLoading, setBlockLoading] = useState(false);
@@ -78,27 +78,35 @@ export default function ProfilePage() {
   const [modalType, setModalType] = useState<"followers" | "following" | null>(null);
 
   const isMe = !!me && !!profile && me.id === profile.id;
+  // "requested" / "following" / "not_following" / "self" / undefined
+  // (undefined only while loading, or if the profile fetch predates this
+  // field existing -- treated as not_following).
+  const relationship = profile?.viewer_relationship;
+  const isFollowing = relationship === "following";
+  const isRequested = relationship === "requested";
+
+  // Posts are visible to: the owner, an accepted follower, or anyone if
+  // the account isn't private. Computed from the profile fetch alone, so
+  // the posts endpoint doesn't even need to be called (and 403) for a
+  // private account you can't see into.
+  const canSeePosts = !!profile && (!profile.is_private || isMe || isFollowing);
 
   const refreshPosts = useCallback(() => {
-    if (!username) return;
-    postsApi.userPosts(username, undefined, 50).then(setUserPosts);
-  }, [username]);
+    if (!username || !canSeePosts) return;
+    postsApi.userPosts(username, undefined, 50)
+      .then((data) => { setUserPosts(data); setPostsBlocked(false); })
+      .catch(() => setPostsBlocked(true));
+  }, [username, canSeePosts]);
 
   useEffect(() => {
     if (!username) return;
     let cancelled = false;
 
     setLoading(true);
-    Promise.all([
-      usersApi.get(username),
-      usersApi.stats(username),
-      postsApi.userPosts(username, undefined, 50),
-    ])
-      .then(([profileData, statsData, postsData]) => {
+    usersApi.get(username)
+      .then((profileData) => {
         if (cancelled) return;
         setProfile(profileData);
-        setStats(statsData);
-        setUserPosts(postsData);
       })
       .catch(() => {
         if (!cancelled) router.push("/feed");
@@ -107,8 +115,18 @@ export default function ProfilePage() {
         if (!cancelled) setLoading(false);
       });
 
+    usersApi.stats(username).then((s) => { if (!cancelled) setStats(s); }).catch(() => {});
+
     return () => { cancelled = true; };
   }, [username, router]);
+
+  // Fetch posts once we know whether we're allowed to see them (depends
+  // on the profile fetch above having resolved viewer_relationship).
+  useEffect(() => {
+    if (!profile) return;
+    if (!canSeePosts) { setUserPosts([]); return; }
+    refreshPosts();
+  }, [profile, canSeePosts, refreshPosts]);
 
   useEffect(() => {
     if (!isMe || !username) return;
@@ -126,13 +144,6 @@ export default function ProfilePage() {
     return () => { cancelled = true; };
   }, [isMe, username]);
 
-  useEffect(() => {
-    if (!me || isMe || !username) return;
-    follows.followers(username).then((followerList) => {
-      setIsFollowing(followerList.some((f) => f.id === me.id));
-    }).catch(() => {});
-  }, [me, isMe, username]);
-
   const handleBlockToggle = useCallback(async () => {
     if (!me || blockLoading) return;
     setBlockLoading(true);
@@ -143,7 +154,6 @@ export default function ProfilePage() {
         await blocksApi.unblock(username);
       } else {
         await blocksApi.block(username);
-        setIsFollowing(false);
       }
     } catch {
       setIsBlocked(wasBlocked);
@@ -152,33 +162,38 @@ export default function ProfilePage() {
     }
   }, [me, blockLoading, isBlocked, username]);
 
+  // One button handles all three states: not_following -> follow (which
+  // may itself land on "following" or "requested" depending on whether
+  // the account is private), requested -> cancel the request, following
+  // -> unfollow. All via the same follow()/unfollow() calls; the backend
+  // decides what "follow" actually means for this target.
   const handleFollowToggle = useCallback(async () => {
-    if (!me || followLoading) return;
+    if (!me || !profile || followLoading) return;
     setFollowLoading(true);
+
     const wasFollowing = isFollowing;
-    setIsFollowing(!wasFollowing);
-    setStats((prev) =>
-      prev
-        ? { ...prev, followers: prev.followers + (wasFollowing ? -1 : 1) }
-        : prev
-    );
+    const wasRequested = isRequested;
+
     try {
-      if (wasFollowing) {
+      if (wasFollowing || wasRequested) {
         await follows.unfollow(username);
+        setProfile((p) => p ? { ...p, viewer_relationship: "not_following" } : p);
+        if (wasFollowing) {
+          setStats((prev) => prev ? { ...prev, followers: prev.followers - 1 } : prev);
+        }
       } else {
-        await follows.follow(username);
+        const res = await follows.follow(username);
+        setProfile((p) => p ? { ...p, viewer_relationship: res.status } : p);
+        if (res.status === "following") {
+          setStats((prev) => prev ? { ...prev, followers: prev.followers + 1 } : prev);
+        }
       }
     } catch {
-      setIsFollowing(wasFollowing);
-      setStats((prev) =>
-        prev
-          ? { ...prev, followers: prev.followers + (wasFollowing ? 1 : -1) }
-          : prev
-      );
+      // Leave state as-is on failure -- no optimistic update happened above.
     } finally {
       setFollowLoading(false);
     }
-  }, [me, followLoading, isFollowing, username]);
+  }, [me, profile, followLoading, isFollowing, isRequested, username]);
 
   if (loading || authLoading) {
     return (
@@ -241,7 +256,12 @@ export default function ProfilePage() {
           <div className="flex-1 w-full">
             {/* Name */}
             <div className="mb-4">
-              <h1 className="text-2xl font-bold">{profile.display_name || profile.username}</h1>
+              <h1 className="flex items-center gap-2 text-2xl font-bold">
+                {profile.display_name || profile.username}
+                {profile.is_private && (
+                  <Lock size={16} className="text-muted-foreground" aria-label="Private account" />
+                )}
+              </h1>
               <p className="text-muted-foreground">@{profile.username}</p>
             </div>
 
@@ -276,22 +296,33 @@ export default function ProfilePage() {
 
             {/* Action buttons */}
             {isMe ? (
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => router.push("/settings/profile")}
-              >
-                Edit profile
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => router.push("/settings/profile")}
+                >
+                  Edit profile
+                </Button>
+                {profile.is_private && (
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => router.push("/follow-requests")}
+                  >
+                    Follow requests
+                  </Button>
+                )}
+              </div>
             ) : me ? (
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant={isFollowing ? "outline" : "default"}
+                  variant={isFollowing || isRequested ? "outline" : "default"}
                   className="flex-1 sm:flex-none min-w-[120px]"
                   onClick={handleFollowToggle}
                   disabled={followLoading || isBlocked}
                 >
-                  {isFollowing ? "Following" : "Follow"}
+                  {isFollowing ? "Following" : isRequested ? "Requested" : "Follow"}
                 </Button>
                 
                 <Button
@@ -317,7 +348,19 @@ export default function ProfilePage() {
 
         {/* Posts grid */}
         <div className="border-t border-border mt-4">
-          {userPosts.length === 0 ? (
+          {!canSeePosts ? (
+            <div className="py-16 text-center">
+              <Lock size={32} className="mx-auto mb-3 text-muted-foreground" />
+              <p className="text-sm font-semibold">This account is private</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Follow this account to see their posts.
+              </p>
+            </div>
+          ) : postsBlocked ? (
+            <div className="py-16 text-center">
+              <p className="text-sm text-muted-foreground">Couldn&apos;t load posts</p>
+            </div>
+          ) : userPosts.length === 0 ? (
             <div className="py-16 text-center">
               <Grid3X3 size={32} className="mx-auto mb-3 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">No posts yet</p>

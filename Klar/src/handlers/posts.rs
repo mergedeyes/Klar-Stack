@@ -7,10 +7,32 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::auth::AuthUser;
+use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::handlers::follows::is_following;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
+
+/// Shared gate for both get_post and get_user_posts: can `viewer` see
+/// posts belonging to `owner_id`? Always yes if the owner isn't private,
+/// or if the viewer *is* the owner, or if the viewer actively follows
+/// them. A pending (not yet accepted) follow_request does NOT grant
+/// access -- that's the whole point of requiring approval.
+async fn can_view_posts(
+    db: &sqlx::PgPool,
+    viewer_id: Option<Uuid>,
+    owner_id: Uuid,
+    owner_is_private: bool,
+) -> Result<bool, AppError> {
+    if !owner_is_private {
+        return Ok(true);
+    }
+    match viewer_id {
+        None => Ok(false),
+        Some(v) if v == owner_id => Ok(true),
+        Some(v) => is_following(db, v, owner_id).await,
+    }
+}
 
 /// POST /posts — create a new post (auth required)
 ///
@@ -95,11 +117,31 @@ pub async fn create_post(
     Ok((StatusCode::CREATED, Json(post)))
 }
 
-/// GET /posts/:id — view a single post (public)
+/// GET /posts/:id — view a single post. Public route, but gated for
+/// private accounts: only the owner or an accepted follower can see it.
 pub async fn get_post(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(post_id): Path<Uuid>,
 ) -> Result<Json<PostResponse>, AppError> {
+
+    let owner = sqlx::query_as::<_, (Uuid, bool)>(
+        "SELECT user_id, (SELECT is_private FROM users WHERE id = posts.user_id) FROM posts WHERE id = $1"
+    )
+    .bind(post_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        AppError::internal("Database error")
+    })?
+    .ok_or_else(|| AppError::not_found("Post not found"))?;
+
+    let (owner_id, owner_is_private) = owner;
+
+    if !can_view_posts(&state.db, auth.user_id, owner_id, owner_is_private).await? {
+        return Err(AppError::forbidden("This account is private"));
+    }
 
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
@@ -280,14 +322,35 @@ pub async fn delete_post(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// GET /users/:username/posts — all posts by a user (public, paginated)
+/// GET /users/:username/posts — all posts by a user (public, paginated).
+/// Gated the same way as get_post -- private accounts only show posts to
+/// the owner themselves or an accepted follower.
 pub async fn get_user_posts(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(username): Path<String>,
     Query(query): Query<FeedQuery>,
 ) -> Result<Json<Vec<PostResponse>>, AppError> {
 
     let limit = query.limit.unwrap_or(20).min(50);
+
+    let owner = sqlx::query_as::<_, (Uuid, bool)>(
+        "SELECT id, is_private FROM users WHERE LOWER(username) = LOWER($1)"
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Database error: {}", e);
+        AppError::internal("Database error")
+    })?
+    .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
+
+    let (owner_id, owner_is_private) = owner;
+
+    if !can_view_posts(&state.db, auth.user_id, owner_id, owner_is_private).await? {
+        return Err(AppError::forbidden("This account is private"));
+    }
 
     let posts = match query.cursor {
         Some(cursor) => {
@@ -364,7 +427,10 @@ pub async fn get_user_posts(
 /// follows x posts -- a single indexed lookup on this user's feed
 /// partition instead of a join across the whole social graph. Strictly
 /// chronological: ordered by the post's own created_at (copied at
-/// fan-out time), no ranking involved.
+/// fan-out time), no ranking involved. Private accounts need no extra
+/// gating here -- feed_items rows only ever get created for an *accepted*
+/// follow (see follows.rs's establish_follow), never for a pending
+/// request, so this table is already scoped correctly.
 pub async fn get_feed(
     State(state): State<AppState>,
     auth: AuthUser,

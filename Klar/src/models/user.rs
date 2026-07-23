@@ -29,6 +29,7 @@ pub struct UserRow {
     pub following_count: i64,
     #[allow(dead_code)]
     pub post_count: i64,
+    pub is_private: bool,
 }
 
 #[derive(Serialize)]
@@ -38,6 +39,13 @@ pub struct UserPublicResponse {
     pub display_name: Option<String>,
     pub bio: Option<String>,
     pub avatar_url: Option<String>,
+    pub is_private: bool,
+    /// The *caller's* relationship to this profile -- "self" | "following"
+    /// | "requested" | "not_following". None when unauthenticated (no
+    /// relationship to speak of). Not derivable from UserRow alone (needs
+    /// a follows/follow_requests lookup), so it's populated by the
+    /// handler after conversion, not by the From<UserRow> impl below.
+    pub viewer_relationship: Option<String>,
 }
 
 /// Public API response
@@ -57,6 +65,7 @@ pub struct UserResponse {
     pub email_verified: bool,
     pub created_at: DateTime<Utc>,
     pub username_changed_at: Option<DateTime<Utc>>,
+    pub is_private: bool,
 }
 
 impl From<UserRow> for UserResponse {
@@ -71,6 +80,7 @@ impl From<UserRow> for UserResponse {
             email_verified: row.email_verified,
             created_at: row.created_at,
             username_changed_at: row.username_changed_at,
+            is_private: row.is_private,
         }
     }
 }
@@ -82,7 +92,9 @@ impl From<UserRow> for UserPublicResponse {
             username: row.username,
             display_name: row.display_name,
             bio: row.bio,
-            avatar_url: row.avatar_url, 
+            avatar_url: row.avatar_url,
+            is_private: row.is_private,
+            viewer_relationship: None,
         }
     }
 }
@@ -123,4 +135,16 @@ pub struct UpdateProfileRequest {
     pub display_name: Option<String>,
     pub bio: Option<String>,
     pub username: Option<String>,
+    pub is_private: Option<bool>,
+}
+
+/// A single pending follow request, as seen by the account being
+/// requested (GET /users/me/follow-requests).
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct FollowRequestResponse {
+    pub requester_id: Uuid,
+    pub requester_username: String,
+    pub requester_display_name: Option<String>,
+    pub requester_avatar_url: Option<String>,
+    pub created_at: DateTime<Utc>,
 }

@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::OptionalAuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::post::PostResponse;
@@ -33,13 +34,25 @@ pub struct CursorData {
     pub id: Uuid,
 }
 
+/// GET /feed/discovery — public, cross-user discovery feed.
+///
+/// Needed OptionalAuthUser added here for one reason: without it, this
+/// had zero privacy filtering at all -- every private account's posts
+/// were fully visible to anyone, logged in or not, defeating the entire
+/// point of the private-account feature. The added clause excludes a
+/// private account's posts unless the viewer is the owner or an accepted
+/// follower (binding None for an anonymous viewer correctly excludes all
+/// private accounts, since `u.id = NULL` and the follows EXISTS subquery
+/// both evaluate to false/no-match).
 pub async fn get_global_feed(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Query(params): Query<FeedQuery>,
 ) -> Result<Json<FeedResponse>, AppError> {
     
     // Wir cappen das Limit serverseitig auf maximal 50, um Missbrauch zu verhindern
     let limit = params.limit.unwrap_or(20).clamp(1, 50);
+    let viewer_id = auth.user_id;
 
     // WICHTIG für Performance (Keyset Pagination): 
     // Wir splitten die Query in zwei Pfade, um den perfekten "Index Scan" zu garantieren.
@@ -67,6 +80,11 @@ pub async fn get_global_feed(
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE (p.created_at, p.id) < ($1, $2)
+                  AND (
+                    u.is_private = FALSE
+                    OR u.id = $4
+                    OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = $4 AND f.following_id = u.id)
+                  )
                 ORDER BY p.created_at DESC, p.id DESC
                 LIMIT $3
                 "#
@@ -74,6 +92,7 @@ pub async fn get_global_feed(
             .bind(c_time)
             .bind(c_id)
             .bind(limit)
+            .bind(viewer_id)
             .fetch_all(&state.db)
             .await
         }
@@ -97,11 +116,17 @@ pub async fn get_global_feed(
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+                WHERE (
+                    u.is_private = FALSE
+                    OR u.id = $2
+                    OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.following_id = u.id)
+                  )
                 ORDER BY p.created_at DESC, p.id DESC
                 LIMIT $1
                 "#
             )
             .bind(limit)
+            .bind(viewer_id)
             .fetch_all(&state.db)
             .await
         }

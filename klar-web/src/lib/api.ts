@@ -13,6 +13,12 @@ export interface User {
   email_verified: boolean;
   created_at: string;
   username_changed_at?: string | null;
+  is_private: boolean;
+  // The *caller's* relationship to this profile. Only populated by
+  // GET /users/:username and GET /users/me -- other endpoints that also
+  // return a User-shaped object (search, followers/following lists) omit
+  // it, since computing it per-row there would be N extra lookups.
+  viewer_relationship?: 'self' | 'following' | 'requested' | 'not_following' | null;
 }
 
 export interface Post {
@@ -56,14 +62,14 @@ export interface AppNotification {
   // -- it's never persisted in the notifications table or returned by
   // notifications.list(), so the hook special-cases it instead of adding
   // it to the notification dropdown list.
-  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message';
+  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message' | 'follow_request' | 'follow_accepted';
   is_read: boolean;
   created_at: string;
   post_id: string | null;
   // Raw storage key (not a full URL) for the related post's first image —
   // run through getMediaUrl() before rendering, same as Post.thumb_url.
-  // Always null for 'follow' (no post involved; use actor.avatar_url
-  // instead) and 'message' (also no post).
+  // Always null for 'follow'/'follow_request'/'follow_accepted' (no post
+  // involved; use actor.avatar_url instead) and 'message' (also no post).
   post_thumb_url: string | null;
   actor: {
     id: string;
@@ -311,10 +317,10 @@ export const users = {
   stats: (username: string) =>
     request<ProfileStats>(`/users/${username}/stats`),
 
-  updateProfile: (username: string | null, displayName: string | null, bio: string | null) =>
+  updateProfile: (username: string | null, displayName: string | null, bio: string | null, isPrivate?: boolean | null) =>
     request<User>(
       "/users/me",
-      { method: "PATCH", body: JSON.stringify({ username, display_name: displayName, bio }) },
+      { method: "PATCH", body: JSON.stringify({ username, display_name: displayName, bio, is_private: isPrivate ?? null }) },
       true
     ),
 
@@ -382,15 +388,43 @@ export const users = {
 
 // ── Follow endpoints ──────────────────────────────────────────────────────────
 
+export interface FollowActionResponse {
+  message: string;
+  // "following" for an immediate/accepted follow, "requested" if it went
+  // to a private account and is now pending, "not_following" after an
+  // unfollow/cancel-request.
+  status: 'following' | 'requested' | 'not_following';
+}
+
 export const follows = {
   follow: (username: string) =>
-    request<{ message: string }>(`/users/${username}/follow`, { method: "POST" }, true),
+    request<FollowActionResponse>(`/users/${username}/follow`, { method: "POST" }, true),
+  // Also cancels a pending request, if that's what actually exists —
+  // "unfollow" here really means "stop following / withdraw my request".
   unfollow: (username: string) =>
-    request<{ message: string }>(`/users/${username}/follow`, { method: "DELETE" }, true),
+    request<FollowActionResponse>(`/users/${username}/follow`, { method: "DELETE" }, true),
   followers: (username: string) =>
     request<User[]>(`/users/${username}/followers`),
   following: (username: string) =>
     request<User[]>(`/users/${username}/following`),
+};
+
+// ── Follow request endpoints (private accounts) ──────────────────────────────
+
+export interface FollowRequest {
+  requester_id: string;
+  requester_username: string;
+  requester_display_name: string | null;
+  requester_avatar_url: string | null;
+  created_at: string;
+}
+
+export const followRequestsApi = {
+  list: () => request<FollowRequest[]>("/users/me/follow-requests", {}, true),
+  accept: (requesterUsername: string) =>
+    request<void>(`/users/me/follow-requests/${requesterUsername}/accept`, { method: "POST" }, true),
+  reject: (requesterUsername: string) =>
+    request<void>(`/users/me/follow-requests/${requesterUsername}/reject`, { method: "POST" }, true),
 };
 
 // ── Post endpoints ────────────────────────────────────────────────────────────
