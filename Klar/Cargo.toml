@@ -27,7 +27,7 @@ tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 # Password hashing — argon2 is the current best choice, resistant to GPU attacks
 argon2 = "0.5"
 # JWT tokens for stateless auth
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 # Need this for axum header extraction
 axum-extra = { version = "0.10", features = ["typed-header"] }
 # Image processing — resize, format conversion, EXIF stripping (by re-encoding)
@@ -50,7 +50,7 @@ futures = "0.3.32"
 tokio-stream = "0.1.18"
 async-stream = "0.3.6"
 aws-config = "=1.4.0"
-aws-sdk-s3 = "=1.4.0"
+aws-sdk-s3 = "=1.112.0"
 aws-smithy-types = "=1.4.0"
 reqwest = "0.13.4"
 dotenvy = "0.15.7"
