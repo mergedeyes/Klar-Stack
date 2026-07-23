@@ -114,8 +114,15 @@ export default function DatenschutzPage() {
           Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art.
           16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18),
           Datenübertragbarkeit (Art. 20) sowie Widerspruch (Art. 21) gegen
-          die Verarbeitung deiner Daten. Wende dich dazu an [kontakt@klarsocial.eu].
-          Außerdem steht dir ein Beschwerderecht bei einer
+          die Verarbeitung deiner Daten. Für das Auskunftsrecht und die
+          Datenübertragbarkeit steht dir in den Einstellungen unter{" "}
+          <strong>„Download your data"</strong> ein direkter Selbstbedienungs-Export
+          zur Verfügung, der dir alle gespeicherten Daten als JSON-Datei
+          bereitstellt. Für alle anderen Anliegen wende dich an{" "}
+          <a href="mailto:kontakt@klarsocial.eu" className="underline">
+            kontakt@klarsocial.eu
+          </a>
+          . Außerdem steht dir ein Beschwerderecht bei einer
           Datenschutz-Aufsichtsbehörde zu.
         </p>
       </section>

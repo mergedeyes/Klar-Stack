@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronRight, KeyRound, Trash2, UserPen } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, KeyRound, Trash2, UserPen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { users } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from '@/components/SmartBackButton';
 
@@ -32,12 +33,26 @@ const sections = [
 export default function SettingsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
   if (authLoading || !user) return null;
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await users.exportData();
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -73,6 +88,32 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
+
+        {/* Right of access / data portability (Art. 15 + 20 DSGVO) — a
+            separate action rather than a sub-page, since it's a single
+            direct download rather than something with its own screen. */}
+        <div className="mt-4 overflow-hidden rounded-xl border border-border">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-muted/50 disabled:opacity-60"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+              <Download size={18} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">
+                {exporting ? "Preparing your data…" : "Download your data"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Get everything Klar has stored about your account as a JSON file
+              </p>
+            </div>
+          </button>
+        </div>
+        {exportError && (
+          <p className="mt-2 px-1 text-xs text-destructive">{exportError}</p>
+        )}
       </main>
     </div>
   );

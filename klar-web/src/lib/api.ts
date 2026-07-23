@@ -334,6 +334,41 @@ export const users = {
     if (!res.ok) throw new Error((data as ApiError).error ?? "Upload failed");
     return data as User;
   },
+
+  // Right of access / data portability (Art. 15 + 20 DSGVO): fetches the
+  // full JSON export and triggers a browser download directly — bypasses
+  // the shared `request()` wrapper since we need the raw Blob and the
+  // filename from Content-Disposition, not parsed JSON to use in state.
+  exportData: async (): Promise<void> => {
+    const headers: Record<string, string> = {};
+    const accessToken = tokens.getAccess();
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+    const res = await fetch(`${API_URL}/users/me/export`, {
+      method: "GET",
+      credentials: "include",
+      headers,
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error((data as ApiError)?.error ?? "Export failed");
+    }
+
+    const disposition = res.headers.get("Content-Disposition");
+    const match = disposition?.match(/filename="(.+)"/);
+    const filename = match?.[1] ?? "klar-datenexport.json";
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ── Follow endpoints ──────────────────────────────────────────────────────────

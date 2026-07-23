@@ -95,6 +95,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/me/password", patch(handlers::users::change_password))
         .route("/users/me/avatar", post(handlers::users::upload_avatar))
         .route("/users/me/blocked", get(handlers::blocks::get_blocked_users))
+        .route("/users/me/export", get(handlers::users::export_my_data))
         .route("/users/{username}/follow", post(handlers::follows::follow_user)
             .delete(handlers::follows::unfollow_user))
         .route("/users/{username}/block", post(handlers::blocks::block_user)

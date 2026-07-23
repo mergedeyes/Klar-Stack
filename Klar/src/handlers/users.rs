@@ -1,6 +1,6 @@
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, HeaderValue, StatusCode},
     Json,
 };
 use serde::Deserialize;
@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 /// Search query parameters
 #[derive(Debug, Deserialize)]
@@ -401,4 +401,258 @@ pub async fn delete_account(
 
     tracing::info!("Account deleted: {}", auth.user_id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /users/me/export — self-service data export (Art. 15 + Art. 20 DSGVO:
+/// right of access + right to data portability). Returns everything we hold
+/// about the requesting user as a single, pretty-printed, downloadable JSON
+/// file — no admin/manual DB query needed on our end.
+///
+/// Deliberately excludes: password_hash, refresh/email tokens (security
+/// artifacts, not meaningful personal data the person would want back).
+pub async fn export_my_data(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
+    let db_err = |e: sqlx::Error| {
+        tracing::error!("Data export query failed: {}", e);
+        AppError::internal("Database error")
+    };
+
+    // --- Profile ---
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at FROM users WHERE id = $1"
+    )
+    .bind(auth.user_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    // --- Posts (with their media) ---
+    let posts = sqlx::query_as::<_, (Uuid, Option<String>, i64, i64, DateTime<Utc>, Option<DateTime<Utc>>)>(
+        "SELECT id, caption, like_count, comment_count, created_at, edited_at FROM posts WHERE user_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    let post_ids: Vec<Uuid> = posts.iter().map(|p| p.0).collect();
+
+    let media_rows = if post_ids.is_empty() {
+        vec![]
+    } else {
+        sqlx::query_as::<_, (Uuid, String, String, String, i32, i32)>(
+            "SELECT post_id, thumb_key, medium_key, full_key, width, height FROM media_assets WHERE post_id = ANY($1)"
+        )
+        .bind(&post_ids)
+        .fetch_all(&state.db)
+        .await
+        .map_err(db_err)?
+    };
+
+    let posts_json: Vec<serde_json::Value> = posts.into_iter().map(|(id, caption, like_count, comment_count, created_at, edited_at)| {
+        let media: Vec<serde_json::Value> = media_rows.iter()
+            .filter(|m| m.0 == id)
+            .map(|(_, thumb, medium, full, width, height)| serde_json::json!({
+                "thumbnail_url": state.storage.public_url(thumb),
+                "medium_url": state.storage.public_url(medium),
+                "full_url": state.storage.public_url(full),
+                "width": width,
+                "height": height,
+            }))
+            .collect();
+
+        serde_json::json!({
+            "id": id,
+            "caption": caption,
+            "like_count": like_count,
+            "comment_count": comment_count,
+            "created_at": created_at,
+            "edited_at": edited_at,
+            "media": media,
+        })
+    }).collect();
+
+    // --- Comments ---
+    let comments = sqlx::query_as::<_, (Uuid, Uuid, String, i64, DateTime<Utc>, Option<DateTime<Utc>>)>(
+        "SELECT post_id, id, body, like_count, created_at, edited_at FROM comments WHERE user_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    let comments_json: Vec<serde_json::Value> = comments.into_iter().map(|(post_id, id, body, like_count, created_at, edited_at)| {
+        serde_json::json!({
+            "id": id,
+            "post_id": post_id,
+            "body": body,
+            "like_count": like_count,
+            "created_at": created_at,
+            "edited_at": edited_at,
+        })
+    }).collect();
+
+    // --- Likes given (posts) ---
+    let post_likes = sqlx::query_as::<_, (Uuid, DateTime<Utc>)>(
+        "SELECT post_id, created_at FROM likes WHERE user_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    // --- Likes given (comments) ---
+    let comment_likes = sqlx::query_as::<_, (Uuid, DateTime<Utc>)>(
+        "SELECT comment_id, created_at FROM comment_likes WHERE user_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    // --- Following / Followers ---
+    let following = sqlx::query_as::<_, (String, DateTime<Utc>)>(
+        "SELECT u.username, f.created_at FROM follows f JOIN users u ON u.id = f.following_id WHERE f.follower_id = $1 ORDER BY f.created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    let followers = sqlx::query_as::<_, (String, DateTime<Utc>)>(
+        "SELECT u.username, f.created_at FROM follows f JOIN users u ON u.id = f.follower_id WHERE f.following_id = $1 ORDER BY f.created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    // --- Blocked users (that this account initiated) ---
+    let blocked = sqlx::query_as::<_, (String, DateTime<Utc>)>(
+        "SELECT u.username, b.created_at FROM blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = $1 ORDER BY b.created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    // --- Notifications received (capped — this is a personal export, not
+    // an unbounded audit log) ---
+    let notifications = sqlx::query_as::<_, (String, String, Option<Uuid>, Option<Uuid>, bool, DateTime<Utc>)>(
+        r#"
+        SELECT n.type::text, u.username, n.post_id, n.comment_id, n.is_read, n.created_at
+        FROM notifications n JOIN users u ON u.id = n.actor_id
+        WHERE n.user_id = $1
+        ORDER BY n.created_at DESC
+        LIMIT 500
+        "#
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    let notifications_json: Vec<serde_json::Value> = notifications.into_iter().map(|(type_, actor_username, post_id, comment_id, is_read, created_at)| {
+        serde_json::json!({
+            "type": type_,
+            "from": actor_username,
+            "post_id": post_id,
+            "comment_id": comment_id,
+            "is_read": is_read,
+            "created_at": created_at,
+        })
+    }).collect();
+
+    // --- Conversations + messages ---
+    // Includes the full shared conversation (both sides), matching how
+    // WhatsApp/Instagram-style exports handle DMs — the alternative
+    // (only your own sent messages) would produce a confusing, half-empty
+    // conversation history for the person requesting their data.
+    let conversations = sqlx::query_as::<_, (Uuid, String)>(
+        r#"
+        SELECT c.id,
+            CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END
+        FROM conversations c
+        JOIN users u1 ON u1.id = c.user1_id
+        JOIN users u2 ON u2.id = c.user2_id
+        WHERE c.user1_id = $1 OR c.user2_id = $1
+        ORDER BY c.updated_at DESC
+        "#
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    let mut conversations_json = Vec::with_capacity(conversations.len());
+    for (conv_id, other_username) in conversations {
+        let messages = sqlx::query_as::<_, (String, String, DateTime<Utc>, Option<DateTime<Utc>>)>(
+            r#"
+            SELECT u.username, m.body, m.created_at, m.edited_at
+            FROM messages m JOIN users u ON u.id = m.sender_id
+            WHERE m.conversation_id = $1
+            ORDER BY m.created_at
+            "#
+        )
+        .bind(conv_id)
+        .fetch_all(&state.db)
+        .await
+        .map_err(db_err)?;
+
+        let messages_json: Vec<serde_json::Value> = messages.into_iter().map(|(sender, body, created_at, edited_at)| {
+            serde_json::json!({
+                "from": sender,
+                "body": body,
+                "created_at": created_at,
+                "edited_at": edited_at,
+            })
+        }).collect();
+
+        conversations_json.push(serde_json::json!({
+            "with": other_username,
+            "messages": messages_json,
+        }));
+    }
+
+    let export = serde_json::json!({
+        "export_info": {
+            "generated_at": Utc::now(),
+            "note": "Datenexport gemäß Art. 15/20 DSGVO — alle personenbezogenen Daten, die Klar über diesen Account gespeichert hat.",
+        },
+        "profile": {
+            "username": profile.0,
+            "email": profile.1,
+            "display_name": profile.2,
+            "bio": profile.3,
+            "avatar_url": profile.4.map(|k| state.storage.public_url(&k)),
+            "email_verified": profile.5,
+            "created_at": profile.6,
+        },
+        "posts": posts_json,
+        "comments": comments_json,
+        "likes_given": {
+            "posts": post_likes.into_iter().map(|(post_id, created_at)| serde_json::json!({"post_id": post_id, "created_at": created_at})).collect::<Vec<_>>(),
+            "comments": comment_likes.into_iter().map(|(comment_id, created_at)| serde_json::json!({"comment_id": comment_id, "created_at": created_at})).collect::<Vec<_>>(),
+        },
+        "following": following.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+        "followers": followers.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+        "blocked_users": blocked.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+        "notifications_received": notifications_json,
+        "conversations": conversations_json,
+    });
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!(
+            "attachment; filename=\"klar-datenexport-{}.json\"",
+            Utc::now().format("%Y-%m-%d")
+        )).unwrap(),
+    );
+
+    tracing::info!("Data export generated for user: {}", auth.user_id);
+
+    Ok((headers, Json(export)))
 }
