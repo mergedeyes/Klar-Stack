@@ -500,10 +500,18 @@ export interface Conversation {
   other_user_id: string;
   other_username: string;
   other_avatar_url: string | null;
-  last_message: string | null;
-  // Who sent last_message — null only when last_message is also null (no
-  // messages yet). Used to render "Me: ..." vs. the plain message text.
-  last_message_sender_id: string | null;
+  // Whichever is more recent: the last message, or the last reaction on
+  // any message in the conversation. null only for a brand new
+  // conversation with no activity yet.
+  last_activity_kind: 'message' | 'reply' | 'reaction' | null;
+  last_activity_actor_id: string | null;
+  // Who wrote the message involved -- same as actor_id for
+  // 'message'/'reply', but for 'reaction' this is who wrote the message
+  // being reacted to (may differ from who reacted).
+  last_activity_message_sender_id: string | null;
+  last_activity_text: string | null;
+  // Only set when last_activity_kind is 'reaction'.
+  last_activity_emoji: string | null;
   updated_at: string;
 }
 

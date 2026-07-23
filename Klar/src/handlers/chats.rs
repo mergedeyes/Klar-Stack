@@ -9,9 +9,15 @@ pub async fn get_conversations(
     auth: AuthUser,
 ) -> Result<Json<Vec<ConversationResponse>>, AppError> {
     // Converted from the query_as! macro to a plain sqlx::query_as call
-    // (runtime-checked, not compile-time) so adding last_message_sender_id
-    // here doesn't require a cargo sqlx prepare run against a live DB to
-    // refresh the offline query cache before this builds in CI.
+    // (runtime-checked, not compile-time) so schema changes here don't
+    // require a cargo sqlx prepare run against a live DB to refresh the
+    // offline query cache before this builds in CI.
+    //
+    // The LATERAL subquery picks whichever is more recent: the last
+    // message in the conversation, or the last reaction on *any* message
+    // in it (joined back to that message for its body/sender) -- a
+    // reaction can be the most recent activity even though it doesn't
+    // create a new message row.
     let convos = sqlx::query_as::<_, ConversationResponse>(
         r#"
         SELECT 
@@ -19,17 +25,46 @@ pub async fn get_conversations(
             u.id as other_user_id,
             u.username as other_username,
             u.avatar_url as other_avatar_url,
-            lm.body as last_message,
-            lm.sender_id as last_message_sender_id,
+            la.kind as last_activity_kind,
+            la.actor_id as last_activity_actor_id,
+            la.message_sender_id as last_activity_message_sender_id,
+            la.text as last_activity_text,
+            la.emoji as last_activity_emoji,
             c.updated_at
         FROM conversations c
         JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
         LEFT JOIN LATERAL (
-            SELECT body, sender_id FROM messages m
-            WHERE m.conversation_id = c.id
-            ORDER BY m.created_at DESC
+            (
+                SELECT
+                    CASE WHEN m.reply_to_message_id IS NOT NULL THEN 'reply' ELSE 'message' END as kind,
+                    m.sender_id as actor_id,
+                    m.sender_id as message_sender_id,
+                    m.body as text,
+                    NULL::text as emoji,
+                    m.created_at as at
+                FROM messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.created_at DESC
+                LIMIT 1
+            )
+            UNION ALL
+            (
+                SELECT
+                    'reaction' as kind,
+                    mr.user_id as actor_id,
+                    m2.sender_id as message_sender_id,
+                    m2.body as text,
+                    mr.emoji as emoji,
+                    mr.created_at as at
+                FROM message_reactions mr
+                JOIN messages m2 ON m2.id = mr.message_id
+                WHERE m2.conversation_id = c.id
+                ORDER BY mr.created_at DESC
+                LIMIT 1
+            )
+            ORDER BY at DESC
             LIMIT 1
-        ) lm ON true
+        ) la ON true
         WHERE c.user1_id = $1 OR c.user2_id = $1
         ORDER BY c.updated_at DESC
         "#
@@ -253,17 +288,15 @@ pub async fn toggle_reaction(
         .await?;
     }
 
-    // Notify the *other* participant in this conversation -- reusing the
-    // same "message" SSE event type as send_message, rather than adding a
-    // separate "reaction" type, since the effect wanted is identical: bump
-    // the Chat icon's badge, and make an open ChatWindow on the other end
-    // live-refetch to show the new/removed reaction. A 1:1 conversation
-    // always has exactly two participants, so "whichever of user1/user2
-    // isn't me" is always the right target regardless of who sent the
-    // message being reacted to.
-    if let Ok(Some((user1_id, user2_id))) = sqlx::query_as::<_, (Uuid, Uuid)>(
+    // Look up this message's conversation + both participants -- needed
+    // both to notify "the other side" and to bump conversations.updated_at
+    // so a reaction moves the conversation to the top of the list, same as
+    // a new message would (otherwise the richer "X reacted to..." preview
+    // in get_conversations would be correct but the conversation could sit
+    // buried below others that are actually less recently active).
+    let conv = sqlx::query_as::<_, (Uuid, Uuid, Uuid)>(
         r#"
-        SELECT c.user1_id, c.user2_id
+        SELECT c.id, c.user1_id, c.user2_id
         FROM conversations c
         JOIN messages m ON m.conversation_id = c.id
         WHERE m.id = $1
@@ -272,7 +305,21 @@ pub async fn toggle_reaction(
     .bind(message_id)
     .fetch_optional(&state.db)
     .await
-    {
+    .ok()
+    .flatten();
+
+    if let Some((conversation_id, user1_id, user2_id)) = conv {
+        sqlx::query("UPDATE conversations SET updated_at = NOW() WHERE id = $1")
+            .bind(conversation_id)
+            .execute(&state.db)
+            .await
+            .ok();
+
+        // Reusing the same "message" SSE event type as send_message,
+        // rather than adding a separate "reaction" type, since the effect
+        // wanted is identical: bump the Chat icon's badge, and make an
+        // open ChatWindow on the other end live-refetch to show the
+        // new/removed reaction.
         let target_user_id = if user1_id == auth.user_id { user2_id } else { user1_id };
 
         if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")

@@ -26,11 +26,25 @@ pub struct ConversationResponse {
     pub other_user_id: Uuid,
     pub other_username: String,
     pub other_avatar_url: Option<String>,
-    pub last_message: Option<String>,
-    /// Who sent last_message -- needed so the frontend can show "Me: ..."
-    /// vs. the plain message text depending on who sent it. None only
-    /// when there's no message yet (last_message is also None then).
-    pub last_message_sender_id: Option<Uuid>,
+    /// Whichever is more recent: the last message sent, or the last
+    /// reaction on any message in this conversation -- lets the overview
+    /// show "reacted to your message: ..." instead of only ever showing
+    /// plain message text. None only when the conversation has no
+    /// messages or reactions at all yet.
+    pub last_activity_kind: Option<String>, // "message" | "reply" | "reaction"
+    /// Who performed the last activity -- the message's sender for
+    /// "message"/"reply", or the reactor for "reaction".
+    pub last_activity_actor_id: Option<Uuid>,
+    /// The sender of the *message involved* -- same as actor_id for
+    /// "message"/"reply", but for "reaction" this is who wrote the
+    /// message being reacted to (which may differ from who reacted).
+    /// Needed to render "reacted to *your* message" vs "...to <name>'s".
+    pub last_activity_message_sender_id: Option<Uuid>,
+    /// The message body -- either the message itself, or (for a
+    /// reaction) the body of the message that was reacted to.
+    pub last_activity_text: Option<String>,
+    /// Only set for "reaction" kind.
+    pub last_activity_emoji: Option<String>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 
