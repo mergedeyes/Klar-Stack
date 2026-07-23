@@ -17,6 +17,11 @@ pub struct CommentResponse {
     pub edited_at: Option<DateTime<Utc>>,
     pub like_count: i64,
     pub liked: bool,
+    /// "visible" | "flagged" | "hidden" -- see handlers/reports.rs.
+    /// get_comments already excludes "hidden" comments for everyone but
+    /// their own author, so this field's job on the frontend is just
+    /// rendering the "flagged" interstitial for the author's own view.
+    pub moderation_status: String,
 }
 
 #[derive(Debug, Deserialize)]

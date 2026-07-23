@@ -74,7 +74,8 @@ pub async fn create_comment(
             (SELECT avatar_url FROM users WHERE id = $2) as avatar_url,
             parent_comment_id, body, created_at, edited_at,
             0::bigint as like_count,
-            false as liked
+            false as liked,
+            moderation_status::text
         "#
     )
     .bind(post_id)
@@ -145,6 +146,14 @@ pub async fn create_comment(
     Ok((StatusCode::CREATED, Json(comment)))
 }
 
+/// GET /posts/:id/comments — list comments on a post.
+///
+/// Excludes "hidden" comments (auto-hidden via a CSAM report) for
+/// everyone except the comment's own author, same pattern as
+/// posts::get_post -- so a hidden comment's content isn't distinguishable
+/// from simply not existing to anyone but the person who wrote it.
+/// "flagged" comments (lower-severity reports) still appear here; the
+/// interstitial warning is a frontend concern.
 pub async fn get_comments(
     State(state): State<AppState>,
     auth: OptionalAuthUser,
@@ -165,10 +174,12 @@ pub async fn get_comments(
                     SELECT 1 FROM comment_likes
                     WHERE comment_id = c.id AND user_id = $2::uuid
                 )
-            END AS liked
+            END AS liked,
+            c.moderation_status::text
         FROM comments c
         JOIN users u ON c.user_id = u.id
         WHERE c.post_id = $1
+            AND (c.moderation_status != 'hidden' OR c.user_id = $2)
         ORDER BY c.created_at ASC
         "#
     )
@@ -219,7 +230,8 @@ pub async fn edit_comment(
             (SELECT avatar_url FROM users WHERE id = user_id) as avatar_url,
             parent_comment_id, body, created_at, edited_at,
             like_count,
-            false as liked
+            false as liked,
+            moderation_status::text
         "#
     )
     .bind(input.body.trim())

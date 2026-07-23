@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronRight, Download, KeyRound, Trash2, UserPen } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,25 @@ export default function SettingsPage() {
 
   if (authLoading || !user) return null;
 
+  // Display-only gate -- actual authorization for /admin/reports is
+  // enforced server-side (ADMIN_USER_ID check in reports.rs), this just
+  // avoids showing every friends-and-family test account a menu entry
+  // they can't use. Requires NEXT_PUBLIC_ADMIN_USER_ID to be set to the
+  // same value as the backend's ADMIN_USER_ID.
+  const isAdmin = !!process.env.NEXT_PUBLIC_ADMIN_USER_ID && user.id === process.env.NEXT_PUBLIC_ADMIN_USER_ID;
+
+  const visibleSections = isAdmin
+    ? [
+        ...sections,
+        {
+          href: "/admin/reports",
+          icon: ShieldAlert,
+          label: "Reports",
+          description: "Review reported content",
+        },
+      ]
+    : sections;
+
   const handleExport = async () => {
     setExporting(true);
     setExportError(null);
@@ -65,12 +84,12 @@ export default function SettingsPage() {
 
       <main className="mx-auto max-w-lg px-4 py-4">
         <div className="overflow-hidden rounded-xl border border-border">
-          {sections.map((section, i) => (
+          {visibleSections.map((section, i) => (
             <button
               key={section.href}
               onClick={() => router.push(section.href)}
               className={`flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-muted/50 ${
-                i < sections.length - 1 ? "border-b border-border" : ""
+                i < visibleSections.length - 1 ? "border-b border-border" : ""
               }`}
             >
               <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${

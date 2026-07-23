@@ -85,6 +85,7 @@ function CommentRow({
   onDelete,
   onEdited,
   onReply,
+  onReport,
 }: {
   comment: Comment;
   currentUsername: string | undefined;
@@ -94,6 +95,7 @@ function CommentRow({
   onDelete: (id: string) => void;
   onEdited: (updated: Comment) => void;
   onReply: (username: string, commentId: string) => void;
+  onReport: (commentId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
@@ -105,6 +107,16 @@ function CommentRow({
 
   const isAuthor = currentUsername === comment.username;
   const canDelete = isAuthor || currentUsername === postUsername;
+
+  // "hidden" comments only ever reach the client for their own author
+  // (server-side filtered otherwise) -- if it got here, showing a
+  // pending-review note rather than the raw body is the whole point.
+  // "flagged" comments reach everyone, but non-authors get a lightweight
+  // click-through instead of the raw text by default.
+  const isHidden = comment.moderation_status === "hidden";
+  const isFlagged = comment.moderation_status === "flagged";
+  const [revealFlagged, setRevealFlagged] = useState(false);
+  const showPlaceholder = (isFlagged && !isAuthor && !revealFlagged);
 
   useEffect(() => {
     if (editing) editInputRef.current?.focus();
@@ -147,7 +159,21 @@ function CommentRow({
       <div className="flex gap-2.5">
         <Avatar username={comment.username} avatarUrl={comment.avatar_url} size={8} />
         <div className="flex-1 min-w-0">
-          {editing ? (
+          {isAuthor && (isFlagged || isHidden) && (
+            <p className="mb-1 text-xs text-muted-foreground">
+              {isHidden ? "Hidden — pending review" : "Pending review — only visible to you and people who click through"}
+            </p>
+          )}
+
+          {showPlaceholder ? (
+            <button
+              onClick={() => setRevealFlagged(true)}
+              className="flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+            >
+              <ShieldAlert size={12} />
+              This comment may violate our guidelines — tap to view
+            </button>
+          ) : editing ? (
             <div className="space-y-1.5">
               <textarea
                 ref={editInputRef}
@@ -195,13 +221,18 @@ function CommentRow({
                 {canDelete && (
                   <button onClick={() => onDelete(comment.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
                 )}
+                {currentUsername && !isAuthor && (
+                  <button onClick={() => onReport(comment.id)} className="text-xs text-muted-foreground hover:text-foreground" aria-label="Report comment">
+                    Report
+                  </button>
+                )}
               </div>
             </>
           )}
         </div>
 
         {/* Like button */}
-        {!editing && (
+        {!editing && !showPlaceholder && (
           <button
             onClick={handleLike}
             disabled={!currentUsername || liking}
@@ -233,6 +264,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
   // Reported (violence/self-harm/sexual-content severity) posts are
   // gated behind this until the viewer explicitly clicks through --
   // never auto-set true for the post's own owner, who should always be
@@ -389,6 +421,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
           onDelete={handleDelete}
           onEdited={handleEdited}
           onReply={handleSetReply}
+          onReport={setReportingCommentId}
         />
         {repliesMap[comment.id] && renderComments(repliesMap[comment.id], depth + 1)}
       </div>
@@ -558,6 +591,14 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
           targetType="post"
           targetId={post.id}
           onClose={() => setShowReportModal(false)}
+        />
+      )}
+
+      {reportingCommentId && (
+        <ReportModal
+          targetType="comment"
+          targetId={reportingCommentId}
+          onClose={() => setReportingCommentId(null)}
         />
       )}
     </div>

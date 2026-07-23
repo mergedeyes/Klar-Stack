@@ -109,6 +109,10 @@ export interface Comment {
   like_count: number;
   liked: boolean;
   avatar_url: string | null;
+  // "hidden" comments never reach the client except for their own author
+  // (server-side filtered) -- "flagged" ones do reach the client and
+  // should render behind a lightweight interstitial for non-authors.
+  moderation_status?: 'visible' | 'flagged' | 'hidden';
 }
 
 export interface AuthResponse {
