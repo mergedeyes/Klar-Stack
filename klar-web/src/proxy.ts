@@ -18,7 +18,11 @@ const PUBLIC_PATHS = [
   "/favicon.ico",
 ];
 
-export function middleware(req: NextRequest) {
+// Next.js 16 renamed middleware.ts -> proxy.ts (exported function
+// "proxy", not "middleware") -- the old convention is deprecated and, in
+// practice, wasn't actually being invoked at all under 16.2.11. This is
+// the same logic as before, just under the name Next.js 16 expects.
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (
@@ -51,8 +55,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next's own static/image optimization internals --
-  // those are already excluded above too, but excluding them at the
-  // matcher level means middleware doesn't even run for them at all.
   matcher: ["/((?!_next/static|_next/image).*)"],
 };
