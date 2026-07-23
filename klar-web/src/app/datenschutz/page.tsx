@@ -59,7 +59,10 @@ export default function DatenschutzPage() {
             Aufnahmezeitpunkt), bevor das Bild gespeichert wird. Beiträge,
             Kommentare und Direktnachrichten werden gespeichert, um die
             Kernfunktion des Dienstes bereitzustellen (Art. 6 Abs. 1 lit. b
-            DSGVO).
+            DSGVO). Zusätzlich gleichen wir hochgeladene Fotos automatisiert
+            mit Hash-Werten bekannten Materials sexualisierter Gewalt gegen
+            Kinder (CSAM) ab, bevor sie für andere Nutzer:innen sichtbar
+            werden (siehe Ziffer 4, Microsoft PhotoDNA).
           </p>
         </section>
 
@@ -122,6 +125,25 @@ export default function DatenschutzPage() {
               EU-U.S. Data Privacy Framework. [Bitte vor Live-Gang prüfen, ob
               ein aktueller Auftragsverarbeitungsvertrag inkl. SCC mit
               Upstash abgeschlossen wurde.]
+            </li>
+            <li>
+              <strong>Microsoft (PhotoDNA Cloud Service)</strong> (geplant,
+              vorbehaltlich der Freischaltung durch Microsoft): Hochgeladene
+              Fotos sollen automatisiert mit Hash-Werten bekannten Materials
+              sexualisierter Gewalt gegen Kinder (CSAM) abgeglichen werden,
+              bevor sie für andere Nutzer:innen sichtbar werden. Dabei wird
+              ausschließlich ein nicht umkehrbarer Hash-Wert des Bildes
+              gebildet und abgeglichen; das Bild selbst wird von Microsoft
+              nicht gespeichert oder eingesehen. Microsoft ist ein
+              US-amerikanisches Unternehmen; eine Übermittlung der
+              Hash-Werte in die USA erfolgt auf Grundlage geeigneter
+              Garantien (z. B. EU-U.S. Data Privacy Framework bzw.
+              Standardvertragsklauseln). Bestätigte Treffer werden gemäß
+              gesetzlicher Meldepflicht an die zuständigen deutschen bzw.
+              europäischen Behörden gemeldet. [Nach Freischaltung durch
+              Microsoft: konkrete Vertragsbedingungen (Auftragsverarbeitungs-
+              vertrag, Data-Privacy-Framework-Zertifizierung) prüfen und
+              diesen Absatz entsprechend aktualisieren.]
             </li>
           </ul>
         </section>
