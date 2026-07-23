@@ -1,11 +1,18 @@
-import { SmartBackButton } from "@/components/SmartBackButton";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export default function DatenschutzPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-2xl items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
+          <Link
+            href="/"
+            aria-label="Back"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft size={20} />
+          </Link>
           <span className="font-semibold">Datenschutzerklärung</span>
         </div>
       </header>
@@ -18,7 +25,7 @@ export default function DatenschutzPage() {
             <br />
             Benzstr. 1
             <br />
-            88250 Weingarten
+            88250, Weingarten
             <br />
             Deutschland
           </p>

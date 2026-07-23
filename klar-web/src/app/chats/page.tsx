@@ -30,6 +30,16 @@ function previewText(conv: Conversation, currentUserId: string | undefined): str
     : conv.last_message;
 }
 
+/** Mark a conversation read, then refresh the shared unread-count badge --
+ * chained rather than fired in parallel, since firing them together let
+ * the count refresh race ahead of the mark-read PATCH actually committing,
+ * which is why the red dot sometimes didn't clear. */
+function markReadAndRefresh(conversationId: string, refresh: () => void) {
+  chatsApi.markConversationRead(conversationId)
+    .then(() => refresh())
+    .catch(err => console.error("Failed to mark conversation as read", err));
+}
+
 function UnifiedChatsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -71,10 +81,7 @@ function UnifiedChatsPageContent() {
           // Coming from a profile link straight into an existing
           // conversation counts as opening it too.
           if (existing?.id) {
-            chatsApi.markConversationRead(existing.id).catch(err =>
-              console.error("Failed to mark conversation as read", err)
-            );
-            refreshChatUnreadCount();
+            markReadAndRefresh(existing.id, refreshChatUnreadCount);
           }
         }
       })
@@ -87,7 +94,10 @@ function UnifiedChatsPageContent() {
   // refetch the conversation list so its preview text/ordering reflects
   // it instantly, rather than only on the next page load. A full refetch
   // (vs. trying to patch just one row) also correctly handles a message
-  // arriving in a conversation that isn't in the list yet.
+  // arriving in a conversation that isn't in the list yet. Also fires for
+  // reactions now (chats.rs's toggle_reaction publishes the same event
+  // type), which is harmless here -- the list just re-fetches, and
+  // last_message only reflects real messages either way.
   useEffect(() => {
     if (!lastMessageEvent) return;
     chatsApi.getConversations()
@@ -102,15 +112,8 @@ function UnifiedChatsPageContent() {
       un: conv.other_username,
       av: conv.other_avatar_url
     });
-    // Opening a conversation clears its unread messages. Fire-and-forget
-    // the mark-read call, but refresh the badge count immediately after —
-    // without this, the red dot on the Chat icon only cleared on the next
-    // full mount of the notification provider (e.g. a reload), since
-    // nothing else told it a conversation had just been read.
-    chatsApi.markConversationRead(conv.id).catch(err =>
-      console.error("Failed to mark conversation as read", err)
-    );
-    refreshChatUnreadCount();
+    // Opening a conversation clears its unread messages.
+    markReadAndRefresh(conv.id, refreshChatUnreadCount);
     // URL säubern ohne neuladen
     window.history.replaceState({}, '', '/chats');
   };

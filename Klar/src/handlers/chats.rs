@@ -253,6 +253,49 @@ pub async fn toggle_reaction(
         .await?;
     }
 
+    // Notify the *other* participant in this conversation -- reusing the
+    // same "message" SSE event type as send_message, rather than adding a
+    // separate "reaction" type, since the effect wanted is identical: bump
+    // the Chat icon's badge, and make an open ChatWindow on the other end
+    // live-refetch to show the new/removed reaction. A 1:1 conversation
+    // always has exactly two participants, so "whichever of user1/user2
+    // isn't me" is always the right target regardless of who sent the
+    // message being reacted to.
+    if let Ok(Some((user1_id, user2_id))) = sqlx::query_as::<_, (Uuid, Uuid)>(
+        r#"
+        SELECT c.user1_id, c.user2_id
+        FROM conversations c
+        JOIN messages m ON m.conversation_id = c.id
+        WHERE m.id = $1
+        "#
+    )
+    .bind(message_id)
+    .fetch_optional(&state.db)
+    .await
+    {
+        let target_user_id = if user1_id == auth.user_id { user2_id } else { user1_id };
+
+        if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await
+        {
+            let event = NotificationEvent {
+                target_user_id,
+                notification: NotificationResponse {
+                    id: message_id,
+                    type_name: "message".to_string(),
+                    is_read: false,
+                    created_at: Utc::now(),
+                    post_id: None,
+                    post_thumb_url: None,
+                    actor: crate::models::UserResponse::from(actor_row),
+                }
+            };
+            publish_notification(&state, &event).await;
+        }
+    }
+
     Ok(StatusCode::OK)
 }
 
