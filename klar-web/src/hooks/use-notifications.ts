@@ -1,4 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+"use client";
+
+import { createContext, useContext, useEffect, useState, useCallback, createElement } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { notifications as notificationsApi, chatsApi, auth, tokens, type AppNotification } from "@/lib/api";
 import { ENV } from '@/env';
@@ -7,21 +9,45 @@ const API_URL = ENV.API_URL;
 
 export type { AppNotification };
 
-export function useNotifications() {
-  const { user } = useAuth(); // <-- 2. User-State holen
+interface LastMessageEvent {
+  senderId: string;
+  at: number;
+}
+
+interface NotificationsContextValue {
+  notifications: AppNotification[];
+  unreadCount: number;
+  markAllAsRead: () => void;
+  chatUnreadCount: number;
+  /** Bumped every time a live "message" SSE event arrives (see
+   * chats.rs's send_message). ChatWindow watches this and, if
+   * senderId matches whoever it's currently showing a conversation
+   * with, refetches — this is what makes an open chat update live
+   * instead of only on reload. */
+  lastMessageEvent: LastMessageEvent | null;
+}
+
+const NotificationsContext = createContext<NotificationsContextValue | null>(null);
+
+/**
+ * Single, app-wide SSE connection + notification state, provided once at
+ * the root (see layout.tsx) rather than per-component. Previously this
+ * lived entirely inside TopNav's own hook, which meant any page that
+ * doesn't render TopNav (like /chats) had no SSE connection running at
+ * all -- that's why chat messages only ever showed up after a reload.
+ *
+ * Written with createElement instead of JSX so this stays a plain .ts
+ * file rather than .tsx -- avoids a same-basename .ts/.tsx module
+ * collision, since this file previously held a plain (non-provider) hook.
+ */
+export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  // Chat unread badge -- tracked here (not in a separate hook) so it can
-  // ride the same single SSE connection below instead of opening a
-  // second one just for this.
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [lastMessageEvent, setLastMessageEvent] = useState<LastMessageEvent | null>(null);
 
-  // Initial fetch — goes through the shared `request()` helper in lib/api.ts
-  // so an expired access-token cookie gets silently refreshed and retried,
-  // same as every other authenticated call. A raw fetch() here would just
-  // throw on a 401 with no retry.
   useEffect(() => {
-    // 3. WICHTIG: Wenn noch kein User geladen ist, gar nicht erst fetchen!
     if (!user) return;
 
     notificationsApi.list()
@@ -31,32 +57,18 @@ export function useNotifications() {
       })
       .catch(err => console.error("Notification fetch failed:", err));
 
-    // Fresh count every time this hook mounts (i.e. every page that shows
-    // TopNav) — since /chats doesn't render TopNav, this is naturally how
-    // the badge picks up "already read" after a visit to /chats, without
-    // this hook needing to know anything about individual conversations.
     chatsApi.getUnreadCount()
       .then((data) => setChatUnreadCount(data.count))
       .catch(err => console.error("Chat unread count fetch failed:", err));
-  }, [user]); // <-- 4. Hook neu ausführen, sobald der User (nach dem Refresh) da ist
+  }, [user]);
 
-  // SSE Stream
   useEffect(() => {
-    // Auch der Stream darf erst starten, wenn der User da ist
     if (!user) return;
 
     let cancelled = false;
     let eventSource: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // The access token in the URL is only ~15 minutes old at best. Once it
-    // expires, this connection starts failing and — unlike a normal
-    // fetch() — there's no way to update EventSource's URL/headers after
-    // the fact. Without this, a tab left open past 15 minutes would have
-    // its notification stream silently die until a full page reload.
-    // So: on any error, refresh the token pair and reconnect with a fresh
-    // one instead of relying on EventSource's own built-in reconnect
-    // (which would just keep retrying with the same, now-stale token).
     const connect = () => {
       if (cancelled) return;
 
@@ -73,13 +85,9 @@ export function useNotifications() {
         try {
           const incoming: AppNotification = JSON.parse(event.data);
 
-          // 'message' events are a live chat signal piggybacked on this
-          // same stream (see chats.rs's send_message) -- they're never
-          // persisted in the notifications table, so they don't belong
-          // in the notification list/bell badge. Route to the chat badge
-          // instead and stop here.
           if (incoming.type_name === "message") {
             setChatUnreadCount(prev => prev + 1);
+            setLastMessageEvent({ senderId: incoming.actor.id, at: Date.now() });
             return;
           }
 
@@ -94,9 +102,6 @@ export function useNotifications() {
         eventSource?.close();
         if (cancelled) return;
 
-        // Try to get a fresh access token, then reconnect. If the refresh
-        // token itself is invalid (genuinely logged out), give up quietly
-        // rather than retrying forever.
         auth.refresh(tokens.getRefresh())
           .then((res) => {
             tokens.set(res.access_token, res.refresh_token);
@@ -105,9 +110,8 @@ export function useNotifications() {
             }
           })
           .catch(() => {
-            // Refresh failed — session's actually gone, not just a
-            // momentary network blip. Don't retry; a real login will
-            // remount this hook via the `user` dependency anyway.
+            // Refresh failed — session's actually gone. Don't retry; a
+            // real login will remount this provider via the `user` dep.
           });
       };
     };
@@ -119,9 +123,9 @@ export function useNotifications() {
       if (retryTimer) clearTimeout(retryTimer);
       eventSource?.close();
     };
-  }, [user]); // <-- Abhängigkeit hier ebenfalls einfügen
+  }, [user]);
 
-  const markAllAsRead = useCallback(async () => {
+  const markAllAsRead = useCallback(() => {
     if (unreadCount === 0 || !user) return;
 
     setUnreadCount(0);
@@ -132,11 +136,19 @@ export function useNotifications() {
     );
   }, [unreadCount, user]);
 
-  // Note: there's no clearChatUnread() here. /chats renders its own header
-  // instead of TopNav, so marking a conversation read happens directly via
-  // chatsApi.markConversationRead() from that page — this hook (and its
-  // one SSE connection) only needs to exist on the pages that show
-  // TopNav, where it re-fetches a fresh count on mount anyway.
+  const value: NotificationsContextValue = {
+    notifications,
+    unreadCount,
+    markAllAsRead,
+    chatUnreadCount,
+    lastMessageEvent,
+  };
 
-  return { notifications, unreadCount, markAllAsRead, chatUnreadCount };
+  return createElement(NotificationsContext.Provider, { value }, children);
+}
+
+export function useNotifications() {
+  const ctx = useContext(NotificationsContext);
+  if (!ctx) throw new Error("useNotifications must be used inside <NotificationsProvider>");
+  return ctx;
 }

@@ -146,6 +146,9 @@ pub async fn follow_user(
                         is_read: false,
                         created_at: chrono::Utc::now(),
                         post_id: None,
+                        // No post involved in a follow -- actor.avatar_url
+                        // is what the frontend previews/links instead.
+                        post_thumb_url: None,
                         actor: UserResponse::from(actor_row),
                     }
                 });

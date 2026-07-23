@@ -157,6 +157,8 @@ pub async fn send_message(
                 is_read: false,
                 created_at: Utc::now(),
                 post_id: None,
+                // No post involved in a chat message.
+                post_thumb_url: None,
                 actor: crate::models::UserResponse::from(actor_row),
             }
         };

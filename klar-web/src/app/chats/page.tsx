@@ -3,11 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { chatsApi, type Conversation } from "@/lib/api";
-import { ArrowLeft, MessageSquarePlus, MessageCircle } from "lucide-react";
+import { MessageSquarePlus, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMediaUrl } from "@/lib/utils/media";
 import ChatWindow from "@/components/ChatWindow";
 import NewChatModal from "@/components/NewChatModal";
+import TopNav from "@/components/TopNav";
 
 function UnifiedChatsPageContent() {
   const router = useRouter();
@@ -66,8 +67,8 @@ function UnifiedChatsPageContent() {
       av: conv.other_avatar_url
     });
     // Opening a conversation clears its unread messages -- fire-and-forget,
-    // since the Chat icon badge (rendered by TopNav elsewhere, not on this
-    // page) will pick up the fresh count next time it mounts.
+    // since the Chat icon badge (rendered by TopNav) will pick up the
+    // fresh count next time it mounts.
     chatsApi.markConversationRead(conv.id).catch(err =>
       console.error("Failed to mark conversation as read", err)
     );
@@ -78,14 +79,12 @@ function UnifiedChatsPageContent() {
 return (
     // 1. Root: h-screen und overflow-hidden zwingen die App, NICHT zu scrollen.
     <div className="h-screen w-full flex flex-col bg-background overflow-hidden">
-      
-      {/* 2. Page Header: flex-none hält ihn bei exakt h-14. KEIN fixed oder sticky mehr! */}
-      <header className="flex-none h-14 border-b border-border bg-background/95 backdrop-blur px-[50px] flex items-center">
-        <Button variant="ghost" className="gap-2" onClick={() => router.push("/feed")}>
-          <ArrowLeft size={18} />
-          Zurück zum Feed
-        </Button>
-      </header>
+
+      {/* 2. Shared top nav, same as every other primary page -- also gives
+         this page its own SSE-backed notification state (via the
+         NotificationsProvider mounted in layout.tsx), which is what
+         ChatWindow relies on for live message updates. */}
+      <TopNav active="chats" />
 
       {/* 3. Main: flex-1 nimmt sich den restlichen Platz. overflow-hidden verhindert Scrollen. */}
       <main className="flex-1 w-full flex overflow-hidden px-[50px]">

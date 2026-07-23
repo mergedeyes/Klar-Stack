@@ -35,6 +35,56 @@ pub struct NotificationResponse {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub actor: UserResponse,
     pub post_id: Option<Uuid>,
+    /// Storage key (not a full URL) for the post's first image, so the
+    /// frontend can show a preview thumbnail on the notification without
+    /// a second round-trip — same raw-key convention as PostResponse's
+    /// thumb_url elsewhere, run through getMediaUrl() on the frontend.
+    /// None for notification types with no associated post (e.g. 'follow').
+    pub post_thumb_url: Option<String>,
+}
+
+/// Row shape for get_notifications' join, decoded manually via
+/// sqlx::query_as with a plain string (not the query!/query_as! macros) —
+/// deliberately, so adding post_thumb_url here doesn't require a
+/// cargo sqlx prepare run (and a live DB) to update the offline query
+/// cache before this builds in CI.
+#[derive(sqlx::FromRow)]
+struct NotificationRow {
+    id: Uuid,
+    type_name: Option<String>,
+    is_read: bool,
+    created_at: chrono::DateTime<chrono::Utc>,
+    post_id: Option<Uuid>,
+    actor_id: Uuid,
+    actor_username: String,
+    actor_email: String,
+    actor_display: Option<String>,
+    actor_bio: Option<String>,
+    actor_avatar: Option<String>,
+    email_verified: bool,
+    actor_created: chrono::DateTime<chrono::Utc>,
+    actor_username_changed_at: Option<chrono::DateTime<chrono::Utc>>,
+    post_thumb_url: Option<String>,
+}
+
+/// Fetch a post's first image (sort_order = 0) as a raw storage key, for
+/// embedding in a notification preview -- used by the notification-
+/// creating handlers (likes/comments/comment_likes), which run this
+/// inside their own open transaction, before their own commit. Best-
+/// effort: a post with no image yet (or none at all) just yields None,
+/// never an error -- a missing thumbnail shouldn't block the notification.
+pub async fn fetch_post_thumb_in_tx(
+    tx: &mut sqlx::PgConnection,
+    post_id: Uuid,
+) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT thumb_key FROM media_assets WHERE post_id = $1 AND sort_order = 0"
+    )
+    .bind(post_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Publish a notification event to Redis so every backend replica (not
@@ -63,23 +113,25 @@ pub async fn get_notifications(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<NotificationResponse>>, AppError> {
-    
-    let records = sqlx::query!(
+
+    let records = sqlx::query_as::<_, NotificationRow>(
         r#"
         SELECT 
             n.id, n.type::text as type_name, n.is_read, n.created_at, n.post_id,
             u.id as actor_id, u.username as actor_username, u.email as actor_email, 
             u.display_name as actor_display, u.bio as actor_bio, 
             u.avatar_url as actor_avatar, u.email_verified, u.created_at as actor_created,
-            u.username_changed_at as actor_username_changed_at
+            u.username_changed_at as actor_username_changed_at,
+            m.thumb_key as post_thumb_url
         FROM notifications n
         JOIN users u ON n.actor_id = u.id
+        LEFT JOIN media_assets m ON m.post_id = n.post_id AND m.sort_order = 0
         WHERE n.user_id = $1
         ORDER BY n.created_at DESC
         LIMIT 50
-        "#,
-        auth.user_id
+        "#
     )
+    .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
     .map_err(|e| {
@@ -93,6 +145,7 @@ pub async fn get_notifications(
         is_read: rec.is_read,
         created_at: rec.created_at,
         post_id: rec.post_id,
+        post_thumb_url: rec.post_thumb_url,
         actor: UserResponse {
             id: rec.actor_id,
             username: rec.actor_username,

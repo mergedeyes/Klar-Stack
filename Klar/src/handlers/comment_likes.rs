@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
-use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
+use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::LikeResponse;
 
 /// POST /posts/:post_id/comments/:comment_id/like — toggle like on a comment (auth required)
@@ -57,8 +57,8 @@ pub async fn toggle_comment_like(
 
     let like_count: i64;
     // Built inside the transaction (needs the notification id + actor
-    // row), published to Redis only after commit -- same reasoning as
-    // likes.rs/follows.rs/comments.rs.
+    // row + post thumbnail), published to Redis only after commit -- same
+    // reasoning as likes.rs/follows.rs/comments.rs.
     let mut pending_notification: Option<NotificationEvent> = None;
 
     // Toggle
@@ -117,6 +117,7 @@ pub async fn toggle_comment_like(
 
             if let Some(nid) = notif_id {
                 if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
+                    let thumb = fetch_post_thumb_in_tx(&mut tx, post_id).await;
                     pending_notification = Some(NotificationEvent {
                         target_user_id: comment_author,
                         notification: NotificationResponse {
@@ -125,6 +126,7 @@ pub async fn toggle_comment_like(
                             is_read: false,
                             created_at: chrono::Utc::now(),
                             post_id: Some(post_id),
+                            post_thumb_url: thumb,
                             actor: crate::models::UserResponse::from(actor_row),
                         }
                     });

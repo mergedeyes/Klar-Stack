@@ -127,4 +127,18 @@
   html {
     @apply font-sans;
   }
+
+  /* Tailwind's Preflight deliberately resets <button> to cursor: default
+     (matching native browser behavior) rather than cursor: pointer. That
+     reads as "nothing feels clickable" across the whole app, since every
+     shadcn Button and raw <button> inherits it. Restoring pointer here
+     covers every button and role="button" element app-wide in one place,
+     rather than adding cursor-pointer to each component individually.
+     Disabled buttons are excluded on purpose -- they already get
+     pointer-events: none via the Button component's disabled: variant,
+     so a pointer cursor on them would be misleading. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }

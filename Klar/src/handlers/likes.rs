@@ -11,7 +11,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
-use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
+use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{EventType, LikeResponse};
 
 /// POST /posts/:post_id/like — toggle like on a post (auth required)
@@ -59,10 +59,9 @@ pub async fn toggle_like(
     })?;
 
     let like_count: i64;
-    // Built inside the transaction (needs the notification id + actor row),
-    // but published to Redis only after commit succeeds below — publishing
-    // while the transaction is still open would hold the DB connection/
-    // locks for the duration of a network round-trip to Redis for no reason.
+    // Built inside the transaction (needs the notification id + actor
+    // row + post thumbnail), published to Redis only after commit --
+    // don't hold the DB transaction open across a network call.
     let mut pending_notification: Option<NotificationEvent> = None;
 
     if already_liked {
@@ -119,6 +118,7 @@ pub async fn toggle_like(
 
             if let Some(nid) = notif_id {
                 if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
+                    let thumb = fetch_post_thumb_in_tx(&mut tx, post_id).await;
                     pending_notification = Some(NotificationEvent {
                         target_user_id: post_owner,
                         notification: NotificationResponse {
@@ -127,6 +127,7 @@ pub async fn toggle_like(
                             is_read: false,
                             created_at: chrono::Utc::now(),
                             post_id: Some(post_id),
+                            post_thumb_url: thumb,
                             actor: crate::models::UserResponse::from(actor_row),
                         }
                     });

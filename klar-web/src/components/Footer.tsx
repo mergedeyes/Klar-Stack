@@ -17,6 +17,10 @@ export default function Footer() {
         <Link href="/nutzungsbedingungen" className="hover:underline">
           Nutzungsbedingungen
         </Link>
+        <span aria-hidden="true">·</span>
+        <Link href="/transparenz" className="hover:underline">
+          Transparenz
+        </Link>
       </nav>
     </footer>
   );

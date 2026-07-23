@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { chatsApi, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useNotifications } from "@/hooks/use-notifications";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Reply, Edit2, Trash2, X, Smile } from "lucide-react";
@@ -17,6 +18,7 @@ interface ChatWindowProps {
 
 export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar }: ChatWindowProps) {
   const { user } = useAuth();
+  const { lastMessageEvent } = useNotifications();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,6 +37,23 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
       .then(setMessages)
       .catch(err => console.error("Could not load messages:", err));
   }, [conversationId]);
+
+  // Live updates: the SSE "message" event (see hooks/use-notifications.ts)
+  // only carries who sent it, not the message itself -- so on a relevant
+  // event (the other person in *this* open conversation sent something),
+  // just refetch the conversation rather than trying to splice a partial
+  // payload into state. Cheap enough at this traffic level, and avoids
+  // duplicating message-shape logic between the SSE payload and the
+  // regular GET /chats/:id/messages response.
+  useEffect(() => {
+    if (!lastMessageEvent) return;
+    if (!conversationId || conversationId === "new") return;
+    if (lastMessageEvent.senderId !== receiverId) return;
+
+    chatsApi.getMessages(conversationId)
+      .then(setMessages)
+      .catch(err => console.error("Could not refresh messages:", err));
+  }, [lastMessageEvent, conversationId, receiverId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

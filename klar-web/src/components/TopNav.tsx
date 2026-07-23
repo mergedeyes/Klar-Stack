@@ -17,6 +17,8 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
 import CreatePostModal from "@/components/CreatePostModal";
+import { getMediaUrl } from "@/lib/utils/media";
+import type { AppNotification } from "@/lib/api";
 
 export type TopNavSection = "feed" | "discovery" | "chats" | "search" | "profile";
 
@@ -37,6 +39,47 @@ function notificationText(typeName: string): string {
     case "follow": return " started following you";
     default: return " interacted with you";
   }
+}
+
+/** Where clicking a notification should go: the post for like/comment
+ * types, the actor's profile for a follow. */
+function notificationHref(n: AppNotification): string {
+  if (n.type_name === "follow") return `/users/${n.actor.username}`;
+  if (n.post_id) return `/posts/${n.post_id}`;
+  return "#";
+}
+
+/** Small preview thumbnail for a notification row — the actor's avatar
+ * (with a default letter-fallback) for a follow, or the post's first
+ * image (if it has one) for like/comment types. */
+function NotificationPreview({ n }: { n: AppNotification }) {
+  if (n.type_name === "follow") {
+    return (
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold uppercase">
+        {n.actor.avatar_url ? (
+          <img
+            src={getMediaUrl(n.actor.avatar_url)}
+            alt={n.actor.username}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          n.actor.username.charAt(0)
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-muted">
+      {n.post_thumb_url && (
+        <img
+          src={getMediaUrl(n.post_thumb_url)}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      )}
+    </div>
+  );
 }
 
 /**
@@ -60,8 +103,14 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
     router.push("/login");
   };
 
-  const iconClass = (section: TopNavSection) =>
-    active === section ? "text-foreground bg-muted" : "text-muted-foreground";
+  // Every icon defaults to muted (grey); only the icon matching the
+  // page's active section gets highlighted to the foreground color.
+  // Previously Plus/Bell/Settings/Log-out had no color class at all, so
+  // they rendered in the default (dark) text color while Discovery/
+  // Search/Chats/Profile rendered grey via this same function -- that
+  // mismatch was the "some icons grey, some black" inconsistency.
+  const iconClass = (section?: TopNavSection) =>
+    section && active === section ? "text-foreground bg-muted" : "text-muted-foreground";
 
   return (
     <>
@@ -89,7 +138,13 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
           >
             <Search size={20} />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowCreate(true)} aria-label="New post">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={iconClass()}
+            onClick={() => setShowCreate(true)}
+            aria-label="New post"
+          >
             <Plus size={20} />
           </Button>
 
@@ -97,6 +152,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             <Button
               variant="ghost"
               size="icon"
+              className={iconClass()}
               onClick={() => {
                 setShowNotifications(!showNotifications);
                 if (!showNotifications) markAllAsRead();
@@ -110,20 +166,25 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             </Button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-72 rounded-md border border-border bg-background shadow-lg">
+              <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-background shadow-lg">
                 <div className="p-3 text-sm font-semibold border-b border-border">Notifications</div>
-                <div className="max-h-64 overflow-y-auto">
+                <div className="max-h-80 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">No notifications yet</div>
                   ) : (
                     notifications.map((n) => (
-                      <div
+                      <Link
                         key={n.id}
-                        className={`p-3 text-sm border-b border-border last:border-0 ${!n.is_read ? "bg-muted/50" : ""}`}
+                        href={notificationHref(n)}
+                        onClick={() => setShowNotifications(false)}
+                        className={`flex items-center gap-3 p-3 text-sm border-b border-border last:border-0 hover:bg-muted/70 ${!n.is_read ? "bg-muted/50" : ""}`}
                       >
-                        <span className="font-semibold">{n.actor.username}</span>
-                        {notificationText(n.type_name)}
-                      </div>
+                        <NotificationPreview n={n} />
+                        <span className="min-w-0">
+                          <span className="font-semibold">{n.actor.username}</span>
+                          {notificationText(n.type_name)}
+                        </span>
+                      </Link>
                     ))
                   )}
                 </div>
@@ -155,10 +216,22 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
           >
             <User size={20} />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => router.push("/settings")} aria-label="Settings">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={iconClass()}
+            onClick={() => router.push("/settings")}
+            aria-label="Settings"
+          >
             <Settings size={20} />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Log out">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={iconClass()}
+            onClick={handleLogout}
+            aria-label="Log out"
+          >
             <LogOut size={20} />
           </Button>
         </div>

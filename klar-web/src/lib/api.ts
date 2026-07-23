@@ -60,6 +60,11 @@ export interface AppNotification {
   is_read: boolean;
   created_at: string;
   post_id: string | null;
+  // Raw storage key (not a full URL) for the related post's first image —
+  // run through getMediaUrl() before rendering, same as Post.thumb_url.
+  // Always null for 'follow' (no post involved; use actor.avatar_url
+  // instead) and 'message' (also no post).
+  post_thumb_url: string | null;
   actor: {
     id: string;
     username: string;

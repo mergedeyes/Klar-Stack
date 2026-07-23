@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
-use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
+use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
 
 /// posts.comment_count is maintained here (create/delete) instead of a
@@ -93,8 +93,8 @@ pub async fn create_comment(
 
     // Notify the post owner, unless they're commenting on their own post.
     // Built inside the transaction (needs the notification id + actor
-    // row), published to Redis only after commit -- same reasoning as
-    // likes.rs/follows.rs.
+    // row + post thumbnail), published to Redis only after commit -- same
+    // reasoning as likes.rs/follows.rs.
     let mut pending_notification: Option<NotificationEvent> = None;
 
     if auth.user_id != post_owner {
@@ -114,6 +114,7 @@ pub async fn create_comment(
 
         if let Some(nid) = notif_id {
             if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
+                let thumb = fetch_post_thumb_in_tx(&mut tx, post_id).await;
                 pending_notification = Some(NotificationEvent {
                     target_user_id: post_owner,
                     notification: NotificationResponse {
@@ -122,6 +123,7 @@ pub async fn create_comment(
                         is_read: false,
                         created_at: chrono::Utc::now(),
                         post_id: Some(post_id),
+                        post_thumb_url: thumb,
                         actor: crate::models::UserResponse::from(actor_row),
                     }
                 });
