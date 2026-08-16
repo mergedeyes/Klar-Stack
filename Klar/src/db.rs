@@ -12,21 +12,40 @@ pub async fn create_pool(database_url: &str) -> PgPool {
         .expect("Invalid DATABASE_URL")
         // Session-level statement_timeout: kills any query that runs longer
         // than this at the Postgres level, guaranteeing a clean error instead
-        // of a silent indefinite hang — regardless of the underlying cause
-        // (stale pooled connection, Neon cold-start weirdness, a slow query
-        // we write by accident later, etc.)
+        // of a silent indefinite hang, whatever the cause.
         .options([("statement_timeout", "15000")]);
 
-    PgPoolOptions::new()
-        .max_connections(5)
-        .acquire_timeout(Duration::from_secs(10))   // ride out the cold-start wake
-        .idle_timeout(Duration::from_secs(180))     // recycle conns before Neon suspends them (~5 min idle)
-        .max_lifetime(Duration::from_secs(1500))    // force-recycle every 25 min regardless of activity,
-                                                     // so a connection can never silently go stale/zombie
-                                                     // against Neon's own connection lifecycle
-        .connect_with(connect_options)
-        .await
-        .expect("Failed to connect to Postgres")
+    let pool_options = PgPoolOptions::new()
+        .max_connections(10)
+        // Postgres now runs as a container in the same pod (reached over
+        // localhost): no cold-start, no idle-suspend. The old Neon-specific
+        // acquire/idle/lifecycle tuning is therefore gone; we only force-recycle
+        // every 30 min as a cheap guard against a connection going stale.
+        .acquire_timeout(Duration::from_secs(5))
+        .max_lifetime(Duration::from_secs(1800));
+
+    // On pod startup the backend and Postgres come up together, and on the
+    // very first boot the DB container additionally needs time for initdb.
+    // Rather than panicking on the initial connect, back off and retry until
+    // Postgres is accepting connections.
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match pool_options
+            .clone()
+            .connect_with(connect_options.clone())
+            .await
+        {
+            Ok(pool) => return pool,
+            Err(e) if attempt < 30 => {
+                tracing::warn!(
+                    "Postgres not ready yet (attempt {attempt}): {e}. Retrying in 2s…"
+                );
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            Err(e) => panic!("Failed to connect to Postgres after {attempt} attempts: {e}"),
+        }
+    }
 }
 
 pub async fn run_migrations(pool: &PgPool) {
