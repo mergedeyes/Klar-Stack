@@ -41,7 +41,29 @@ COPY --from=builder /app/target/release/Klar /app/Klar
 RUN useradd --system --create-home --shell /usr/sbin/nologin appuser
 USER appuser
 
-ENV PORT=8080
+# Env vars, declared here so Bunny auto-detects and pre-fills them in the
+# dashboard (only ENV, not ARG, ends up in the image config Bunny reads).
+# Non-secret defaults are set — verify they match your setup; empty values
+# (secrets + deployment-specific) are filled in the Bunny dashboard.
+# An empty declared value is NOT the same as unset: config.rs guards the
+# ones where empty would be unsafe.
+ENV HOST=0.0.0.0 \
+    PORT=8080 \
+    DATABASE_URL="" \
+    JWT_SECRET="" \
+    BASE_URL=https://klarsocial.eu \
+    EMAIL_PROVIDER=scaleway \
+    SMTP_HOST=fr-par \
+    SMTP_PORT=587 \
+    SMTP_PASS="" \
+    SMTP_FROM=noreply@klarsocial.eu \
+    REDIS_URL=redis://127.0.0.1:6379 \
+    STORAGE_PROVIDER=s3 \
+    S3_STORAGE_ENDPOINT=https://de-s3.storage.bunnycdn.com \
+    S3_STORAGE_BUCKET="" \
+    S3_STORAGE_SECRET_ACCESS_KEY="" \
+    S3_PUBLIC_STORAGE_URL=https://cdn.klarsocial.eu
+
 EXPOSE 8080
 
 CMD ["/app/Klar"]

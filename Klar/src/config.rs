@@ -30,8 +30,16 @@ impl Config {
                 .expect("DATABASE_URL must be set in .env"),
             base_url: std::env::var("BASE_URL")
                 .unwrap_or_else(|_| format!("http://localhost:{}", port)),
-            jwt_secret: std::env::var("JWT_SECRET")
-                .expect("JWT_SECRET must be set in .env"),
+            jwt_secret: {
+                let secret = std::env::var("JWT_SECRET")
+                    .expect("JWT_SECRET must be set");
+                // Vars are declared empty in the image so Bunny surfaces them,
+                // and std::env::var returns Ok("") for an unset-but-declared
+                // value — which .expect() does NOT catch. An empty signing
+                // secret would silently produce forgeable tokens, so reject it.
+                assert!(!secret.trim().is_empty(), "JWT_SECRET must not be empty");
+                secret
+            },
             host,
             port,
             // SMTP defaults to MailHog
@@ -41,7 +49,7 @@ impl Config {
                 .unwrap_or_else(|_| "1025".to_string())
                 .parse()
                 .expect("SMTP_PORT must be a number"),
-            smtp_pass: std::env::var("SMTP_PASS").ok(),
+            smtp_pass: std::env::var("SMTP_PASS").ok().filter(|s| !s.is_empty()),
             smtp_from: std::env::var("SMTP_FROM")
                 .unwrap_or_else(|_| "noreply@klar.social".to_string()),
             redis_url: std::env::var("REDIS_URL")
