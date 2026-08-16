@@ -67,12 +67,11 @@ export default function DatenschutzPage() {
           <h2 className="mb-2 font-semibold">4. Hosting und Auftragsverarbeiter</h2>
           <p className="mb-2">
             Wir setzen folgende Dienstleister ein, mit denen jeweils ein
-            Auftragsverarbeitungsvertrag (Art. 28 DSGVO) besteht bzw. bestehen
-            sollte:
+            Auftragsverarbeitungsvertrag (Art. 28 DSGVO) besteht:
           </p>
           <ul className="list-disc pl-5 space-y-2">
             <li>
-              <strong>Bunny.net</strong> (Hosting der Anwendung, CDN und
+              <strong>Bunny.net</strong> (Hosting der Anwendung, CDN, Datenbank und
               Speicherung von Bild-Dateien). Die Speicherung der Bild-Dateien
               erfolgt in einem deutschen Rechenzentrum. Die Ausführung der
               Anwendung selbst (Rechenleistung) wird dagegen automatisiert auf
@@ -91,21 +90,13 @@ export default function DatenschutzPage() {
               (z. B. Standardvertragsklauseln) erforderlich wären.
             </li>
             <li>
-              <strong>Neon</strong> (Datenbank-Hosting, PostgreSQL). Die
-              Datenbank läuft in der AWS-Region eu-central-1 (Frankfurt,
-              Deutschland).
-            </li>
-            <li>
-              <strong>Scaleway</strong> (Versand von Transaktions-E-Mails, z. B.
+              <strong>Scaleway</strong> (Versand von Transaktions-E-Mails, z.B.
               Registrierungsbestätigung und Passwort-Reset, über den Dienst
               „Transactional Email"). Scaleway ist ein französisches
               Unternehmen mit Sitz in der EU; der Versand erfolgt über die
               Region Paris (fr-par). Da es sich um einen EU-Anbieter handelt,
               ist keine Drittlandübermittlung im Sinne von Art. 44 ff. DSGVO
-              involviert. [Bitte vor Live-Gang prüfen, ob ein aktueller
-              Auftragsverarbeitungsvertrag nach Art. 28 DSGVO mit Scaleway
-              abgeschlossen wurde — dies ist unabhängig vom Sitz des
-              Anbieters gesetzlich vorgeschrieben.]
+              involviert.
             </li>
             <li>
               <strong>Upstash</strong> (kurzzeitige Weiterleitung von
@@ -119,9 +110,7 @@ export default function DatenschutzPage() {
               Upstash gespeichert. Upstash ist ein US-amerikanisches
               Unternehmen; die Übermittlung erfolgt auf Grundlage von
               EU-Standardvertragsklauseln (Art. 46 DSGVO) bzw. des
-              EU-U.S. Data Privacy Framework. [Bitte vor Live-Gang prüfen, ob
-              ein aktueller Auftragsverarbeitungsvertrag inkl. SCC mit
-              Upstash abgeschlossen wurde.]
+              EU-U.S. Data Privacy Framework.
             </li>
           </ul>
         </section>
