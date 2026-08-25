@@ -158,8 +158,7 @@ export default function TransparenzPage() {
         <section className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">Wo deine Daten liegen</h2>
           <p>
-            Unsere Datenbank läuft in Frankfurt (Neon, AWS-Region
-            eu-central-1). Bilder, Videos und das Hosting der Anwendung
+            Die Datenbank, Bilder, Videos und das Hosting der Anwendung
             laufen über Bunny.net mit einem deutschen Rechenzentrum. Details
             zu allen eingesetzten Dienstleistern (einschließlich des
             E-Mail-Versands) findest du in der{" "}
@@ -193,7 +192,7 @@ export default function TransparenzPage() {
           und die{" "}
           <Link href="/nutzungsbedingungen" className="underline">Nutzungsbedingungen</Link>.
           <br />
-          Stand: 23.07.2026
+          Stand: 25.08.2026
         </p>
       </div>
     </div>

@@ -56,10 +56,13 @@ export default function DatenschutzPage() {
           <p>
             Hochgeladene Fotos werden serverseitig verarbeitet: Wir entfernen
             automatisch alle EXIF-Metadaten (u. a. Standortdaten, Geräteinfo,
-            Aufnahmezeitpunkt), bevor das Bild gespeichert wird. Beiträge,
-            Kommentare und Direktnachrichten werden gespeichert, um die
-            Kernfunktion des Dienstes bereitzustellen (Art. 6 Abs. 1 lit. b
-            DSGVO).
+            Aufnahmezeitpunkt), bevor das Bild gespeichert wird. Beiträge, 
+            Kommentare und Direktnachrichten werden auf unseren Servern gespeichert, 
+            um die Kernfunktion des Dienstes bereitzustellen und zuzustellen 
+            (Art. 6 Abs. 1 lit. b DSGVO). Bitte beachte, dass Direktnachrichten 
+            in der aktuellen Entwicklungsphase serverseitig noch nicht 
+            Ende-zu-Ende-verschlüsselt (E2EE) sind. Die Plattform und die Datenbank 
+            sind jedoch durch strenge Zugangskontrollen abgesichert.
           </p>
         </section>
 
@@ -166,12 +169,15 @@ export default function DatenschutzPage() {
           <p>
             Du kannst dein Konto jederzeit in den Einstellungen löschen. Dabei
             werden dein Profil, deine Beiträge, Kommentare und Nachrichten
-            gemäß unserer Datenbankstruktur entfernt.
+            gemäß unserer Datenbankstruktur entfernt. Die Löschung deiner Daten 
+            erfolgt unmittelbar mit dem Klick auf den dazugehörigen Button. Deine 
+            Daten werden <strong>nicht</strong>, wie bei anderen Plattformen üblich 
+            noch einige Tage aufbewahrt.
           </p>
         </section>
 
         <p className="text-xs text-muted-foreground">
-          Stand: 17.08.2026
+          Stand: 25.08.2026
         </p>
       </div>
     </div>
