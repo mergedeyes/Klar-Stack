@@ -17,12 +17,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Auto-update legal dates
         run: |
-          # Get list of files changed in this push
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
           TODAY=$(date +'%d.%m.%Y')
           UPDATED=false
 
@@ -34,11 +32,18 @@ jobs:
             "klar-web/app/nutzungsbedingungen/page.tsx"
           )
 
+          # Get list of files changed between the previous commit and HEAD
+          # Fallback gracefully if HEAD~1 doesn't exist (e.g., initial commit)
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          else
+            CHANGED_FILES=$(git show --name-only --pretty="" HEAD)
+          fi
+
           for file in "${FILES[@]}"; do
-            # Check if the file exists and was modified
-            if [ -f "$file" ] && echo "$CHANGED_FILES" | grep -q "$file"; then
+            # Check if the file exists and was modified in this push
+            if [ -f "$file" ] && echo "$CHANGED_FILES" | grep -q "^$file$"; then
               echo "Updating date in $file"
-              # Use regex to find "Stand: " followed by any date format and replace it
               sed -i -E "s/Stand: [0-9]{2}\.[0-9]{2}\.[0-9]{4}/Stand: $TODAY/g" "$file"
               UPDATED=true
             fi
