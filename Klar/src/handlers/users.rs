@@ -1,6 +1,6 @@
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::{HeaderMap, HeaderValue, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
@@ -437,7 +437,7 @@ pub async fn delete_account(
 pub async fn export_my_data(
     State(state): State<AppState>,
     auth: AuthUser,
-) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
+) -> Result<axum::response::Response, AppError> {
     // --- Profile ---
     // terms_accepted_at is included here (not just internally on UserRow)
     // because this export is meant to be "everything we hold about you" --
@@ -667,16 +667,30 @@ pub async fn export_my_data(
         "conversations": conversations_json,
     });
 
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        axum::http::header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!(
-            "attachment; filename=\"klar-datenexport-{}.json\"",
-            Utc::now().format("%Y-%m-%d")
-        )).unwrap(),
-    );
+    // Pretty-printed, not the compact single-line output axum's Json
+    // wrapper would produce -- this file is meant to be opened and read
+    // by the person it belongs to, not just machine-parsed. (GDPR Art. 15
+    // "commonly used, machine-readable format" doesn't preclude also
+    // being human-readable.) Building the Response by hand (rather than
+    // returning (HeaderMap, Json<..>)) is what makes that possible --
+    // Json's own IntoResponse impl always serializes compact, with no
+    // pretty-print option.
+    let pretty = serde_json::to_string_pretty(&export)
+        .unwrap_or_else(|_| export.to_string());
+
+    let filename = format!("klar-datenexport-{}.json", Utc::now().format("%Y-%m-%d"));
 
     tracing::info!("Data export generated for user: {}", auth.user_id);
 
-    Ok((headers, Json(export)))
+    let response = axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", filename),
+        )
+        .body(axum::body::Body::from(pretty))
+        .map_err(|_| AppError::internal("Failed to build export response"))?;
+
+    Ok(response)
 }
