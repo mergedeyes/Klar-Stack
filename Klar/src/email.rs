@@ -1,32 +1,37 @@
-/// Email service — sends verification and password reset emails.
+/// Email service: sends verification and password reset emails.
 ///
 /// Dev: MailHog on localhost:1025, view emails at http://localhost:8025
-/// Prod: Resend or Scaleway TEM (HTTPS APIs) — Bunny Magic Containers blocks
+/// Prod: Scaleway TEM (HTTPS APIs). Bunny Magic Containers blocks
 /// outbound SMTP ports (25/465/587/2525) by default, so raw SMTP relays
 /// (like IONOS) time out from inside the container. Both providers' APIs
 /// run over plain HTTPS (443), which is already open for everything else
-/// (image pulls, DB, etc). Scaleway TEM is the EU-data-residency option —
-/// unlike Resend, both sending *and* account/log data stay in the EU.
+/// (image pulls, DB, etc). Scaleway TEM is the EU-data-residency option:
+/// sending and account/log data stays in the EU.
 
 use lettre::{
-    message::{header::ContentType, MultiPart, SinglePart},
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{header::ContentType, MultiPart, SinglePart}, // building a multipart (text + HTML) email body
+    transport::smtp::authentication::Credentials, // username/password pair for SMTP auth
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, // async SMTP client, its send trait, the email type, and the tokio executor it runs on
 };
-use resend_rs::{types::CreateEmailBaseOptions, Resend};
+use resend_rs::{types::CreateEmailBaseOptions, Resend}; // client for the Resend HTTPS email API
 
+// The service is provider-agnostic from the caller's point of view: callers
+// just call send_verification/send_password_reset, and this struct decides
+// which underlying transport actually delivers the email.
 #[derive(Clone)]
 pub struct EmailService {
-    transport: Transport,
-    from_address: String,
-    base_url: String,
+    transport: Transport,   // which provider/connection to send through (see Transport below)
+    from_address: String,   // the "From" address used on every outgoing email
+    base_url: String,       // public base URL, used to build verification/reset links
 }
 
+// One variant per supported way of actually delivering an email.
 #[derive(Clone)]
 enum Transport {
-    Smtp(AsyncSmtpTransport<Tokio1Executor>),
-    Resend(Resend),
+    Smtp(AsyncSmtpTransport<Tokio1Executor>), // used for both local MailHog and IONOS SMTP relay
+    Resend(Resend),                            // Resend's own HTTPS API client
     ScalewayTem {
+        // Scaleway has no Rust SDK, so this transport calls their REST API manually (see send() below)
         client: reqwest::Client,
         secret_key: String,
         project_id: String,
@@ -34,6 +39,8 @@ enum Transport {
     },
 }
 
+// Simple string-wrapping error type; all provider-specific errors get
+// normalized into this one type so callers only have to handle one error shape.
 #[derive(Debug)]
 pub struct EmailError(pub String);
 
@@ -43,14 +50,17 @@ impl std::fmt::Display for EmailError {
     }
 }
 
+/// Which email provider to use, selected via config/env at startup.
 #[derive(Debug)]
 pub enum EmailProvider {
-    Local,
-    Ionos,
+    Local,       // MailHog, for local development
+    Ionos,       // SMTP relay, currently unusable in prod (see module doc comment above)
     Resend,
     ScalewayTem,
 }
 
+// Lets EmailProvider be parsed from a plain string (e.g. an env var value),
+// case-insensitively, with a couple of accepted aliases for Scaleway TEM.
 impl std::str::FromStr for EmailProvider {
     type Err = String;
         fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -68,6 +78,8 @@ impl std::str::FromStr for EmailProvider {
 /// well-known htmlemail.io transactional template). Keeps a single place
 /// for the CSS/layout so verification and password-reset emails stay
 /// visually consistent.
+// The template itself is plain HTML/CSS below; the only Rust part is the
+// five {placeholder} slots filled in via format! at the bottom of the function.
 fn render_html_email(preheader: &str, intro: &str, button_label: &str, button_url: &str, note: &str) -> String {
     format!(
         r#"<!doctype html>
@@ -273,15 +285,19 @@ impl EmailService {
         // - Ionos: SMTP password
         // - Resend: API key
         // - ScalewayTem: "SECRET_KEY|PROJECT_ID" (Scaleway needs both a
-        //   secret key and a project ID to send — packed into this one
+        //   secret key and a project ID to send, packed into this one
         //   slot since EmailService::new()'s signature is otherwise shared
         //   across every provider). smtp_host doubles as the region
         //   (e.g. "fr-par"), defaulting to "fr-par" if left empty.
         smtp_pass: Option<&str>,
         base_url: &str,
     ) -> Self {
+        // Build the right Transport variant for the configured provider. Each arm
+        // sets up whatever that provider actually needs to authenticate and send.
         let transport = match provider {
             EmailProvider::Local => {
+                // builder_dangerous skips TLS certificate validation, fine for a local
+                // MailHog instance but not something to use against a real mail server.
                 Transport::Smtp(
                     AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
                         .port(smtp_port)
@@ -292,6 +308,8 @@ impl EmailService {
             EmailProvider::Ionos => {
                 let pass = smtp_pass.expect("SMTP_PASS required");
 
+                // starttls_relay sets up a proper encrypted SMTP connection with
+                // certificate validation, plus username/password auth.
                 Transport::Smtp(
                     AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_host)
                         .expect("Invalid SMTP host")
@@ -305,16 +323,20 @@ impl EmailService {
             }
 
             EmailProvider::Resend => {
+                // Resend just needs an API key, no host/port involved.
                 let api_key = smtp_pass.expect("SMTP_PASS (Resend API key) required");
                 Transport::Resend(Resend::new(api_key))
             }
 
             EmailProvider::ScalewayTem => {
+                // Unpack the "SECRET_KEY|PROJECT_ID" value described in the doc comment above.
                 let packed = smtp_pass.expect("SMTP_PASS (\"SECRET_KEY|PROJECT_ID\") required for Scaleway TEM");
                 let (secret_key, project_id) = packed
                     .split_once('|')
                     .expect("SMTP_PASS for Scaleway TEM must be \"SECRET_KEY|PROJECT_ID\"");
 
+                // smtp_host is repurposed to carry the Scaleway region here, falling back
+                // to Paris if not set.
                 let region = if smtp_host.is_empty() { "fr-par" } else { smtp_host };
 
                 Transport::ScalewayTem {
@@ -335,8 +357,10 @@ impl EmailService {
 
     /// Send email verification link
     pub async fn send_verification(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
+        // Build the link the user clicks to verify their address.
         let verify_url = format!("{}/verify-email?token={}", self.base_url, token);
 
+        // Plain-text fallback body, for mail clients that don't render HTML.
         let text = format!(
             "Willkommen bei Klar!\n\n\
              Bitte bestaetige deine E-Mail-Adresse:\n\n\
@@ -346,6 +370,7 @@ impl EmailService {
             verify_url
         );
 
+        // HTML body, built from the shared template above.
         let html = render_html_email(
             "Bestaetige deine E-Mail-Adresse bei Klar",
             "Willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse, um loszulegen.",
@@ -359,8 +384,10 @@ impl EmailService {
 
     /// Send password reset link
     pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
+        // Build the link the user clicks to reset their password.
         let reset_url = format!("{}/reset-password?token={}", self.base_url, token);
 
+        // Plain-text fallback body, for mail clients that don't render HTML.
         let text = format!(
             "Passwort zuruecksetzen\n\n\
              Klicke auf den folgenden Link, um dein Passwort zurueckzusetzen:\n\n\
@@ -370,6 +397,7 @@ impl EmailService {
             reset_url
         );
 
+        // HTML body, built from the shared template above.
         let html = render_html_email(
             "Setze dein Passwort bei Klar zurueck",
             "Du hast angefragt, dein Passwort bei Klar zurueckzusetzen.",
@@ -383,8 +411,12 @@ impl EmailService {
 
     /// Send an email with both plain-text and HTML alternatives
     async fn send(&self, to: &str, subject: &str, text: &str, html: &str) -> Result<(), EmailError> {
+        // Dispatch on the configured transport; each provider builds and sends the
+        // message differently, but all three end up either Ok(()) or an EmailError.
         match &self.transport {
             Transport::Smtp(mailer) => {
+                // Used for both Local (MailHog) and Ionos: build a standard multipart
+                // email (plain text + HTML alternative) and hand it to lettre's SMTP client.
                 let email = Message::builder()
                     .from(self.from_address.parse().map_err(|e| EmailError(format!("Invalid from: {}", e)))?)
                     .to(to.parse().map_err(|e| EmailError(format!("Invalid to: {}", e)))?)
@@ -411,6 +443,7 @@ impl EmailService {
             }
 
             Transport::Resend(resend) => {
+                // Resend's own client type handles building and sending the request.
                 let email = CreateEmailBaseOptions::new(
                     self.from_address.as_str(),
                     [to],
@@ -432,7 +465,7 @@ impl EmailService {
                 // POST /transactional-email/v1alpha1/regions/{region}/emails
                 // Auth via X-Auth-Token header (not Bearer).
                 // Note: Scaleway requires subjects to be at least 10
-                // characters — both of ours already clear that easily.
+                // characters; both of ours already clear that easily.
                 let payload = serde_json::json!({
                     "from": { "email": self.from_address },
                     "to": [{ "email": to }],
@@ -459,6 +492,9 @@ impl EmailService {
                     .await
                     .map_err(|e| EmailError(format!("Scaleway TEM request failed: {}", e)))?;
 
+                // reqwest doesn't turn non-2xx responses into an Err on its own, so
+                // this checks the status explicitly and surfaces the response body
+                // (Scaleway's error details) in the returned EmailError.
                 if !response.status().is_success() {
                     let status = response.status();
                     let text_body = response.text().await.unwrap_or_default();
