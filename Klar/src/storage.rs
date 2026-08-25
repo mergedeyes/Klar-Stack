@@ -10,22 +10,34 @@ use crate::errors::AppError;
 pub enum Storage {
     S3(S3Storage),
     Bunny(BunnyStorage),
+    Local(LocalStorage),
 }
 
 impl Storage {
     /// Initialisiert den Storage basierend auf der .env Variable.
-    /// Setze STORAGE_PROVIDER=s3, um Bunny über die S3-kompatible API zu nutzen.
+    /// Setze STORAGE_PROVIDER=s3, um Bunny über die S3-kompatible API zu nutzen,
+    /// oder STORAGE_PROVIDER=local, um lokal auf die Festplatte zu schreiben
+    /// (siehe LocalStorage weiter unten — nur für lokale Entwicklung gedacht,
+    /// damit `cargo run` niemals versehentlich echte Prod-Dateien schreibt
+    /// oder löscht).
     pub async fn new() -> Self {
         let provider = std::env::var("STORAGE_PROVIDER")
             .unwrap_or_else(|_| "bunny".to_string())
             .to_lowercase();
 
-        if provider == "s3" {
-            tracing::info!("Storage Backend: S3 Compatible");
-            Storage::S3(S3Storage::new().await)
-        } else {
-            tracing::info!("Storage Backend: Bunny.net REST API");
-            Storage::Bunny(BunnyStorage::new())
+        match provider.as_str() {
+            "s3" => {
+                tracing::info!("Storage Backend: S3 Compatible");
+                Storage::S3(S3Storage::new().await)
+            }
+            "local" => {
+                tracing::info!("Storage Backend: Lokale Festplatte (nur Dev)");
+                Storage::Local(LocalStorage::new())
+            }
+            _ => {
+                tracing::info!("Storage Backend: Bunny.net REST API");
+                Storage::Bunny(BunnyStorage::new())
+            }
         }
     }
 
@@ -33,6 +45,7 @@ impl Storage {
         match self {
             Storage::S3(s) => s.save(key, data).await,
             Storage::Bunny(b) => b.save(key, data).await,
+            Storage::Local(l) => l.save(key, data).await,
         }
     }
 
@@ -40,6 +53,7 @@ impl Storage {
         match self {
             Storage::S3(s) => s.delete(key).await,
             Storage::Bunny(b) => b.delete(key).await,
+            Storage::Local(l) => l.delete(key).await,
         }
     }
 
@@ -47,7 +61,17 @@ impl Storage {
         match self {
             Storage::S3(s) => s.public_url(key),
             Storage::Bunny(b) => b.public_url(key),
+            Storage::Local(l) => l.public_url(key),
         }
+    }
+
+    /// Resolves an optional storage key into a full public URL, passing
+    /// None through unchanged. Most media/avatar fields are optional (not
+    /// every post has media yet, not every user has an avatar), so this
+    /// saves every call site from repeating the same Option handling
+    /// around public_url(). Used by the ResolveMedia impls in utils.rs.
+    pub fn resolve(&self, key: Option<String>) -> Option<String> {
+        key.map(|k| self.public_url(&k))
     }
 }
 
@@ -263,5 +287,104 @@ fn derive_region_from_endpoint(endpoint: &str) -> Option<String> {
         None
     } else {
         Some(region.to_string())
+    }
+}
+
+// ─── LOKALE FESTPLATTE (nur für lokale Entwicklung) ──────────────────────────
+// Kein Netzwerkzugriff, kein Bunny-Key, keine Möglichkeit, versehentlich
+// echte Prod-Dateien zu schreiben oder zu löschen — dafür gibt es diesen
+// Provider. Dateien landen unter LOCAL_STORAGE_DIR (Default "./uploads",
+// bereits in .gitignore), ausgeliefert über die /media-Route in routes.rs
+// (nur gemountet, wenn STORAGE_PROVIDER=local).
+//
+// Für realistisch aussehende Daten lokal: scripts/sync_local_media.py lädt
+// gezielt eine Stichprobe echter Dateien aus dem Prod-Bucket über einen
+// Read-only-Key in genau dieses Verzeichnis herunter, mit denselben Keys,
+// die auch schon in der lokal wiederhergestellten DB stehen — dieser
+// Storage-Provider selbst braucht dafür keine Bunny-Credentials.
+//
+// Benötigte .env-Variablen:
+//   STORAGE_PROVIDER=local
+//   LOCAL_STORAGE_DIR=./uploads              (optional, das ist der Default)
+//   LOCAL_STORAGE_PUBLIC_URL=http://localhost:3000
+//     Absichtlich eine eigene Variable statt BASE_URL — BASE_URL zeigt in
+//     der lokalen .env aktuell auf die echte Prod-Domain, das würde hier
+//     kaputte Links erzeugen.
+#[derive(Clone)]
+pub struct LocalStorage {
+    root: std::path::PathBuf,
+    public_url_base: String,
+}
+
+impl LocalStorage {
+    pub fn new() -> Self {
+        let root = std::env::var("LOCAL_STORAGE_DIR").unwrap_or_else(|_| "./uploads".to_string());
+        let root = std::path::PathBuf::from(root);
+
+        std::fs::create_dir_all(&root)
+            .unwrap_or_else(|e| panic!("Konnte LOCAL_STORAGE_DIR '{}' nicht anlegen: {}", root.display(), e));
+
+        let public_url_base = std::env::var("LOCAL_STORAGE_PUBLIC_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+
+        Self {
+            root,
+            public_url_base: format!("{}/media", public_url_base.trim_end_matches('/')),
+        }
+    }
+
+    pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), AppError> {
+        let path = self.safe_path(key)?;
+
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                tracing::error!("Konnte Verzeichnis für {} nicht anlegen: {}", key, e);
+                AppError::internal("Failed to save file")
+            })?;
+        }
+
+        tokio::fs::write(&path, data).await.map_err(|e| {
+            tracing::error!("Konnte {} nicht schreiben: {}", key, e);
+            AppError::internal("Failed to save file")
+        })?;
+
+        Ok(())
+    }
+
+    pub async fn delete(&self, key: &str) -> Result<(), AppError> {
+        let path = self.safe_path(key)?;
+
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => Ok(()),
+            // Datei existiert schon nicht mehr — für den Aufrufer kein
+            // Unterschied zu "erfolgreich gelöscht".
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => {
+                tracing::error!("Konnte {} nicht löschen: {}", key, e);
+                Err(AppError::internal("Failed to delete file"))
+            }
+        }
+    }
+
+    pub fn public_url(&self, key: &str) -> String {
+        let clean_key = key.trim_start_matches('/');
+        format!("{}/{}", self.public_url_base, clean_key)
+    }
+
+    /// Verhindert Path Traversal: ein Key wie "../../etc/passwd" würde
+    /// sonst außerhalb von `root` landen. Prüft die Komponenten des Keys
+    /// selbst (statt canonicalize, das eine bereits existierende Datei
+    /// voraussetzt), lehnt jedes ".." darin ab, bevor überhaupt auf die
+    /// Festplatte zugegriffen wird.
+    fn safe_path(&self, key: &str) -> Result<std::path::PathBuf, AppError> {
+        let trimmed = key.trim_start_matches('/');
+
+        for component in std::path::Path::new(trimmed).components() {
+            if matches!(component, std::path::Component::ParentDir) {
+                return Err(AppError::bad_request("Invalid file key"));
+            }
+        }
+
+        Ok(self.root.join(trimmed))
     }
 }

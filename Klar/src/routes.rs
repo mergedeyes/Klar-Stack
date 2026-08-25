@@ -5,6 +5,7 @@ use axum::{
     Router,
 };
 use tower_http::cors::{AllowHeaders, CorsLayer};
+use tower_http::services::ServeDir;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
@@ -163,10 +164,31 @@ pub fn create_router(state: AppState) -> Router {
             rate_limit::rate_limit_middleware,
         ));
 
+    // ── Local media serving (dev only) ──────────────────────────
+    // Only relevant when STORAGE_PROVIDER=local (see storage.rs's
+    // LocalStorage). Production and the S3/Bunny providers serve files
+    // straight from the CDN, never through this backend at all, so this
+    // route has no effect and isn't mounted otherwise.
+    let storage_provider = std::env::var("STORAGE_PROVIDER")
+        .unwrap_or_else(|_| "bunny".to_string())
+        .to_lowercase();
+    let local_media_service = if storage_provider == "local" {
+        let dir = std::env::var("LOCAL_STORAGE_DIR").unwrap_or_else(|_| "./uploads".to_string());
+        Some(ServeDir::new(dir))
+    } else {
+        None
+    };
+
     // ── Combine ─────────────────────────────────────────────────
-    Router::new()
+    let mut router = Router::new()
         .merge(auth_routes)
-        .merge(api_routes)
+        .merge(api_routes);
+
+    if let Some(service) = local_media_service {
+        router = router.nest_service("/media", service);
+    }
+
+    router
         .layer(build_cors())
         .layer(build_trace_layer())
         .with_state(state)
