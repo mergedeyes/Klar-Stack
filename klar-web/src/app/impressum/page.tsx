@@ -19,7 +19,7 @@ export default function ImpressumPage() {
 
       <div className="mx-auto max-w-2xl px-4 py-10 text-sm leading-relaxed">
         <section className="mb-6">
-          <h2 className="mb-2 font-semibold">Angaben gemäß § 5 TMG</h2>
+          <h2 className="mb-2 font-semibold">Angaben gemäß § 5 DDG</h2>
           <p>
             Jan Motulla
             <br />

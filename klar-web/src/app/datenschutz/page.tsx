@@ -148,7 +148,32 @@ export default function DatenschutzPage() {
         </section>
 
         <section className="mb-6">
-          <h2 className="mb-2 font-semibold">7. Deine Rechte</h2>
+          <h2 className="mb-2 font-semibold">7. Meldungen und Moderation</h2>
+          <p>
+            Wenn du einen Beitrag, einen Kommentar oder ein Profil über die
+            Melden-Funktion meldest, verarbeiten wir deine Nutzer-ID als
+            meldende Person, den gemeldeten Inhalt bzw. das gemeldete Profil,
+            den von dir ausgewählten Meldegrund sowie eine optionale
+            Freitext-Beschreibung. Bei der Bearbeitung einer Meldung durch
+            unser Team werden zusätzlich eine interne Notiz sowie die
+            Nutzer-ID der bearbeitenden Person gespeichert. Rechtsgrundlage
+            ist die Erfüllung unserer rechtlichen Pflichten als
+            Hosting-Anbieter (Art. 6 Abs. 1 lit. c DSGVO i. V. m. Art. 16 des
+            Digital Services Act) sowie unser berechtigtes Interesse an einer
+            sicheren Plattform (Art. 6 Abs. 1 lit. f DSGVO). Bestimmte
+            Meldegründe (insbesondere Darstellung sexuellen Missbrauchs von
+            Minderjährigen) führen automatisiert zu einer sofortigen
+            Ausblendung des gemeldeten Inhalts; andere Meldegründe können
+            zunächst zu einer Kennzeichnung mit Warnhinweis führen, bis eine
+            manuelle Prüfung erfolgt ist. Meldedaten sind aktuell an den
+            Lebenszyklus des jeweiligen Accounts gekoppelt; eine über die
+            Kontolöschung hinausgehende gesonderte Aufbewahrung findet
+            derzeit nicht statt.
+          </p>
+        </section>
+
+        <section className="mb-6">
+          <h2 className="mb-2 font-semibold">8. Deine Rechte</h2>
           <p>
             Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art.
             16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18),
@@ -167,7 +192,7 @@ export default function DatenschutzPage() {
         </section>
 
         <section className="mb-6">
-          <h2 className="mb-2 font-semibold">8. Löschung deines Kontos</h2>
+          <h2 className="mb-2 font-semibold">9. Löschung deines Kontos</h2>
           <p>
             Du kannst dein Konto jederzeit in den Einstellungen löschen. Dabei
             werden dein Profil, deine Beiträge, Kommentare und Nachrichten

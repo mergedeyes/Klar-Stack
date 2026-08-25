@@ -85,15 +85,25 @@ export default function NutzungsbedingungenPage() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">5. Meldung von Inhalten und Maßnahmen</h2>
           <p>
-            Wenn du auf Inhalte stößt, die gegen diese Nutzungsbedingungen
-            verstoßen, kannst du dies an{" "}
-            <a href="mailto:kontakt@klarsocial.eu" className="underline">
-              kontakt@klarsocial.eu
-            </a>{" "}
-            melden. Wir behalten uns vor, Inhalte, die gegen diese
+            Wenn du auf Beiträge, Kommentare oder Profile stößt, die gegen
+            diese Nutzungsbedingungen verstoßen, kannst du sie direkt in der
+            App über die Melden-Funktion melden und dabei einen passenden
+            Grund auswählen (u. a. Spam, Belästigung, Hassrede,
+            Gewaltdarstellung, Selbstverletzung, sexuelle Inhalte, Darstellung
+            sexuellen Missbrauchs von Minderjährigen, Identitätsdiebstahl oder
+            sonstige Verstöße). Je nach gewähltem Grund kann der gemeldete
+            Inhalt automatisch vorübergehend ausgeblendet oder mit einem
+            Warnhinweis versehen werden, bis unser Team die Meldung geprüft
+            hat. Wir behalten uns vor, Inhalte, die gegen diese
             Nutzungsbedingungen verstoßen, zu entfernen und Konten zu sperren
             oder zu löschen, soweit dies zur Wahrung berechtigter Interessen
-            oder zur Erfüllung rechtlicher Pflichten erforderlich ist.
+            oder zur Erfüllung rechtlicher Pflichten erforderlich ist. Für
+            Anliegen, die sich nicht über die Melden-Funktion abdecken lassen,
+            erreichst du uns unter{" "}
+            <a href="mailto:kontakt@klarsocial.eu" className="underline">
+              kontakt@klarsocial.eu
+            </a>
+            .
           </p>
         </section>
 
