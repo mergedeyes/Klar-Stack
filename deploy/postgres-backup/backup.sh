@@ -37,10 +37,39 @@ run_backup() {
   log "pg_dump -> ${file}"
   # -Fc  = Custom-Format (komprimiert, für pg_restore)
   # --no-owner / --no-privileges halten den Dump für Restores in eine frische DB portabel.
-  pg_dump -Fc --no-owner --no-privileges -f "${file}"
+  #
+  # NOTE: this function is invoked as `if run_backup; then …` below, and
+  # bash's `set -e` does NOT propagate inside the condition of an
+  # if/while/until — that suppression applies to every command run as
+  # part of evaluating the condition, including a whole function called
+  # from it. So each step here checks its own exit status explicitly.
+  # A bare `pg_dump ...` relying on set -e in this context would silently
+  # continue past a failed dump and upload whatever partial (possibly
+  # empty) file pg_dump left behind — which is exactly what was happening:
+  # a failing pg_dump left a 0-byte file that still got shipped to S3 and
+  # treated as a valid backup.
+  if ! pg_dump -Fc --no-owner --no-privileges -f "${file}"; then
+    log "pg_dump FEHLGESCHLAGEN, kein Upload" >&2
+    rm -f "${file}"
+    return 1
+  fi
+
+  # Belt-and-suspenders: refuse to upload anything that isn't at least a
+  # plausible custom-format dump. Custom-format archives start with a
+  # 5-byte "PGDMP" magic header; anything under ~512 bytes for a live
+  # social-network DB is definitely not a real dump.
+  if [ ! -s "${file}" ] || [ "$(stat -c%s "${file}")" -lt 512 ]; then
+    log "pg_dump lieferte eine verdächtig kleine/leere Datei (${file}), kein Upload" >&2
+    rm -f "${file}"
+    return 1
+  fi
 
   log "Upload -> s3://${S3_BUCKET}/${key}"
-  aws --endpoint-url "${S3_ENDPOINT}" s3 cp "${file}" "s3://${S3_BUCKET}/${key}"
+  if ! aws --endpoint-url "${S3_ENDPOINT}" s3 cp "${file}" "s3://${S3_BUCKET}/${key}"; then
+    log "Upload FEHLGESCHLAGEN" >&2
+    rm -f "${file}"
+    return 1
+  fi
   rm -f "${file}"
 
   prune_old
