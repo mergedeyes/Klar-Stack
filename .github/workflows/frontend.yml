@@ -26,15 +26,21 @@ jobs:
 
           # Define the files to check
           FILES=(
-            "klar-web/app/impressum/page.tsx"
-            "klar-web/app/datenschutz/page.tsx"
-            "klar-web/app/transparenz/page.tsx"
-            "klar-web/app/nutzungsbedingungen/page.tsx"
+            "klar-web/src/app/impressum/page.tsx"
+            "klar-web/src/app/datenschutz/page.tsx"
+            "klar-web/src/app/transparenz/page.tsx"
+            "klar-web/src/app/nutzungsbedingungen/page.tsx"
           )
 
-          # Get list of files changed between the previous commit and HEAD
-          # Fallback gracefully if HEAD~1 doesn't exist (e.g., initial commit)
-          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+          # Diff against the push's actual starting point (github.event.before),
+          # not just HEAD~1 — HEAD~1 only sees the single most recent commit, so
+          # a legal-page edit earlier in a multi-commit push would be missed.
+          # github.event.before is unset/zero on a repo's very first push, hence
+          # the fallback to the single-commit form of `git show`.
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -n "$BEFORE_SHA" ] && git rev-parse --verify "$BEFORE_SHA" >/dev/null 2>&1; then
+            CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD)
+          elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
             CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
           else
             CHANGED_FILES=$(git show --name-only --pretty="" HEAD)
@@ -76,7 +82,6 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
             NEXT_PUBLIC_STORAGE_URL=${{ vars.NEXT_PUBLIC_STORAGE_URL }}
-            NEXT_PUBLIC_ADMIN_USER_ID=${{ vars.NEXT_PUBLIC_ADMIN_USER_ID }}
 
       - name: Update container image on Magic Containers
         if: vars.APP_ID != ''
