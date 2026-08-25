@@ -3,6 +3,7 @@ use uuid::Uuid;
 use chrono::Utc;
 use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
+use crate::utils::{DbResultExt, ResolveMedia};
 
 pub async fn get_conversations(
     State(state): State<AppState>,
@@ -72,9 +73,9 @@ pub async fn get_conversations(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+    .db_err("Database error")?;
 
-    Ok(Json(convos))
+    Ok(Json(convos.resolve_media(&state.storage)))
 }
 
 pub async fn get_messages(
@@ -87,7 +88,8 @@ pub async fn get_messages(
         conversation_id, auth.user_id
     )
     .fetch_optional(&state.db)
-    .await?;
+    .await
+    .db_err("Database error")?;
 
     if has_access.is_none() {
         return Err(AppError::forbidden("Access denied to this conversation"));
@@ -114,7 +116,7 @@ pub async fn get_messages(
     .bind(conversation_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+    .db_err("Database error")?;
 
     Ok(Json(messages))
 }
@@ -138,7 +140,8 @@ pub async fn send_message(
         auth.user_id, payload.receiver_id
     )
     .fetch_one(&state.db)
-    .await?
+    .await
+    .db_err("Database error")?
     .count;
 
     if mutual_follow_count != Some(2) {
@@ -156,7 +159,8 @@ pub async fn send_message(
         auth.user_id, payload.receiver_id
     )
     .fetch_one(&state.db)
-    .await?;
+    .await
+    .db_err("Failed to create conversation")?;
 
     let message_id = sqlx::query!(
         r#"
@@ -167,7 +171,8 @@ pub async fn send_message(
         conv_record.id, auth.user_id, payload.body, payload.reply_to_message_id
     )
     .fetch_one(&state.db)
-    .await?
+    .await
+    .db_err("Failed to send message")?
     .id;
 
     let message = sqlx::query_as::<_, MessageResponse>(
@@ -179,7 +184,7 @@ pub async fn send_message(
     .bind(message_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+    .db_err("Database error")?;
 
     // Piggyback on the same Redis-backed SSE pipeline used for
     // notifications, rather than standing up a second channel/stream just
@@ -207,6 +212,8 @@ pub async fn send_message(
                 actor: crate::models::UserResponse::from(actor_row),
             }
         };
+        // Resolves actor.avatar_url internally (see publish_notification
+        // in notifications.rs), same as every other notification path.
         publish_notification(&state, &event).await;
     }
 
@@ -221,7 +228,8 @@ pub async fn edit_message(
 ) -> Result<StatusCode, AppError> {
     let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
         .fetch_optional(&state.db)
-        .await?
+        .await
+        .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
     if msg_meta.sender_id != auth.user_id {
@@ -233,7 +241,8 @@ pub async fn edit_message(
         payload.body, Utc::now(), message_id
     )
     .execute(&state.db)
-    .await?;
+    .await
+    .db_err("Failed to edit message")?;
 
     Ok(StatusCode::OK)
 }
@@ -245,7 +254,8 @@ pub async fn delete_message(
 ) -> Result<StatusCode, AppError> {
     let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
         .fetch_optional(&state.db)
-        .await?
+        .await
+        .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
     if msg_meta.sender_id != auth.user_id {
@@ -254,7 +264,8 @@ pub async fn delete_message(
 
     sqlx::query!("DELETE FROM messages WHERE id = $1", message_id)
         .execute(&state.db)
-        .await?;
+        .await
+        .db_err("Failed to delete message")?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -270,7 +281,8 @@ pub async fn toggle_reaction(
         message_id, auth.user_id, payload.emoji
     )
     .fetch_optional(&state.db)
-    .await?;
+    .await
+    .db_err("Database error")?;
 
     if existing.is_some() {
         sqlx::query!(
@@ -278,14 +290,16 @@ pub async fn toggle_reaction(
             message_id, auth.user_id, payload.emoji
         )
         .execute(&state.db)
-        .await?;
+        .await
+        .db_err("Failed to remove reaction")?;
     } else {
         sqlx::query!(
             "INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)",
             message_id, auth.user_id, payload.emoji
         )
         .execute(&state.db)
-        .await?;
+        .await
+        .db_err("Failed to add reaction")?;
     }
 
     // Look up this message's conversation + both participants -- needed
@@ -361,7 +375,7 @@ pub async fn mark_conversation_read(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+    .db_err("Database error")?;
 
     if !has_access {
         return Err(AppError::forbidden("Access denied to this conversation"));
@@ -374,7 +388,7 @@ pub async fn mark_conversation_read(
     .bind(auth.user_id)
     .execute(&state.db)
     .await
-    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+    .db_err("Failed to mark conversation read")?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -398,7 +412,7 @@ pub async fn get_unread_count(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| AppError::internal(&format!("DB Error: {}", e)))?;
+    .db_err("Database error")?;
 
     Ok(Json(UnreadCountResponse { count }))
 }
