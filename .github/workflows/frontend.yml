@@ -7,7 +7,7 @@ on:
       - ".github/workflows/frontend.yml"
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -16,6 +16,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Auto-update legal dates
+        run: |
+          # Get list of files changed in this push
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+          TODAY=$(date +'%d.%m.%Y')
+          UPDATED=false
+
+          # Define the files to check
+          FILES=(
+            "klar-web/app/impressum/page.tsx"
+            "klar-web/app/datenschutz/page.tsx"
+            "klar-web/app/transparenz/page.tsx"
+            "klar-web/app/nutzungsbedingungen/page.tsx"
+          )
+
+          for file in "${FILES[@]}"; do
+            # Check if the file exists and was modified
+            if [ -f "$file" ] && echo "$CHANGED_FILES" | grep -q "$file"; then
+              echo "Updating date in $file"
+              # Use regex to find "Stand: " followed by any date format and replace it
+              sed -i -E "s/Stand: [0-9]{2}\.[0-9]{2}\.[0-9]{4}/Stand: $TODAY/g" "$file"
+              UPDATED=true
+            fi
+          done
+
+          if [ "$UPDATED" = true ]; then
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            
+            git add "${FILES[@]}"
+            git commit -m "chore: update legal dates to $TODAY [skip ci]"
+            git push
+          else
+            echo "No legal pages were modified."
+          fi
 
       - name: docker login
         uses: docker/login-action@v3
