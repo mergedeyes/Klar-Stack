@@ -113,7 +113,7 @@ export default function DatenschutzPage() {
               Upstash gespeichert. Upstash ist ein US-amerikanisches
               Unternehmen; die Übermittlung erfolgt auf Grundlage von
               EU-Standardvertragsklauseln (Art. 46 DSGVO) bzw. des
-              EU-U.S. Data Privacy Framework.
+              EU-U.S. Data Privacy Framework. 
               <strong>Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
               übertragen werden müssen.</strong>
             </li>

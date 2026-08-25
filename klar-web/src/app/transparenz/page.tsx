@@ -128,7 +128,7 @@ export default function TransparenzPage() {
             Benachrichtigung zusammenzustellen) — die Übertragung ist
             TLS-verschlüsselt, die Daten werden dort nicht dauerhaft
             gespeichert, und deine E-Mail-Adresse wird in der App-Oberfläche
-            nirgends angezeigt.
+            nirgends angezeigt. 
             <strong>Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
             übertragen werden müssen.</strong>
           </p>
