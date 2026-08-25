@@ -11,6 +11,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::LikeResponse;
+use crate::utils::DbResultExt;
 
 /// POST /posts/:post_id/comments/:comment_id/like — toggle like on a comment (auth required)
 ///
@@ -31,10 +32,7 @@ pub async fn toggle_comment_like(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Comment not found"))?;
 
     // Check if already liked
@@ -45,15 +43,9 @@ pub async fn toggle_comment_like(
     .bind(comment_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     let like_count: i64;
     // Built inside the transaction (needs the notification id + actor
@@ -68,10 +60,7 @@ pub async fn toggle_comment_like(
             .bind(comment_id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to unlike comment: {}", e);
-                AppError::internal("Failed to unlike comment")
-            })?;
+            .db_err("Failed to unlike comment")?;
 
         like_count = sqlx::query_scalar::<_, i64>(
             "UPDATE comments SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1 RETURNING like_count"
@@ -79,17 +68,14 @@ pub async fn toggle_comment_like(
         .bind(comment_id)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update comment like_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update comment like_count", "Database error")?;
     } else {
         sqlx::query("INSERT INTO comment_likes (user_id, comment_id) VALUES ($1, $2)")
             .bind(auth.user_id)
             .bind(comment_id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to like comment: {}", e);
-                AppError::internal("Failed to like comment")
-            })?;
+            .db_err("Failed to like comment")?;
 
         like_count = sqlx::query_scalar::<_, i64>(
             "UPDATE comments SET like_count = like_count + 1 WHERE id = $1 RETURNING like_count"
@@ -97,7 +83,7 @@ pub async fn toggle_comment_like(
         .bind(comment_id)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update comment like_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update comment like_count", "Database error")?;
 
         // Notify the comment's author, unless they're liking their own comment.
         if auth.user_id != comment_author {
@@ -135,10 +121,7 @@ pub async fn toggle_comment_like(
         }
     }
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     if let Some(event) = pending_notification {
         publish_notification(&state, &event).await;

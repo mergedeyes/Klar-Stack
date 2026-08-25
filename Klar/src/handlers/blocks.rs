@@ -17,6 +17,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::UserResponse;
+use crate::utils::{DbResultExt, ResolveMedia};
 
 #[derive(Serialize)]
 pub struct BlockResponse {
@@ -26,7 +27,7 @@ pub struct BlockResponse {
 /// Check if a block exists in either direction between two users.
 /// Returns true if user_a blocked user_b OR user_b blocked user_a.
 pub async fn check_block(pool: &PgPool, user_a: Uuid, user_b: Uuid) -> Result<bool, AppError> {
-    let blocked = sqlx::query_scalar::<_, bool>(
+    sqlx::query_scalar::<_, bool>(
         r#"
         SELECT EXISTS(
             SELECT 1 FROM blocks
@@ -39,12 +40,7 @@ pub async fn check_block(pool: &PgPool, user_a: Uuid, user_b: Uuid) -> Result<bo
     .bind(user_b)
     .fetch_one(pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error checking block: {}", e);
-        AppError::internal("Database error")
-    })?;
-
-    Ok(blocked)
+    .db_err_ctx("Database error checking block", "Database error")
 }
 
 /// Tears down one direction of a follow relationship: decrements both
@@ -60,13 +56,13 @@ async fn teardown_follow(
         .bind(follower_id)
         .execute(&mut **tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update following_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update following_count", "Database error")?;
 
     sqlx::query("UPDATE users SET follower_count = GREATEST(follower_count - 1, 0) WHERE id = $1")
         .bind(following_id)
         .execute(&mut **tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update follower_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update follower_count", "Database error")?;
 
     sqlx::query(
         "DELETE FROM feed_items WHERE user_id = $1 AND post_id IN (SELECT id FROM posts WHERE user_id = $2)"
@@ -75,7 +71,7 @@ async fn teardown_follow(
     .bind(following_id)
     .execute(&mut **tx)
     .await
-    .map_err(|e| { tracing::error!("Failed to clean up feed_items on block: {}", e); AppError::internal("Database error") })?;
+    .db_err_ctx("Failed to clean up feed_items on block", "Database error")?;
 
     Ok(())
 }
@@ -91,20 +87,14 @@ pub async fn block_user(
         .bind(&username)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            AppError::internal("Database error")
-        })?
+        .db_err("Database error")?
         .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     if target == auth.user_id {
         return Err(AppError::bad_request("You can't block yourself"));
     }
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     // Insert block (idempotent)
     sqlx::query(
@@ -114,10 +104,7 @@ pub async fn block_user(
     .bind(target)
     .execute(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to block user: {}", e);
-        AppError::internal("Failed to block user")
-    })?;
+    .db_err("Failed to block user")?;
 
     // Remove follows in both directions, tracking which direction(s)
     // actually existed so counters/feed_items only change for those.
@@ -128,7 +115,7 @@ pub async fn block_user(
     .bind(target)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| { tracing::error!("Failed to remove follow on block: {}", e); AppError::internal("Failed to remove follows") })?
+    .db_err("Failed to remove follows")?
     .is_some();
 
     let target_followed_auth = sqlx::query_scalar::<_, Uuid>(
@@ -138,7 +125,7 @@ pub async fn block_user(
     .bind(auth.user_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| { tracing::error!("Failed to remove follow on block: {}", e); AppError::internal("Failed to remove follows") })?
+    .db_err("Failed to remove follows")?
     .is_some();
 
     if auth_followed_target {
@@ -148,10 +135,7 @@ pub async fn block_user(
         teardown_follow(&mut tx, target, auth.user_id).await?;
     }
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     tracing::info!("User {} blocked {}", auth.user_id, username);
     Ok((
@@ -172,10 +156,7 @@ pub async fn unblock_user(
         .bind(&username)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            AppError::internal("Database error")
-        })?
+        .db_err("Database error")?
         .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     sqlx::query("DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2")
@@ -183,10 +164,7 @@ pub async fn unblock_user(
         .bind(target)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to unblock: {}", e);
-            AppError::internal("Failed to unblock user")
-        })?;
+        .db_err("Failed to unblock user")?;
 
     Ok(Json(BlockResponse {
         message: format!("Unblocked {}", username),
@@ -210,11 +188,8 @@ pub async fn get_blocked_users(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
-    Ok(Json(responses))
+    Ok(Json(responses.resolve_media(&state.storage)))
 }

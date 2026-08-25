@@ -15,6 +15,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{FollowRequestResponse, UserResponse};
+use crate::utils::{DbResultExt, ResolveMedia};
 
 /// Response for follow/unfollow actions
 #[derive(Serialize)]
@@ -44,7 +45,7 @@ pub async fn is_following(db: &sqlx::PgPool, follower_id: Uuid, following_id: Uu
     .bind(following_id)
     .fetch_one(db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })
+    .db_err("Database error")
 }
 
 /// Whether `requester_id` has a pending (not yet accepted/rejected)
@@ -57,7 +58,7 @@ pub async fn has_pending_follow_request(db: &sqlx::PgPool, requester_id: Uuid, t
     .bind(target_id)
     .fetch_one(db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })
+    .db_err("Database error")
 }
 
 /// Actually establish a follow (counters + feed backfill + notification),
@@ -69,10 +70,7 @@ async fn establish_follow(
     follower_id: Uuid,
     target_id: Uuid,
 ) -> Result<(), AppError> {
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     let newly_followed = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING follower_id"
@@ -81,10 +79,7 @@ async fn establish_follow(
     .bind(target_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to follow: {}", e);
-        AppError::internal("Failed to follow user")
-    })?
+    .db_err("Failed to follow user")?
     .is_some();
 
     let mut pending_notification: Option<NotificationEvent> = None;
@@ -94,13 +89,13 @@ async fn establish_follow(
             .bind(follower_id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| { tracing::error!("Failed to update following_count: {}", e); AppError::internal("Database error") })?;
+            .db_err_ctx("Failed to update following_count", "Database error")?;
 
         sqlx::query("UPDATE users SET follower_count = follower_count + 1 WHERE id = $1")
             .bind(target_id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| { tracing::error!("Failed to update follower_count: {}", e); AppError::internal("Database error") })?;
+            .db_err_ctx("Failed to update follower_count", "Database error")?;
 
         sqlx::query(
             r#"
@@ -113,7 +108,7 @@ async fn establish_follow(
         .bind(target_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to backfill feed_items on follow: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to backfill feed_items on follow", "Database error")?;
 
         let notif_id = sqlx::query_scalar::<_, Uuid>(
             "INSERT INTO notifications (user_id, actor_id, type)
@@ -145,10 +140,7 @@ async fn establish_follow(
         }
     }
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     if let Some(event) = pending_notification {
         publish_notification(state, &event).await;
@@ -170,16 +162,15 @@ pub async fn follow_user(
     Path(username): Path<String>,
 ) -> Result<(StatusCode, Json<FollowResponse>), AppError> {
 
+    // Not routed through utils::find_user_id_by_username: this lookup also
+    // needs is_private, which that helper doesn't fetch.
     let target = sqlx::query_as::<_, (Uuid, bool)>(
         "SELECT id, is_private FROM users WHERE LOWER(username) = LOWER($1)"
     )
     .bind(&username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     let (target_id, target_is_private) = target;
@@ -271,10 +262,7 @@ pub async fn unfollow_user(
     .bind(&username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     // Always clear a pending request, regardless of whether an actual
@@ -286,12 +274,9 @@ pub async fn unfollow_user(
         .bind(target)
         .execute(&state.db)
         .await
-        .map_err(|e| { tracing::error!("Failed to delete follow request: {}", e); AppError::internal("Database error") })?;
+        .db_err("Failed to delete follow request")?;
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     let was_following = sqlx::query_scalar::<_, Uuid>(
         "DELETE FROM follows WHERE follower_id = $1 AND following_id = $2 RETURNING follower_id"
@@ -300,10 +285,7 @@ pub async fn unfollow_user(
     .bind(target)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to unfollow: {}", e);
-        AppError::internal("Failed to unfollow user")
-    })?
+    .db_err("Failed to unfollow user")?
     .is_some();
 
     if was_following {
@@ -311,13 +293,13 @@ pub async fn unfollow_user(
             .bind(auth.user_id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| { tracing::error!("Failed to update following_count: {}", e); AppError::internal("Database error") })?;
+            .db_err_ctx("Failed to update following_count", "Database error")?;
 
         sqlx::query("UPDATE users SET follower_count = GREATEST(follower_count - 1, 0) WHERE id = $1")
             .bind(target)
             .execute(&mut *tx)
             .await
-            .map_err(|e| { tracing::error!("Failed to update follower_count: {}", e); AppError::internal("Database error") })?;
+            .db_err_ctx("Failed to update follower_count", "Database error")?;
 
         sqlx::query(
             "DELETE FROM feed_items WHERE user_id = $1 AND post_id IN (SELECT id FROM posts WHERE user_id = $2)"
@@ -326,13 +308,10 @@ pub async fn unfollow_user(
         .bind(target)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to clean up feed_items on unfollow: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to clean up feed_items on unfollow", "Database error")?;
     }
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     Ok(Json(FollowResponse {
         message: format!("Unfollowed {}", username),
@@ -364,9 +343,9 @@ pub async fn get_follow_requests(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+    .db_err("Database error")?;
 
-    Ok(Json(requests))
+    Ok(Json(requests.resolve_media(&state.storage)))
 }
 
 /// POST /users/me/follow-requests/:requester_username/accept (auth required)
@@ -381,7 +360,7 @@ pub async fn accept_follow_request(
     .bind(&requester_username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", requester_username)))?;
 
     let deleted = sqlx::query_scalar::<_, Uuid>(
@@ -391,7 +370,7 @@ pub async fn accept_follow_request(
     .bind(auth.user_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+    .db_err("Database error")?;
 
     if deleted.is_none() {
         return Err(AppError::not_found("No pending request from this user"));
@@ -447,7 +426,7 @@ pub async fn reject_follow_request(
     .bind(&requester_username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", requester_username)))?;
 
     sqlx::query("DELETE FROM follow_requests WHERE requester_id = $1 AND target_id = $2")
@@ -455,7 +434,7 @@ pub async fn reject_follow_request(
         .bind(auth.user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+        .db_err("Database error")?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -479,13 +458,10 @@ pub async fn get_followers(
     .bind(&username)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
-    Ok(Json(responses))
+    Ok(Json(responses.resolve_media(&state.storage)))
 }
 
 /// GET /users/:username/following — list who this user follows
@@ -507,13 +483,10 @@ pub async fn get_following(
     .bind(&username)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
-    Ok(Json(responses))
+    Ok(Json(responses.resolve_media(&state.storage)))
 }
 
 /// GET /users/:username/stats — public profile stats
@@ -531,10 +504,7 @@ pub async fn get_user_stats(
     .bind(&username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     Ok(Json(ProfileStats {

@@ -23,6 +23,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::media;
 use crate::models::{MediaAsset, NewPostResponse};
+use crate::utils::ResolveMedia;
 
 /// Combined response for a post with its media
 #[derive(Debug, Serialize)]
@@ -160,12 +161,12 @@ pub async fn upload_post(
         AppError::internal("Failed to create post")
     })?;
 
-    // Build public URLs
-    let thumb_url = state.storage.public_url(&thumb_key);
-    let medium_url = state.storage.public_url(&medium_key);
-    let full_url = state.storage.public_url(&full_key);
-
-    // Create media asset record
+    // Create media asset record. Returns thumb_key/medium_key/full_key
+    // straight from the row aliased as thumb_url/medium_url/full_url —
+    // still bare storage keys at this point, same as every other handler
+    // that reads media_assets. Resolved into real URLs in one place below
+    // via .resolve_media(), instead of pre-computing URLs before the
+    // insert like this used to.
     let media_asset = sqlx::query_as::<_, MediaAsset>(
         r#"
         INSERT INTO media_assets (post_id, original_key, thumb_key, medium_key, full_key, width, height, size_bytes)
@@ -173,9 +174,9 @@ pub async fn upload_post(
         RETURNING
             id,
             post_id,
-            $9 as thumb_url,
-            $10 as medium_url,
-            $11 as full_url,
+            thumb_key as thumb_url,
+            medium_key as medium_url,
+            full_key as full_url,
             width,
             height,
             size_bytes,
@@ -190,9 +191,6 @@ pub async fn upload_post(
     .bind(processed.width as i32)
     .bind(processed.height as i32)
     .bind(processed.medium.len() as i64) // approximate size
-    .bind(&thumb_url)
-    .bind(&medium_url)
-    .bind(&full_url)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
@@ -236,7 +234,7 @@ pub async fn upload_post(
         StatusCode::CREATED,
         Json(PostWithMediaResponse {
             post,
-            media: vec![media_asset],
+            media: vec![media_asset.resolve_media(&state.storage)],
         }),
     ))
 }
@@ -272,13 +270,5 @@ pub async fn get_post_media(
         AppError::internal("Database error")
     })?;
 
-    // Convert storage keys to public URLs
-    let assets_with_urls: Vec<MediaAsset> = assets.into_iter().map(|mut a| {
-        a.thumb_url = state.storage.public_url(&a.thumb_url);
-        a.medium_url = state.storage.public_url(&a.medium_url);
-        a.full_url = state.storage.public_url(&a.full_url);
-        a
-    }).collect();
-
-    Ok(Json(assets_with_urls))
+    Ok(Json(assets.resolve_media(&state.storage)))
 }

@@ -13,6 +13,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::UserResponse;
+use crate::utils::{DbResultExt, ResolveMedia};
 
 /// Redis pub/sub channel that all backend replicas subscribe to for
 /// fanning real-time notifications out across the cluster. See main.rs
@@ -37,9 +38,12 @@ pub struct NotificationResponse {
     pub post_id: Option<Uuid>,
     /// Storage key (not a full URL) for the post's first image, so the
     /// frontend can show a preview thumbnail on the notification without
-    /// a second round-trip — same raw-key convention as PostResponse's
-    /// thumb_url elsewhere, run through getMediaUrl() on the frontend.
-    /// None for notification types with no associated post (e.g. 'follow').
+    /// a second round-trip. Resolved into a full URL by ResolveMedia
+    /// (see utils.rs) before this ever leaves the server, both for the
+    /// GET /notifications path and the live SSE push path below --
+    /// publish_notification() is the one place both paths funnel through
+    /// for the live case. None for notification types with no associated
+    /// post (e.g. 'follow').
     pub post_thumb_url: Option<String>,
 }
 
@@ -94,8 +98,23 @@ pub async fn fetch_post_thumb_in_tx(
 /// real-time push shouldn't fail the underlying action (e.g. a like),
 /// since the notification row is already durably stored in Postgres and
 /// will show up next time the client polls GET /notifications.
+///
+/// Resolves post_thumb_url/actor.avatar_url into full URLs here, once,
+/// before publishing -- every replica's SSE stream just forwards this
+/// payload through unchanged (see main.rs's subscriber task and
+/// notification_stream below), so this is the only point in the live
+/// push path where the active Storage provider is actually available to
+/// call. The callers building NotificationEvent (likes.rs, comments.rs,
+/// comment_likes.rs, follows.rs) all still pass raw storage keys in, same
+/// as everywhere else -- resolution is centralized here, not duplicated
+/// at each call site.
 pub async fn publish_notification(state: &AppState, event: &NotificationEvent) {
-    let payload = match serde_json::to_string(event) {
+    let resolved_event = NotificationEvent {
+        target_user_id: event.target_user_id,
+        notification: event.notification.clone().resolve_media(&state.storage),
+    };
+
+    let payload = match serde_json::to_string(&resolved_event) {
         Ok(p) => p,
         Err(e) => {
             tracing::error!("Failed to serialize notification event: {}", e);
@@ -136,12 +155,9 @@ pub async fn get_notifications(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
-    let responses = records.into_iter().map(|rec| NotificationResponse {
+    let responses: Vec<NotificationResponse> = records.into_iter().map(|rec| NotificationResponse {
         id: rec.id,
         type_name: rec.type_name.unwrap_or_default(),
         is_read: rec.is_read,
@@ -162,17 +178,18 @@ pub async fn get_notifications(
         },
     }).collect();
 
-    Ok(Json(responses))
+    Ok(Json(responses.resolve_media(&state.storage)))
 }
 
 /// GET /notifications/stream — SSE Endpoint
 ///
 /// Reads from the *local* in-process broadcast channel only. Cross-replica
-/// delivery happens upstream: publish_notification() PUBLISHes to Redis,
-/// and the subscriber task spawned in main.rs re-broadcasts every message
-/// it receives from Redis into this same local channel on every replica —
-/// including the replica that originally published it. So this handler
-/// doesn't need to know or care about Redis at all.
+/// delivery happens upstream: publish_notification() PUBLISHes to Redis
+/// (already resolved into full URLs at that point), and the subscriber
+/// task spawned in main.rs re-broadcasts every message it receives from
+/// Redis into this same local channel on every replica — including the
+/// replica that originally published it. So this handler doesn't need to
+/// know or care about Redis, or about resolving any URLs, at all.
 pub async fn notification_stream(
     State(state): State<AppState>,
     auth: AuthUser, 
@@ -202,7 +219,7 @@ pub async fn mark_read(
     sqlx::query!("UPDATE notifications SET is_read = TRUE WHERE user_id = $1", auth.user_id)
         .execute(&state.db)
         .await
-        .map_err(|_| AppError::internal("Failed to update notifications"))?;
+        .db_err("Failed to update notifications")?;
         
     Ok(Json(serde_json::json!({"message": "ok"})))
 }

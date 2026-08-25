@@ -10,6 +10,7 @@ use crate::auth::OptionalAuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::post::PostResponse;
+use crate::utils::{DbResultExt, ResolveMedia};
 
 #[derive(Deserialize)]
 pub struct FeedQuery {
@@ -141,10 +142,8 @@ pub async fn get_global_feed(
         }
     };
 
-    let posts = query_result.map_err(|e| {
-        tracing::error!("Failed to fetch discovery feed: {:?}", e);
-        AppError::internal("Database error")
-    })?;
+    let posts = query_result.db_err_ctx("Failed to fetch discovery feed", "Database error")?;
+    let posts = posts.resolve_media(&state.storage);
 
     // Wir nehmen das letzte Element aus der Datenbank-Antwort und bauen den Cursor für den nächsten Request
     let next_cursor = posts.last().map(|last_post| CursorData {

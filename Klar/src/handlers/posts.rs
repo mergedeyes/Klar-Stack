@@ -12,6 +12,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::follows::is_following;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
+use crate::utils::{DbResultExt, ResolveMedia};
 
 /// Shared gate for both get_post and get_user_posts: can `viewer` see
 /// posts belonging to `owner_id`? Always yes if the owner isn't private,
@@ -50,10 +51,7 @@ pub async fn create_post(
         return Err(AppError::bad_request("Post must have a caption"));
     }
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
@@ -79,16 +77,13 @@ pub async fn create_post(
     .bind(&input.caption)
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create post: {}", e);
-        AppError::internal("Failed to create post")
-    })?;
+    .db_err("Failed to create post")?;
 
     sqlx::query("UPDATE users SET post_count = post_count + 1 WHERE id = $1")
         .bind(auth.user_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update post_count", "Database error")?;
 
     // Fan-out: one row per current follower. A single INSERT..SELECT is a
     // set-based operation, not a loop -- efficient even for accounts with
@@ -107,15 +102,12 @@ pub async fn create_post(
     .bind(auth.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| { tracing::error!("Failed to fan out post: {}", e); AppError::internal("Database error") })?;
+    .db_err_ctx("Failed to fan out post", "Database error")?;
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     tracing::info!("Post created: {} by user {}", post.id, auth.user_id);
-    Ok((StatusCode::CREATED, Json(post)))
+    Ok((StatusCode::CREATED, Json(post.resolve_media(&state.storage))))
 }
 
 /// GET /posts/:id — view a single post. Public route, but gated for
@@ -136,10 +128,7 @@ pub async fn get_post(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     let (owner_id, owner_is_private) = owner;
@@ -164,13 +153,10 @@ pub async fn get_post(
     .bind(is_owner)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     match post {
-        Some(post) => Ok(Json(post)),
+        Some(post) => Ok(Json(post.resolve_media(&state.storage))),
         None => Err(AppError::not_found("Post not found")),
     }
 }
@@ -194,10 +180,7 @@ pub async fn edit_post(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     if owner_id != auth.user_id {
@@ -230,13 +213,10 @@ pub async fn edit_post(
     .bind(post_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to edit post: {}", e);
-        AppError::internal("Failed to edit post")
-    })?;
+    .db_err("Failed to edit post")?;
 
     tracing::info!("Post edited: {}", post_id);
-    Ok(Json(post))
+    Ok(Json(post.resolve_media(&state.storage)))
 }
 
 /// DELETE /posts/:id — delete a post (auth required, owner only)
@@ -256,10 +236,7 @@ pub async fn delete_post(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     if owner_id != auth.user_id {
@@ -273,36 +250,24 @@ pub async fn delete_post(
     .bind(post_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     // CASCADE handles likes, comments, media_assets, and feed_items rows
     sqlx::query("DELETE FROM posts WHERE id = $1")
         .bind(post_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete post: {}", e);
-            AppError::internal("Failed to delete post")
-        })?;
+        .db_err("Failed to delete post")?;
 
     sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
         .bind(owner_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update post_count", "Database error")?;
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     // Delete actual files from disk
     // We do this after the DB delete so if it fails, we have orphaned files
@@ -346,16 +311,15 @@ pub async fn get_user_posts(
 
     let limit = query.limit.unwrap_or(20).min(50);
 
+    // Not routed through utils::find_user_id_by_username: this lookup also
+    // needs is_private, which that helper doesn't fetch.
     let owner = sqlx::query_as::<_, (Uuid, bool)>(
         "SELECT id, is_private FROM users WHERE LOWER(username) = LOWER($1)"
     )
     .bind(&username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     let (owner_id, owner_is_private) = owner;
@@ -433,12 +397,9 @@ pub async fn get_user_posts(
             .await
         }
     }
-    .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            AppError::internal("Database error")
-        })?;
+    .db_err("Database error")?;
 
-    Ok(Json(posts))
+    Ok(Json(posts.resolve_media(&state.storage)))
 }
 
 /// GET /feed — authenticated user's timeline.
@@ -529,10 +490,7 @@ pub async fn get_feed(
             .await
         }
     }
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
-    Ok(Json(posts))
+    Ok(Json(posts.resolve_media(&state.storage)))
 }

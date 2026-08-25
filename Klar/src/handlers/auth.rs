@@ -20,6 +20,7 @@ use crate::models::{
     RegisterRequest, UserResponse, UserRow,
 };
 use crate::storage::Storage;
+use crate::utils::{DbResultExt, ResolveMedia};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -122,10 +123,7 @@ async fn create_and_store_refresh_token(
     .bind(device_info)
     .execute(pool)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to store refresh token: {}", e);
-        AppError::internal("Failed to create session")
-    })?;
+    .db_err_ctx("Failed to store refresh token", "Failed to create session")?;
 
     Ok(raw_token)
 }
@@ -191,10 +189,7 @@ pub async fn register(
     .bind(&email_token)
     .execute(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create verification token: {}", e);
-        AppError::internal("Failed to create verification token")
-    })?;
+    .db_err("Failed to create verification token")?;
 
     {
         let email_service = state.email.clone();
@@ -221,7 +216,7 @@ pub async fn register(
             // send them explicitly via Authorization: Bearer.
             access_token,
             refresh_token,
-            user: UserResponse::from(user),
+            user: UserResponse::from(user).resolve_media(&state.storage),
         }),
     ))
 }
@@ -238,10 +233,7 @@ pub async fn login(
     .bind(&input.email)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let user = user.ok_or_else(|| {
         AppError::bad_request("Invalid email or password")
@@ -269,7 +261,7 @@ pub async fn login(
         Json(AuthResponse {
             access_token,
             refresh_token,
-            user: UserResponse::from(user),
+            user: UserResponse::from(user).resolve_media(&state.storage),
         }),
     ))
 }
@@ -312,10 +304,7 @@ pub async fn refresh(
     .bind(&token_hash)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let (old_token_id, user_id) = token_row
         .ok_or_else(|| AppError::unauthorized("Invalid or expired refresh token"))?;
@@ -324,10 +313,7 @@ pub async fn refresh(
         .bind(old_token_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete old refresh token: {}", e);
-            AppError::internal("Database error")
-        })?;
+        .db_err_ctx("Failed to delete old refresh token", "Database error")?;
 
     let access_token = create_access_token(user_id, &state.jwt_secret)
         .map_err(|_| AppError::internal("Failed to create access token"))?;
@@ -402,10 +388,7 @@ pub async fn verify_email(
     .bind(&query.token)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let (token_id, user_id) = token_row
         .ok_or_else(|| AppError::bad_request("Invalid or expired verification link"))?;
@@ -414,19 +397,13 @@ pub async fn verify_email(
         .bind(user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to verify email: {}", e);
-            AppError::internal("Failed to verify email")
-        })?;
+        .db_err("Failed to verify email")?;
 
     sqlx::query("UPDATE email_tokens SET used_at = NOW() WHERE id = $1")
         .bind(token_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to mark token as used: {}", e);
-            AppError::internal("Failed to mark token as used")
-        })?;
+        .db_err("Failed to mark token as used")?;
 
     tracing::info!("Email verified for user: {}", user_id);
 
@@ -452,10 +429,7 @@ pub async fn forgot_password(
     .bind(&input.email)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     if let Some(user) = user {
         sqlx::query(
@@ -464,10 +438,7 @@ pub async fn forgot_password(
         .bind(user.id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to invalidate old tokens: {}", e);
-            AppError::internal("Database error")
-        })?;
+        .db_err_ctx("Failed to invalidate old tokens", "Database error")?;
 
         let token = generate_email_token();
         sqlx::query(
@@ -480,10 +451,7 @@ pub async fn forgot_password(
         .bind(&token)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to create reset token: {}", e);
-            AppError::internal("Failed to create reset token")
-        })?;
+        .db_err("Failed to create reset token")?;
 
         {
             let email_service = state.email.clone();
@@ -530,10 +498,7 @@ pub async fn reset_password(
     .bind(&input.token)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     let (token_id, user_id) = token_row
         .ok_or_else(|| AppError::bad_request("Invalid or expired reset link"))?;
@@ -550,28 +515,19 @@ pub async fn reset_password(
         .bind(user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to update password: {}", e);
-            AppError::internal("Failed to update password")
-        })?;
+        .db_err("Failed to update password")?;
 
     sqlx::query("UPDATE email_tokens SET used_at = NOW() WHERE id = $1")
         .bind(token_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to mark token as used: {}", e);
-            AppError::internal("Database error")
-        })?;
+        .db_err_ctx("Failed to mark token as used", "Database error")?;
 
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to invalidate sessions: {}", e);
-            AppError::internal("Database error")
-        })?;
+        .db_err_ctx("Failed to invalidate sessions", "Database error")?;
 
     tracing::info!("Password reset for user: {}", user_id);
 
@@ -592,10 +548,7 @@ pub async fn resend_verification(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     if user.email_verified {
         return Err(AppError::bad_request("Email is already verified"));
@@ -607,10 +560,7 @@ pub async fn resend_verification(
     .bind(user.id)
     .execute(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to invalidate old tokens: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err_ctx("Failed to invalidate old tokens", "Database error")?;
 
     let token = generate_email_token();
     sqlx::query(
@@ -623,10 +573,7 @@ pub async fn resend_verification(
     .bind(&token)
     .execute(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create verification token: {}", e);
-        AppError::internal("Failed to create verification token")
-    })?;
+    .db_err("Failed to create verification token")?;
 
     {
         let email_service = state.email.clone();

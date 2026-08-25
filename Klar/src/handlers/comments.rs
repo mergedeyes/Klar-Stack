@@ -14,6 +14,7 @@ use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
 use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
+use crate::utils::{DbResultExt, ResolveMedia};
 
 /// posts.comment_count is maintained here (create/delete) instead of a
 /// correlated COUNT(*) subquery per post on every feed/profile render.
@@ -37,7 +38,7 @@ pub async fn create_comment(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     if check_block(&state.db, auth.user_id, post_owner).await? {
@@ -52,17 +53,14 @@ pub async fn create_comment(
         .bind(post_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+        .db_err("Database error")?;
 
         if !parent_exists {
             return Err(AppError::not_found("Parent comment not found on this post"));
         }
     }
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     let comment = sqlx::query_as::<_, CommentResponse>(
         r#"
@@ -84,13 +82,13 @@ pub async fn create_comment(
     .bind(input.body.trim())
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| { tracing::error!("Failed to create comment: {}", e); AppError::internal("Failed to create comment") })?;
+    .db_err("Failed to create comment")?;
 
     sqlx::query("UPDATE posts SET comment_count = comment_count + 1 WHERE id = $1")
         .bind(post_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update comment_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update comment_count", "Database error")?;
 
     // Notify the post owner, unless they're commenting on their own post.
     // Built inside the transaction (needs the notification id + actor
@@ -132,10 +130,7 @@ pub async fn create_comment(
         }
     }
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     if let Some(event) = pending_notification {
         publish_notification(&state, &event).await;
@@ -143,7 +138,7 @@ pub async fn create_comment(
 
     record_event(&state.db, Some(auth.user_id), post_id, EventType::Comment).await;
 
-    Ok((StatusCode::CREATED, Json(comment)))
+    Ok((StatusCode::CREATED, Json(comment.resolve_media(&state.storage))))
 }
 
 /// GET /posts/:id/comments — list comments on a post.
@@ -187,9 +182,9 @@ pub async fn get_comments(
     .bind(user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+    .db_err("Database error")?;
 
-    Ok(Json(comments))
+    Ok(Json(comments.resolve_media(&state.storage)))
 }
 
 pub async fn edit_comment(
@@ -213,7 +208,7 @@ pub async fn edit_comment(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Comment not found"))?;
 
     if comment_author != auth.user_id {
@@ -238,9 +233,9 @@ pub async fn edit_comment(
     .bind(comment_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Failed to edit comment: {}", e); AppError::internal("Failed to edit comment") })?;
+    .db_err("Failed to edit comment")?;
 
-    Ok(Json(comment))
+    Ok(Json(comment.resolve_media(&state.storage)))
 }
 
 /// posts.comment_count is decremented here to match create_comment's increment.
@@ -257,7 +252,7 @@ pub async fn delete_comment(
     .bind(post_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+    .db_err("Database error")?;
 
     let (comment_author, _) = comment
         .ok_or_else(|| AppError::not_found("Comment not found"))?;
@@ -268,7 +263,7 @@ pub async fn delete_comment(
     .bind(post_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+    .db_err("Database error")?;
 
     if auth.user_id != comment_author && auth.user_id != post_owner {
         return Err(AppError::bad_request(
@@ -276,10 +271,7 @@ pub async fn delete_comment(
         ));
     }
 
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     // Replies cascade-delete with their parent (parent_comment_id ON DELETE
     // CASCADE), so comment_count must drop by the whole deleted subtree's
@@ -297,25 +289,22 @@ pub async fn delete_comment(
     .bind(comment_id)
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| { tracing::error!("Failed to count comment subtree: {}", e); AppError::internal("Database error") })?;
+    .db_err_ctx("Failed to count comment subtree", "Database error")?;
 
     sqlx::query("DELETE FROM comments WHERE id = $1")
         .bind(comment_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to delete comment: {}", e); AppError::internal("Failed to delete comment") })?;
+        .db_err("Failed to delete comment")?;
 
     sqlx::query("UPDATE posts SET comment_count = GREATEST(comment_count - $1, 0) WHERE id = $2")
         .bind(deleted_count)
         .bind(post_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| { tracing::error!("Failed to update comment_count: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to update comment_count", "Database error")?;
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     Ok(StatusCode::NO_CONTENT)
 }

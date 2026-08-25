@@ -18,6 +18,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
+use crate::utils::{DbResultExt, ResolveMedia};
 
 const VALID_REASONS: &[&str] = &[
     "spam", "harassment", "hate_speech", "violence",
@@ -80,7 +81,7 @@ pub async fn create_report(
             .bind(input.target_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+            .db_err("Database error")?;
             if !exists {
                 return Err(AppError::not_found("Post not found"));
             }
@@ -92,7 +93,7 @@ pub async fn create_report(
             .bind(input.target_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+            .db_err("Database error")?;
             if !exists {
                 return Err(AppError::not_found("Comment not found"));
             }
@@ -107,7 +108,7 @@ pub async fn create_report(
             .bind(input.target_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+            .db_err("Database error")?;
             if !exists {
                 return Err(AppError::not_found("User not found"));
             }
@@ -129,10 +130,7 @@ pub async fn create_report(
     .bind(&input.details)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create report: {}", e);
-        AppError::internal("Failed to submit report")
-    })?;
+    .db_err("Failed to submit report")?;
 
     // Auto-moderation: only posts/comments have a moderation_status to
     // update (a "user" report has no content to hide -- it just queues
@@ -141,23 +139,23 @@ pub async fn create_report(
         if is_critical(&input.reason) {
             sqlx::query("UPDATE posts SET moderation_status = 'hidden' WHERE id = $1")
                 .bind(input.target_id).execute(&state.db).await
-                .map_err(|e| { tracing::error!("Failed to auto-hide post: {}", e); AppError::internal("Database error") })?;
+                .db_err_ctx("Failed to auto-hide post", "Database error")?;
         } else if is_high_severity(&input.reason) {
             // Never downgrade an already-hidden (CSAM) post back to
             // merely "flagged".
             sqlx::query("UPDATE posts SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
                 .bind(input.target_id).execute(&state.db).await
-                .map_err(|e| { tracing::error!("Failed to flag post: {}", e); AppError::internal("Database error") })?;
+                .db_err_ctx("Failed to flag post", "Database error")?;
         }
     } else if input.target_type == "comment" {
         if is_critical(&input.reason) {
             sqlx::query("UPDATE comments SET moderation_status = 'hidden' WHERE id = $1")
                 .bind(input.target_id).execute(&state.db).await
-                .map_err(|e| { tracing::error!("Failed to auto-hide comment: {}", e); AppError::internal("Database error") })?;
+                .db_err_ctx("Failed to auto-hide comment", "Database error")?;
         } else if is_high_severity(&input.reason) {
             sqlx::query("UPDATE comments SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
                 .bind(input.target_id).execute(&state.db).await
-                .map_err(|e| { tracing::error!("Failed to flag comment: {}", e); AppError::internal("Database error") })?;
+                .db_err_ctx("Failed to flag comment", "Database error")?;
         }
     }
 
@@ -221,12 +219,9 @@ pub async fn get_reports(
     )
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
-    Ok(Json(reports))
+    Ok(Json(reports.resolve_media(&state.storage)))
 }
 
 /// Optional note an admin can attach when dismissing or removing a
@@ -265,7 +260,7 @@ pub async fn dismiss_report(
     .bind(report_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Report not found or already reviewed"))?;
 
     let (target_type, target_id) = report;
@@ -278,16 +273,16 @@ pub async fn dismiss_report(
     .bind(report_id)
     .execute(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Failed to dismiss report: {}", e); AppError::internal("Database error") })?;
+    .db_err_ctx("Failed to dismiss report", "Database error")?;
 
     if target_type == "post" {
         sqlx::query("UPDATE posts SET moderation_status = 'visible' WHERE id = $1")
             .bind(target_id).execute(&state.db).await
-            .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+            .db_err("Database error")?;
     } else if target_type == "comment" {
         sqlx::query("UPDATE comments SET moderation_status = 'visible' WHERE id = $1")
             .bind(target_id).execute(&state.db).await
-            .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+            .db_err("Database error")?;
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -318,7 +313,7 @@ pub async fn remove_reported_content(
     .bind(report_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Report not found or already reviewed"))?;
 
     let (target_type, target_id) = report;
@@ -334,22 +329,22 @@ pub async fn remove_reported_content(
             .bind(target_id)
             .fetch_all(&state.db)
             .await
-            .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+            .db_err("Database error")?;
 
             let owner_id = sqlx::query_scalar::<_, Uuid>("SELECT user_id FROM posts WHERE id = $1")
                 .bind(target_id)
                 .fetch_optional(&state.db)
                 .await
-                .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?;
+                .db_err("Database error")?;
 
             sqlx::query("DELETE FROM posts WHERE id = $1")
                 .bind(target_id).execute(&state.db).await
-                .map_err(|e| { tracing::error!("Failed to delete post: {}", e); AppError::internal("Failed to remove content") })?;
+                .db_err("Failed to remove content")?;
 
             if let Some(owner_id) = owner_id {
                 sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
                     .bind(owner_id).execute(&state.db).await
-                    .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+                    .db_err_ctx("Failed to update post_count", "Database error")?;
             }
 
             for (thumb, medium, full) in media_keys {
@@ -361,7 +356,7 @@ pub async fn remove_reported_content(
         "comment" => {
             sqlx::query("DELETE FROM comments WHERE id = $1")
                 .bind(target_id).execute(&state.db).await
-                .map_err(|e| { tracing::error!("Failed to delete comment: {}", e); AppError::internal("Failed to remove content") })?;
+                .db_err("Failed to remove content")?;
         }
         "user" => {
             return Err(AppError::bad_request(
@@ -379,7 +374,7 @@ pub async fn remove_reported_content(
     .bind(report_id)
     .execute(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Failed to update report: {}", e); AppError::internal("Database error") })?;
+    .db_err_ctx("Failed to update report", "Database error")?;
 
     tracing::info!("Report {} actioned (content removed) by admin {}", report_id, auth.user_id);
     Ok(StatusCode::NO_CONTENT)
