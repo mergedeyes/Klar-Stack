@@ -78,7 +78,10 @@ export default function RegisterPage() {
   const onSubmit = async (values: RegisterValues) => {
     setError(null);
     try {
-      await register(values.username, values.email, values.password);
+      // acceptTerms is enforced server-side too (POST /auth/register
+      // rejects the request with 400 if it isn't true) -- this client
+      // check is a UX nicety, not the actual guarantee.
+      await register(values.username, values.email, values.password, values.acceptTerms);
       setRegistered(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");

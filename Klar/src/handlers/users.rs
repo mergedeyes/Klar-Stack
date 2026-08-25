@@ -439,8 +439,12 @@ pub async fn export_my_data(
     auth: AuthUser,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
     // --- Profile ---
-    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>)>(
-        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at FROM users WHERE id = $1"
+    // terms_accepted_at is included here (not just internally on UserRow)
+    // because this export is meant to be "everything we hold about you" --
+    // proof of when ToS/privacy consent was given is squarely personal
+    // data about the account, even though it's never shown in the app UI.
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_one(&state.db)
@@ -648,6 +652,7 @@ pub async fn export_my_data(
             "avatar_url": profile.4.map(|k| state.storage.public_url(&k)),
             "email_verified": profile.5,
             "created_at": profile.6,
+            "terms_accepted_at": profile.7,
         },
         "posts": posts_json,
         "comments": comments_json,

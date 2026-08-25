@@ -138,6 +138,16 @@ pub async fn register(
         return Err(AppError::bad_request("All fields are required"));
     }
 
+    // ToS/Privacy Policy consent -- enforced server-side, not just by the
+    // frontend form's checkbox, so a direct POST /auth/register can't skip
+    // it. See models/user.rs's RegisterRequest and migration
+    // 20260825000000_add_terms_accepted_at.sql for the full rationale.
+    if !input.accept_terms {
+        return Err(AppError::bad_request(
+            "You must accept the Terms of Service and Privacy Policy to register"
+        ));
+    }
+
     // Case is preserved exactly as entered -- uniqueness and lookups are
     // case-insensitive (see idx_users_username_ci), not the stored value.
     let username = input.username.trim().to_string();
@@ -158,7 +168,7 @@ pub async fn register(
         .to_string();
 
     let user = sqlx::query_as::<_, UserRow>(
-        "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING *"
+        "INSERT INTO users (username, email, password_hash, terms_accepted_at) VALUES ($1, $2, $3, NOW()) RETURNING *"
     )
     .bind(&username)
     .bind(&input.email)

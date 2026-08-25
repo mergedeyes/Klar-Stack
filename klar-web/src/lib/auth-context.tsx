@@ -18,7 +18,8 @@ interface AuthContextValue {
   register: (
     username: string,
     email: string,
-    password: string
+    password: string,
+    acceptTerms: boolean
   ) => Promise<void>;
   logout: () => Promise<void>;
   /** Re-fetches the current user from the server and updates the cached
@@ -77,8 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(
-    async (username: string, email: string, password: string) => {
-      const res = await auth.register(username, email, password);
+    async (username: string, email: string, password: string, acceptTerms: boolean) => {
+      const res = await auth.register(username, email, password, acceptTerms);
       tokens.set(res.access_token, res.refresh_token);
       setUser(res.user);
     },

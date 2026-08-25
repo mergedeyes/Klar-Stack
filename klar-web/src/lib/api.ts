@@ -280,10 +280,14 @@ async function request<T>(
 // ── Auth endpoints ────────────────────────────────────────────────────────────
 
 export const auth = {
-  register: (username: string, email: string, password: string) =>
+  // acceptTerms is required and enforced server-side (POST /auth/register
+  // rejects the request with 400 if it isn't true) -- see the register
+  // handler and models::RegisterRequest on the backend. Previously this
+  // checkbox was frontend-only and never reached the API at all.
+  register: (username: string, email: string, password: string, acceptTerms: boolean) =>
     request<AuthResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ username, email, password, accept_terms: acceptTerms }),
     }),
 
   login: (email: string, password: string) =>

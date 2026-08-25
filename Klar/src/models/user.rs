@@ -30,6 +30,17 @@ pub struct UserRow {
     #[allow(dead_code)]
     pub post_count: i64,
     pub is_private: bool,
+    // ToS/Privacy Policy consent timestamp -- NULL for accounts that
+    // registered before this was tracked (see migration
+    // 20260825000000_add_terms_accepted_at.sql); always populated for new
+    // registrations (see handlers/auth.rs's register). Not surfaced via
+    // UserResponse/UserPublicResponse -- nothing public needs it, and it's
+    // read directly by export_my_data's own explicit column select rather
+    // than through this struct -- but every `SELECT * FROM users` /
+    // `RETURNING *` still needs it present here or those queries fail at
+    // runtime.
+    #[allow(dead_code)]
+    pub terms_accepted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -124,6 +135,11 @@ pub struct RegisterRequest {
     pub username: String,
     pub email: String,
     pub password: String,
+    /// Must be `true` for registration to succeed (see handlers/auth.rs's
+    /// register) -- explicit ToS/Privacy Policy consent, enforced
+    /// server-side so it can't be skipped by calling the API directly
+    /// instead of going through the registration form.
+    pub accept_terms: bool,
 }
 
 /// Login request

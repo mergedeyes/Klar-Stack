@@ -1,0 +1,18 @@
+-- ToS + privacy policy consent tracking.
+--
+-- Previously "accept terms" was a client-side-only checkbox: the register
+-- form wouldn't submit without it, but the value was never sent to the
+-- backend -- RegisterRequest and the register handler didn't know it
+-- existed. Nothing stopped a direct POST /auth/register (bypassing the
+-- frontend entirely) from creating an account with no agreement at all,
+-- and there was no stored record of *whether* or *when* a given user
+-- actually consented -- which is the part that matters for an audit
+-- trail (Art. 7(1) DSGVO puts the burden of proof for consent on the
+-- controller, not the user).
+--
+-- terms_accepted_at is nullable rather than backfilled to NOW() for
+-- existing rows -- NULL here means "registered before this was tracked,"
+-- not "did not consent." Every new registration going forward populates
+-- it (see handlers/auth.rs's register, which now also rejects the
+-- request outright if accept_terms isn't true).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;

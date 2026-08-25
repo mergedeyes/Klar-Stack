@@ -150,7 +150,7 @@ set ANNA_JAR (mktemp)
 echo "Running test: Register jan"
 set JAN_RESPONSE (curl -s -c $JAN_JAR -X POST $BASE/auth/register \
     -H "Content-Type: application/json" \
-    -d "{\"username\": \"$JAN_USER\", \"email\": \"$JAN_EMAIL\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$JAN_USER\", \"email\": \"$JAN_EMAIL\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_json_nested "Register jan username" "$JAN_RESPONSE" "user.username" "$JAN_USER"
 
 echo "Running test: Register sets auth cookies"
@@ -175,27 +175,39 @@ end
 echo "Running test: Register anna"
 set ANNA_RESPONSE (curl -s -c $ANNA_JAR -X POST $BASE/auth/register \
     -H "Content-Type: application/json" \
-    -d "{\"username\": \"$ANNA_USER\", \"email\": \"$ANNA_EMAIL\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$ANNA_USER\", \"email\": \"$ANNA_EMAIL\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_json_nested "Register anna username" "$ANNA_RESPONSE" "user.username" "$ANNA_USER"
 assert_cookie_set "Register anna sets access cookie" "$ANNA_JAR" "klar_access_token"
 
 echo "Running test: Duplicate registration rejected"
 set DUP_STATUS (curl -s -o /dev/null -w "%{http_code}" -X POST $BASE/auth/register \
     -H "Content-Type: application/json" \
-    -d "{\"username\": \"$JAN_USER\", \"email\": \"$JAN_EMAIL\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$JAN_USER\", \"email\": \"$JAN_EMAIL\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_status "Duplicate registration rejected" "409" "$DUP_STATUS"
 
 echo "Running test: Empty username rejected"
 set EMPTY_STATUS (curl -s -o /dev/null -w "%{http_code}" -X POST $BASE/auth/register \
     -H "Content-Type: application/json" \
-    -d '{"username": "", "email": "x@x.de", "password": "12345678"}')
+    -d '{"username": "", "email": "x@x.de", "password": "12345678", "accept_terms": true}')
 assert_status "Empty username rejected" "400" "$EMPTY_STATUS"
 
 echo "Running test: Short password rejected"
 set SHORT_STATUS (curl -s -o /dev/null -w "%{http_code}" -X POST $BASE/auth/register \
     -H "Content-Type: application/json" \
-    -d '{"username": "shortpw", "email": "short@x.de", "password": "1234"}')
+    -d '{"username": "shortpw", "email": "short@x.de", "password": "1234", "accept_terms": true}')
 assert_status "Short password rejected" "400" "$SHORT_STATUS"
+
+echo "Running test: Registration without accepting terms rejected"
+set NOTERMS_STATUS (curl -s -o /dev/null -w "%{http_code}" -X POST $BASE/auth/register \
+    -H "Content-Type: application/json" \
+    -d '{"username": "noterms", "email": "noterms@x.de", "password": "12345678", "accept_terms": false}')
+assert_status "Registration without accepting terms rejected" "400" "$NOTERMS_STATUS"
+
+echo "Running test: Registration with missing accept_terms field rejected"
+set MISSINGTERMS_STATUS (curl -s -o /dev/null -w "%{http_code}" -X POST $BASE/auth/register \
+    -H "Content-Type: application/json" \
+    -d '{"username": "missingterms", "email": "missingterms@x.de", "password": "12345678"}')
+assert_status "Registration with missing accept_terms field rejected" "422" "$MISSINGTERMS_STATUS"
 
 # ══════════════════════════════════════════
 # AUTH — Email verification
@@ -583,7 +595,7 @@ set FIONA_JAR (mktemp)
 
 echo "Running test: Register fiona"
 set FIONA_RESPONSE (curl -s -c $FIONA_JAR -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \"$FIONA_USER\", \"email\": \"$FIONA_USER@example.com\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$FIONA_USER\", \"email\": \"$FIONA_USER@example.com\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_json_nested "Register fiona username" "$FIONA_RESPONSE" "user.username" "$FIONA_USER"
 
 echo "Running test: New follower's feed is backfilled with existing posts"
@@ -1025,7 +1037,7 @@ set BEN_JAR (mktemp)
 echo "Running test: Register ben"
 set BEN_RESPONSE (curl -s -c $BEN_JAR -X POST $BASE/auth/register \
     -H "Content-Type: application/json" \
-    -d "{\"username\": \"$BEN_USER\", \"email\": \"$BEN_EMAIL\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$BEN_USER\", \"email\": \"$BEN_EMAIL\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_json_nested "Register ben username" "$BEN_RESPONSE" "user.username" "$BEN_USER"
 
 echo "Running test: Jan blocks ben"
@@ -1094,11 +1106,11 @@ set ERIN_JAR (mktemp)
 
 echo "Running test: Register carla, dave, erin"
 set CARLA_RESPONSE (curl -s -c $CARLA_JAR -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \"$CARLA_USER\", \"email\": \"$CARLA_USER@example.com\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$CARLA_USER\", \"email\": \"$CARLA_USER@example.com\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 set DAVE_RESPONSE (curl -s -c $DAVE_JAR -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \"$DAVE_USER\", \"email\": \"$DAVE_USER@example.com\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$DAVE_USER\", \"email\": \"$DAVE_USER@example.com\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 set ERIN_RESPONSE (curl -s -c $ERIN_JAR -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \"$ERIN_USER\", \"email\": \"$ERIN_USER@example.com\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$ERIN_USER\", \"email\": \"$ERIN_USER@example.com\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 set CARLA_OK (echo $CARLA_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['user']['username'])" 2>/dev/null)
 set DAVE_OK (echo $DAVE_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['user']['username'])" 2>/dev/null)
 set ERIN_OK (echo $ERIN_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['user']['username'])" 2>/dev/null)
@@ -1308,7 +1320,7 @@ set EVE_JAR (mktemp)
 
 echo "Running test: Register eve (throwaway)"
 set EVE_RESPONSE (curl -s -c $EVE_JAR -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \"$EVE_USER\", \"email\": \"$EVE_EMAIL\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$EVE_USER\", \"email\": \"$EVE_EMAIL\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_json_nested "Register eve username" "$EVE_RESPONSE" "user.username" "$EVE_USER"
 
 echo "Running test: Delete account without auth"
@@ -1341,12 +1353,12 @@ set CASE_JAR (mktemp)
 
 echo "Running test: Register with mixed-case username"
 set CASE_RESPONSE (curl -s -c $CASE_JAR -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \"$CASE_USER\", \"email\": \"case_$SUFFIX@example.com\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \"$CASE_USER\", \"email\": \"case_$SUFFIX@example.com\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_json_nested "Register preserves entered case" "$CASE_RESPONSE" "user.username" "$CASE_USER"
 
 echo "Running test: Duplicate registration rejected regardless of case"
 set CASE_DUP_STATUS (curl -s -o /dev/null -w "%{http_code}" -X POST $BASE/auth/register -H "Content-Type: application/json" \
-    -d "{\"username\": \""(string lower $CASE_USER)"\", \"email\": \"case2_$SUFFIX@example.com\", \"password\": \"$PASSWORD\"}")
+    -d "{\"username\": \""(string lower $CASE_USER)"\", \"email\": \"case2_$SUFFIX@example.com\", \"password\": \"$PASSWORD\", \"accept_terms\": true}")
 assert_status "Duplicate registration case-insensitive" "409" "$CASE_DUP_STATUS"
 
 echo "Running test: Lookup by lowercase URL finds the account"

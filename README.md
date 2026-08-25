@@ -75,7 +75,7 @@
 ## Privacy & Compliance
 - Impressum, Datenschutzerklärung (privacy policy), Nutzungsbedingungen (ToS), and a plain-language **Transparenz** page explaining data handling in everyday terms
 - Legal pages carry a version-controlled "Stand:" date, auto-updated by a GitHub Actions bot commit whenever the underlying legal page file changes
-- ToS + privacy consent checkbox required at registration
+- ToS + privacy consent checkbox at registration, enforced server-side (`POST /auth/register` rejects the request with 400 if `accept_terms` isn't `true`, and 422 if it's missing entirely) — not just a client-side gate anymore. Acceptance is timestamped (`users.terms_accepted_at`) and included in the self-service data export
 - No tracking/advertising cookies — only functional auth storage
 - Documented sub-processors: Bunny.net (hosting/CDN/storage and self-hosted Postgres, German DC), Scaleway (transactional email, EU), Upstash (real-time notification relay, US — SCCs apply)
 
