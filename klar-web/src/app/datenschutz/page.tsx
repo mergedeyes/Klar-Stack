@@ -171,7 +171,7 @@ export default function DatenschutzPage() {
             werden dein Profil, deine Beiträge, Kommentare und Nachrichten
             gemäß unserer Datenbankstruktur entfernt. Die Löschung deiner Daten 
             erfolgt unmittelbar mit dem Klick auf den dazugehörigen Button. Deine 
-            Daten werden <strong>nicht</strong>, wie bei anderen Plattformen üblich 
+            Daten werden <strong>nicht</strong>, wie bei anderen Plattformen üblich, 
             noch einige Tage aufbewahrt.
           </p>
         </section>
