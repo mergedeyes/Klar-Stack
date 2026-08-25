@@ -1,4 +1,4 @@
-# Klar — Feature List (as of 23 July 2026)
+# Klar — Feature List (as of 25 August 2026)
 
 ## Accounts & Auth
 - Registration (username, email, password) with email verification link
@@ -65,11 +65,19 @@
 ## Search
 - User search by username or display name
 
+## Moderation & Reporting
+- Report posts, comments, or user accounts (`POST /reports`) with a fixed reason taxonomy: spam, harassment, hate speech, violence/graphic content, self-harm, sexual content, CSAM, impersonation, other
+- Auto-moderation on submission: a CSAM report hides the content immediately, zero tolerance, no threshold; violence/self-harm/sexual-content reports flag the content (shown behind an interstitial rather than removed outright — a single report shouldn't have unilateral takedown power)
+- Admin review queue (`/admin/reports`), critical reports sorted first: dismiss (restores visibility) or remove content outright, each with an optional internal review note
+- Admin access gated via an `ADMIN_EMAILS` allow-list, requiring the matching account's email to also be verified (prevents someone from claiming an admin address by registering it first)
+- *Not yet built:* DSA-mandated automated "Statement of Reasons" notification to affected users, appeal/counter-notice flow, UrhDaG rights-holder copyright takedown portal
+
 ## Privacy & Compliance
 - Impressum, Datenschutzerklärung (privacy policy), Nutzungsbedingungen (ToS), and a plain-language **Transparenz** page explaining data handling in everyday terms
+- Legal pages carry a version-controlled "Stand:" date, auto-updated by a GitHub Actions bot commit whenever the underlying legal page file changes
 - ToS + privacy consent checkbox required at registration
 - No tracking/advertising cookies — only functional auth storage
-- Documented sub-processors: Bunny.net (hosting/CDN/storage, German DC), Neon (Postgres, Frankfurt), Scaleway (transactional email, EU), Upstash (real-time notification relay, US — SCCs apply)
+- Documented sub-processors: Bunny.net (hosting/CDN/storage and self-hosted Postgres, German DC), Scaleway (transactional email, EU), Upstash (real-time notification relay, US — SCCs apply)
 
 ## Pre-Launch
 - Site-wide passcode gate (`/welcome`) via Next.js `proxy.ts` — blocks the whole site except the gate page and legal pages until a shared passcode is entered; disabled automatically if no passcode is configured (e.g. local dev)
@@ -81,7 +89,8 @@
 - Global cursor-pointer fix for all interactive elements
 
 ## Backend/Infra
-- Rust (Axum) backend, PostgreSQL on Neon (Frankfurt, `eu-central-1`)
+- Rust (Axum) backend, self-hosted PostgreSQL 18 in a Bunny Magic Container (Frankfurt) — TLS enforced even on loopback, connection pool retries through pod-startup races
+- Nightly automated Postgres backups (`db-backup` sidecar → private Bunny Storage Zone, no CDN pull zone); durability handled by off-pod storage, so the sidecar itself needs no persistent volume
 - UUIDv7 primary keys, denormalized counters (follower/following/post/like/comment counts), hash-partitioned `likes`/`notifications`, monthly-partitioned interaction event log (`post_events` — logging foundation for possible future recommendations, not used for ranking today)
 - Bunny.net: application hosting (Magic Containers), CDN, S3-compatible object storage
 - Redis (Upstash, TLS) for cross-replica pub/sub
@@ -91,4 +100,4 @@
 - Health check endpoint
 
 ---
-*Not yet built / explicitly deferred:* content moderation & reporting, backup strategy for Neon/Bunny storage, uptime monitoring/alerting, notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).
+*Not yet built / explicitly deferred:* DSA Statement-of-Reasons user notifications & appeal flow, UrhDaG rights-holder copyright portal, birth-date/16+ age verification enforcement, uptime monitoring/alerting, notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).
