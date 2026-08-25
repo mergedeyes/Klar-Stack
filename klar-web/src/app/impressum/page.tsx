@@ -74,6 +74,10 @@ export default function ImpressumPage() {
             teilzunehmen.
           </p>
         </section>
+
+        <p className="text-xs text-muted-foreground">
+          Stand: 25.08.2026
+        </p>
       </div>
     </div>
   );
