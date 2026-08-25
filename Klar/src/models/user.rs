@@ -52,6 +52,17 @@ pub struct UserPublicResponse {
     /// dropdown. Always false for unauthenticated viewers or your own
     /// profile.
     pub incoming_follow_request: bool,
+    /// Whether this account is an admin/moderator (checked against
+    /// ADMIN_EMAILS -- see utils::is_admin_email). Always false by
+    /// default here; only get_me (GET /users/me) ever sets this to a
+    /// real value, same reasoning as viewer_relationship above -- other
+    /// endpoints returning this type (get_user, search_users) show OTHER
+    /// people's profiles, and whether a given account moderates is not
+    /// public information those callers need or should get for free.
+    /// Purely a display hint for the frontend to decide whether to show
+    /// the admin menu entry -- the backend enforces the real check
+    /// itself on every /admin/* route regardless of what this says.
+    pub is_admin: bool,
 }
 
 /// Public API response
@@ -102,6 +113,7 @@ impl From<UserRow> for UserPublicResponse {
             is_private: row.is_private,
             viewer_relationship: None,
             incoming_follow_request: false,
+            is_admin: false,
         }
     }
 }

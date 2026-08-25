@@ -7,6 +7,27 @@ use crate::storage::Storage;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+/// Parses the ADMIN_EMAILS env var (comma-separated, whitespace trimmed)
+/// and checks whether the given email is in it, case-insensitively --
+/// matching how email lookups work elsewhere in the app. Used both to
+/// gate the /admin/reports routes (reports.rs) and to compute the
+/// is_admin flag returned by GET /users/me (users.rs), so the list only
+/// has to be maintained in one place (the ADMIN_EMAILS env var itself).
+///
+/// Re-parses the env var on every call rather than caching it once at
+/// startup -- this only runs on a handful of low-frequency paths (admin
+/// routes, and once per GET /users/me), so the cost is negligible, and it
+/// means the list can be edited by restarting the container without any
+/// other cache-invalidation logic to get right.
+pub fn is_admin_email(email: &str) -> bool {
+    let email = email.trim().to_lowercase();
+    std::env::var("ADMIN_EMAILS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .any(|admin| !admin.is_empty() && admin == email)
+}
+
 /// Extension trait for sqlx::Result: logs the real database error server
 /// side, then converts it into an AppError with a client facing message,
 /// so internal DB error text (constraint names, table names, etc) never

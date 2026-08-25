@@ -43,13 +43,11 @@ export default function SettingsPage() {
   if (authLoading || !user) return null;
 
   // Display-only gate -- actual authorization for /admin/reports is
-  // enforced server-side (ADMIN_USER_ID check in reports.rs), this just
-  // avoids showing every friends-and-family test account a menu entry
-  // they can't use. Requires NEXT_PUBLIC_ADMIN_USER_ID to be set to the
-  // same value as the backend's ADMIN_USER_ID.
-  const isAdmin = !!process.env.NEXT_PUBLIC_ADMIN_USER_ID && user.id === process.env.NEXT_PUBLIC_ADMIN_USER_ID;
-
-  const visibleSections = isAdmin
+  // enforced server-side (ADMIN_EMAILS check in reports.rs). The backend
+  // computes is_admin itself (GET /users/me, see utils::is_admin_email)
+  // and just hands us a boolean -- no email/ID list to keep in sync on
+  // the frontend, and no separate NEXT_PUBLIC_* build-time var needed.
+  const visibleSections = user.is_admin
     ? [
         ...sections,
         {

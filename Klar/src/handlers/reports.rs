@@ -1,10 +1,29 @@
 /// Content reporting & moderation.
 ///
 /// POST /reports is available to any authenticated user. Everything else
-/// here (the review queue, dismiss, remove) is gated to a single admin
-/// user via the ADMIN_USER_ID env var -- a plain UUID comparison rather
-/// than a full roles system, proportionate to a solo-dev, pre-launch
-/// scale. Worth revisiting once there's more than one person moderating.
+/// here (the review queue, dismiss, remove) is gated to a small set of
+/// admin/moderator accounts via the ADMIN_EMAILS env var -- a
+/// comma-separated list of emails, compared case-insensitively (see
+/// utils::is_admin_email, shared with GET /users/me's is_admin flag)
+/// rather than a full roles system, proportionate to a solo-dev,
+/// pre-launch scale. Worth revisiting once moderation needs
+/// finer-grained permissions than "can do everything or nothing."
+///
+/// JWTs only carry user_id (see auth.rs's Claims -- deliberately no
+/// email, so a token doesn't go stale if someone changes their address),
+/// so checking against an email allowlist means one extra lookup per
+/// admin-gated request to resolve user_id -> email. Cheap, and these
+/// endpoints are low-frequency (moderation actions, not hot-path reads).
+///
+/// require_admin also requires email_verified, not just an email-string
+/// match against ADMIN_EMAILS -- without that, adding an address to
+/// ADMIN_EMAILS before its real owner has registered would let *anyone*
+/// who registers with that exact address first get admin instantly, with
+/// no proof they actually control that inbox. Always register + verify
+/// the real admin's account before adding it to ADMIN_EMAILS, never the
+/// other way around -- email_verified is defense in depth for that
+/// ordering mistake, not a substitute for it (email is UNIQUE, so
+/// whoever registers it first keeps it either way).
 
 use axum::{
     extract::{Path, State},
@@ -18,7 +37,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
-use crate::utils::{DbResultExt, ResolveMedia};
+use crate::utils::{is_admin_email, DbResultExt, ResolveMedia};
 
 const VALID_REASONS: &[&str] = &[
     "spam", "harassment", "hate_speech", "violence",
@@ -41,14 +60,26 @@ fn is_high_severity(reason: &str) -> bool {
     matches!(reason, "violence" | "self_harm" | "sexual_content")
 }
 
-fn require_admin(auth: &AuthUser) -> Result<(), AppError> {
-    let admin_id = std::env::var("ADMIN_USER_ID")
-        .ok()
-        .and_then(|s| Uuid::parse_str(&s).ok());
+async fn require_admin(db: &sqlx::PgPool, auth: &AuthUser) -> Result<(), AppError> {
+    let row = sqlx::query_as::<_, (String, bool)>(
+        "SELECT email, email_verified FROM users WHERE id = $1"
+    )
+    .bind(auth.user_id)
+    .fetch_optional(db)
+    .await
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::forbidden("Admin access required"))?;
 
-    match admin_id {
-        Some(id) if id == auth.user_id => Ok(()),
-        _ => Err(AppError::forbidden("Admin access required")),
+    let (user_email, email_verified) = row;
+
+    // email_verified is required here, not just an email match -- see
+    // this module's doc comment for why (unverified + address-match alone
+    // would let anyone who registers a listed address first get admin,
+    // with no proof they actually control that inbox).
+    if email_verified && is_admin_email(&user_email) {
+        Ok(())
+    } else {
+        Err(AppError::forbidden("Admin access required"))
     }
 }
 
@@ -177,7 +208,7 @@ pub async fn get_reports(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<AdminReportRow>>, AppError> {
-    require_admin(&auth)?;
+    require_admin(&state.db, &auth).await?;
 
     let reports = sqlx::query_as::<_, AdminReportRow>(
         r#"
@@ -246,7 +277,7 @@ pub async fn dismiss_report(
     Path(report_id): Path<Uuid>,
     Json(input): Json<ReviewNote>,
 ) -> Result<StatusCode, AppError> {
-    require_admin(&auth)?;
+    require_admin(&state.db, &auth).await?;
 
     if let Some(note) = &input.note {
         if note.chars().count() > 1000 {
@@ -299,7 +330,7 @@ pub async fn remove_reported_content(
     Path(report_id): Path<Uuid>,
     Json(input): Json<ReviewNote>,
 ) -> Result<StatusCode, AppError> {
-    require_admin(&auth)?;
+    require_admin(&state.db, &auth).await?;
 
     if let Some(note) = &input.note {
         if note.chars().count() > 1000 {

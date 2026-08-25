@@ -24,6 +24,14 @@ export interface User {
   // not just in the notification dropdown. Always false for your own
   // profile or when logged out.
   incoming_follow_request?: boolean;
+  // Whether this account is an admin/moderator (server computes this
+  // against ADMIN_EMAILS -- see reports.rs / utils.rs). Only ever
+  // populated by GET /users/me; login/register/refresh responses don't
+  // set it, so it's undefined (falsy) until the next /users/me fetch --
+  // matches viewer_relationship/incoming_follow_request's optionality
+  // above. Display-only: the backend enforces the real check on every
+  // /admin/* route regardless of what this says.
+  is_admin?: boolean;
 }
 
 export interface Post {

@@ -33,7 +33,12 @@ async fn main() {
 
     // Initialize Storage
     let storage = Storage::new().await;
-    tracing::info!("Cloud storage client connected");
+    // Storage::new() itself already logs which backend it picked (local
+    // disk vs S3/Bunny) and any provider-specific detail — this line used
+    // to hardcode "Cloud storage client connected" regardless of that,
+    // which was flatly wrong for STORAGE_PROVIDER=local (no network call
+    // happens there at all).
+    tracing::info!("Storage backend initialized");
 
     // Email service
     let provider: EmailProvider = std::env::var("EMAIL_PROVIDER")

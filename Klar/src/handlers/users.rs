@@ -127,8 +127,18 @@ pub async fn get_me(
 
     match user {
         Some(user) => {
+            // Computed from `user.email`/`user.email_verified` before
+            // `user` moves into UserPublicResponse::from(user) below --
+            // that conversion doesn't carry either through (see its own
+            // doc comment), so it has to happen here, while `user` is
+            // still owned. email_verified is required, not just an email
+            // match -- see reports.rs's require_admin doc comment for why
+            // (this is the same rule, applied here so the displayed menu
+            // item and the real server-side check never disagree).
+            let is_admin = user.email_verified && crate::utils::is_admin_email(&user.email);
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
+            response.is_admin = is_admin;
             Ok(Json(response.resolve_media(&state.storage)))
         }
         None => Err(AppError::not_found("User not found")),

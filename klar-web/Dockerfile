@@ -15,12 +15,16 @@ COPY . .
 # Setting these as runtime env vars on Bunny (or anywhere else the
 # already-built container just runs) has zero effect -- the build
 # happens here, in GitHub Actions, before the image is ever pushed.
+#
+# NEXT_PUBLIC_ADMIN_EMAILS/ADMIN_USER_ID used to live here too, but the
+# admin-menu gate now reads `is_admin` straight off GET /users/me's
+# response (computed server-side in reports.rs/users.rs against the
+# backend's ADMIN_EMAILS) instead of comparing against a second,
+# separately-maintained copy of the list baked into the frontend build.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_STORAGE_URL
-ARG NEXT_PUBLIC_ADMIN_USER_ID
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_STORAGE_URL=$NEXT_PUBLIC_STORAGE_URL
-ENV NEXT_PUBLIC_ADMIN_USER_ID=$NEXT_PUBLIC_ADMIN_USER_ID
 
 RUN npm run build
 
