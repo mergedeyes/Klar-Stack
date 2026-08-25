@@ -13,6 +13,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
+use crate::utils::{DbResultExt, ResolveMedia};
 use chrono::{DateTime, Duration, Utc};
 
 /// Search query parameters
@@ -57,15 +58,13 @@ pub async fn search_users(
     .bind(offset)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Search query failed: {}", e);
-        AppError::internal("Search failed")
-    })?;
+    .db_err_ctx("Search query failed", "Search failed")?;
 
     // No viewer_relationship computed here (would be N extra lookups per
     // result) -- search results only need is_private, to show a lock icon;
     // the profile page itself computes the real relationship when opened.
-    Ok(Json(users.into_iter().map(UserPublicResponse::from).collect()))
+    let responses: Vec<UserPublicResponse> = users.into_iter().map(UserPublicResponse::from).collect();
+    Ok(Json(responses.resolve_media(&state.storage)))
 }
 
 /// GET /users/:username — public profile. Uses OptionalAuthUser (not
@@ -82,10 +81,7 @@ pub async fn get_user(
     .bind(&username)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
 
     let profile_id = user.id;
@@ -113,7 +109,7 @@ pub async fn get_user(
         }
     };
 
-    Ok(Json(response))
+    Ok(Json(response.resolve_media(&state.storage)))
 }
 
 /// GET /users/me — own profile (auth required)
@@ -127,16 +123,13 @@ pub async fn get_me(
     .bind(auth.user_id)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     match user {
         Some(user) => {
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
-            Ok(Json(response))
+            Ok(Json(response.resolve_media(&state.storage)))
         }
         None => Err(AppError::not_found("User not found")),
     }
@@ -154,7 +147,7 @@ pub async fn update_profile(
         .bind(auth.user_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| AppError::internal("Database error"))?;
+        .db_err("Database error")?;
 
     let mut final_username = input.username.clone();
 
@@ -231,7 +224,7 @@ pub async fn update_profile(
         }
     })?;
 
-    Ok(Json(UserResponse::from(updated_user)))
+    Ok(Json(UserResponse::from(updated_user).resolve_media(&state.storage)))
 }
 
 /// POST /users/me/avatar — upload avatar image (auth required)
@@ -279,10 +272,7 @@ pub async fn upload_avatar(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     if let Some(old_url) = old_avatar {
         let old_key = old_url.strip_prefix("/media/").unwrap_or(&old_url);
@@ -296,13 +286,10 @@ pub async fn upload_avatar(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to update avatar: {}", e);
-        AppError::internal("Failed to update avatar")
-    })?;
+    .db_err("Failed to update avatar")?;
 
     tracing::info!("Avatar updated: {}", auth.user_id);
-    Ok(Json(UserResponse::from(user)))
+    Ok(Json(UserResponse::from(user).resolve_media(&state.storage)))
 }
 
 
@@ -335,7 +322,7 @@ pub async fn change_password(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| { tracing::error!("Database error: {}", e); AppError::internal("Database error") })?
+    .db_err("Database error")?
     .ok_or_else(|| AppError::bad_request("Invalid current password"))?;
 
     // Verify current password
@@ -358,14 +345,14 @@ pub async fn change_password(
         .bind(auth.user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| { tracing::error!("Failed to update password: {}", e); AppError::internal("Failed to update password") })?;
+        .db_err("Failed to update password")?;
 
     // Invalidate all refresh tokens — force re-login on other devices
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(auth.user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| { tracing::error!("Failed to invalidate sessions: {}", e); AppError::internal("Database error") })?;
+        .db_err_ctx("Failed to invalidate sessions", "Database error")?;
 
     tracing::info!("Password changed for user: {}", auth.user_id);
     Ok(StatusCode::NO_CONTENT)
@@ -395,10 +382,7 @@ pub async fn delete_account(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     // Get avatar key
     let avatar_url = sqlx::query_scalar::<_, Option<String>>(
@@ -407,10 +391,7 @@ pub async fn delete_account(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     // Delete user — CASCADE removes posts, comments, likes, follows, blocks,
     // refresh_tokens, email_tokens, media_asset rows
@@ -418,10 +399,7 @@ pub async fn delete_account(
         .bind(auth.user_id)
         .execute(&state.db)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete user: {}", e);
-            AppError::internal("Failed to delete account")
-        })?;
+        .db_err("Failed to delete account")?;
 
     // Clean up files from disk (best-effort — orphaned files are acceptable)
     for (thumb, medium, full) in &media_keys {
@@ -450,11 +428,6 @@ pub async fn export_my_data(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
-    let db_err = |e: sqlx::Error| {
-        tracing::error!("Data export query failed: {}", e);
-        AppError::internal("Database error")
-    };
-
     // --- Profile ---
     let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>)>(
         "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at FROM users WHERE id = $1"
@@ -462,7 +435,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_one(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     // --- Posts (with their media) ---
     let posts = sqlx::query_as::<_, (Uuid, Option<String>, i64, i64, DateTime<Utc>, Option<DateTime<Utc>>)>(
@@ -471,7 +444,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     let post_ids: Vec<Uuid> = posts.iter().map(|p| p.0).collect();
 
@@ -484,7 +457,7 @@ pub async fn export_my_data(
         .bind(&post_ids)
         .fetch_all(&state.db)
         .await
-        .map_err(db_err)?
+        .db_err_ctx("Data export query failed", "Database error")?
     };
 
     let posts_json: Vec<serde_json::Value> = posts.into_iter().map(|(id, caption, like_count, comment_count, created_at, edited_at)| {
@@ -517,7 +490,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     let comments_json: Vec<serde_json::Value> = comments.into_iter().map(|(post_id, id, body, like_count, created_at, edited_at)| {
         serde_json::json!({
@@ -537,7 +510,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     // --- Likes given (comments) ---
     let comment_likes = sqlx::query_as::<_, (Uuid, DateTime<Utc>)>(
@@ -546,7 +519,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     // --- Following / Followers ---
     let following = sqlx::query_as::<_, (String, DateTime<Utc>)>(
@@ -555,7 +528,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     let followers = sqlx::query_as::<_, (String, DateTime<Utc>)>(
         "SELECT u.username, f.created_at FROM follows f JOIN users u ON u.id = f.follower_id WHERE f.following_id = $1 ORDER BY f.created_at DESC"
@@ -563,7 +536,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     // --- Blocked users (that this account initiated) ---
     let blocked = sqlx::query_as::<_, (String, DateTime<Utc>)>(
@@ -572,7 +545,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     // --- Notifications received (capped — this is a personal export, not
     // an unbounded audit log) ---
@@ -588,7 +561,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     let notifications_json: Vec<serde_json::Value> = notifications.into_iter().map(|(type_, actor_username, post_id, comment_id, is_read, created_at)| {
         serde_json::json!({
@@ -620,7 +593,7 @@ pub async fn export_my_data(
     .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
-    .map_err(db_err)?;
+    .db_err_ctx("Data export query failed", "Database error")?;
 
     let mut conversations_json = Vec::with_capacity(conversations.len());
     for (conv_id, other_username) in conversations {
@@ -635,7 +608,7 @@ pub async fn export_my_data(
         .bind(conv_id)
         .fetch_all(&state.db)
         .await
-        .map_err(db_err)?;
+        .db_err_ctx("Data export query failed", "Database error")?;
 
         let messages_json: Vec<serde_json::Value> = messages.into_iter().map(|(sender, body, created_at, edited_at)| {
             serde_json::json!({
