@@ -114,7 +114,7 @@ export default function DatenschutzPage() {
               Unternehmen; die Übermittlung erfolgt auf Grundlage von
               EU-Standardvertragsklauseln (Art. 46 DSGVO) bzw. des
               EU-U.S. Data Privacy Framework. 
-              <strong>Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
+              <strong> Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
               übertragen werden müssen.</strong>
             </li>
           </ul>

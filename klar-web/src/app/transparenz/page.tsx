@@ -129,7 +129,7 @@ export default function TransparenzPage() {
             TLS-verschlüsselt, die Daten werden dort nicht dauerhaft
             gespeichert, und deine E-Mail-Adresse wird in der App-Oberfläche
             nirgends angezeigt. 
-            <strong>Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
+            <strong> Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
             übertragen werden müssen.</strong>
           </p>
         </section>
