@@ -46,5 +46,8 @@ uploads
 # Documents
 *.pdf
 
+# Local planning notes
+TODO.md
+
 # Testing
 scripts
