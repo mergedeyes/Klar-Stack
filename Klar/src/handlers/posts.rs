@@ -19,7 +19,7 @@ use crate::utils::{DbResultExt, ResolveMedia};
 /// or if the viewer *is* the owner, or if the viewer actively follows
 /// them. A pending (not yet accepted) follow_request does NOT grant
 /// access -- that's the whole point of requiring approval.
-async fn can_view_posts(
+pub async fn can_view_posts(
     db: &sqlx::PgPool,
     viewer_id: Option<Uuid>,
     owner_id: Uuid,
@@ -33,6 +33,51 @@ async fn can_view_posts(
         Some(v) if v == owner_id => Ok(true),
         Some(v) => is_following(db, v, owner_id).await,
     }
+}
+
+/// The single visibility gate for anything hanging off one post (the post
+/// itself, its media, comments, likes, and interacting with it). Returns
+/// the post owner's id on success, since most callers need it anyway.
+///
+/// - "hidden" (auto-hidden via a CSAM report) -> 404 for everyone but the
+///   owner, same response as a nonexistent post so its existence can't be
+///   probed.
+/// - private owner -> 403 unless the viewer is the owner or an accepted
+///   follower (see can_view_posts).
+///
+/// Every per-post endpoint must go through this -- before it existed,
+/// only get_post checked visibility, so a private account's images and
+/// comments were readable by anyone holding the post id.
+pub async fn require_visible_post(
+    db: &sqlx::PgPool,
+    viewer_id: Option<Uuid>,
+    post_id: Uuid,
+) -> Result<Uuid, AppError> {
+    let (owner_id, owner_is_private, is_hidden) = sqlx::query_as::<_, (Uuid, bool, bool)>(
+        r#"
+        SELECT p.user_id, u.is_private, p.moderation_status = 'hidden'
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        WHERE p.id = $1
+        "#
+    )
+    .bind(post_id)
+    .fetch_optional(db)
+    .await
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::not_found("Post not found"))?;
+
+    let is_owner = viewer_id == Some(owner_id);
+
+    if is_hidden && !is_owner {
+        return Err(AppError::not_found("Post not found"));
+    }
+
+    if !can_view_posts(db, viewer_id, owner_id, owner_is_private).await? {
+        return Err(AppError::forbidden("This account is private"));
+    }
+
+    Ok(owner_id)
 }
 
 /// POST /posts — create a new post (auth required)
@@ -122,22 +167,7 @@ pub async fn get_post(
     Path(post_id): Path<Uuid>,
 ) -> Result<Json<PostResponse>, AppError> {
 
-    let owner = sqlx::query_as::<_, (Uuid, bool)>(
-        "SELECT user_id, (SELECT is_private FROM users WHERE id = posts.user_id) FROM posts WHERE id = $1"
-    )
-    .bind(post_id)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found("Post not found"))?;
-
-    let (owner_id, owner_is_private) = owner;
-
-    if !can_view_posts(&state.db, auth.user_id, owner_id, owner_is_private).await? {
-        return Err(AppError::forbidden("This account is private"));
-    }
-
-    let is_owner = auth.user_id == Some(owner_id);
+    require_visible_post(&state.db, auth.user_id, post_id).await?;
 
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
@@ -146,11 +176,10 @@ pub async fn get_post(
             p.comment_count, p.like_count, p.moderation_status::text
         FROM posts p
         JOIN users u ON p.user_id = u.id
-        WHERE p.id = $1 AND (p.moderation_status != 'hidden' OR $2)
+        WHERE p.id = $1
         "#
     )
     .bind(post_id)
-    .bind(is_owner)
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?;

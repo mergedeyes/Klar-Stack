@@ -9,7 +9,8 @@ use axum::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::auth::AuthUser;
+use crate::auth::{AuthUser, OptionalAuthUser};
+use crate::handlers::posts::can_view_posts;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
@@ -439,23 +440,50 @@ pub async fn reject_follow_request(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Follower/following lists of a private account are only visible to the
+/// same people who can see its posts (the owner and accepted followers) --
+/// who someone follows is as revealing as what they post. Returns the
+/// profile's user id.
+async fn require_visible_social_graph(
+    db: &sqlx::PgPool,
+    viewer_id: Option<Uuid>,
+    username: &str,
+) -> Result<Uuid, AppError> {
+    let (owner_id, owner_is_private) = sqlx::query_as::<_, (Uuid, bool)>(
+        "SELECT id, is_private FROM users WHERE LOWER(username) = LOWER($1)"
+    )
+    .bind(username)
+    .fetch_optional(db)
+    .await
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
+
+    if !can_view_posts(db, viewer_id, owner_id, owner_is_private).await? {
+        return Err(AppError::forbidden("This account is private"));
+    }
+
+    Ok(owner_id)
+}
+
 /// GET /users/:username/followers — list who follows this user
 pub async fn get_followers(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<Vec<UserPublicResponse>>, AppError> {
+
+    let owner_id = require_visible_social_graph(&state.db, auth.user_id, &username).await?;
 
     let users = sqlx::query_as::<_, crate::models::UserRow>(
         r#"
         SELECT u.*
         FROM users u
         JOIN follows f ON u.id = f.follower_id
-        JOIN users target ON f.following_id = target.id
-        WHERE LOWER(target.username) = LOWER($1)
+        WHERE f.following_id = $1
         ORDER BY f.created_at DESC
         "#
     )
-    .bind(&username)
+    .bind(owner_id)
     .fetch_all(&state.db)
     .await
     .db_err("Database error")?;
@@ -467,20 +495,22 @@ pub async fn get_followers(
 /// GET /users/:username/following — list who this user follows
 pub async fn get_following(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<Vec<UserPublicResponse>>, AppError> {
+
+    let owner_id = require_visible_social_graph(&state.db, auth.user_id, &username).await?;
 
     let users = sqlx::query_as::<_, crate::models::UserRow>(
         r#"
         SELECT u.*
         FROM users u
         JOIN follows f ON u.id = f.following_id
-        JOIN users source ON f.follower_id = source.id
-        WHERE LOWER(source.username) = LOWER($1)
+        WHERE f.follower_id = $1
         ORDER BY f.created_at DESC
         "#
     )
-    .bind(&username)
+    .bind(owner_id)
     .fetch_all(&state.db)
     .await
     .db_err("Database error")?;

@@ -18,7 +18,8 @@ use axum::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::auth::AuthUser;
+use crate::auth::{AuthUser, OptionalAuthUser};
+use crate::handlers::posts::require_visible_post;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::media;
@@ -242,8 +243,11 @@ pub async fn upload_post(
 /// GET /posts/:id/media — get media assets for a post
 pub async fn get_post_media(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(post_id): Path<Uuid>,
 ) -> Result<Json<Vec<MediaAsset>>, AppError> {
+
+    require_visible_post(&state.db, auth.user_id, post_id).await?;
 
     let assets = sqlx::query_as::<_, MediaAsset>(
         r#"
