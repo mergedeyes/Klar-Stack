@@ -414,13 +414,30 @@ pub async fn delete_account(
     .await
     .db_err("Database error")?;
 
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
+    // Conversations whose other participant already deleted their account
+    // would be left with nobody in them once this user goes too -- remove
+    // them outright. Conversations with a remaining participant are kept
+    // for that person; this user's side becomes NULL ("Deleted user") via
+    // ON DELETE SET NULL (migration 20260929000100).
+    sqlx::query(
+        "DELETE FROM conversations WHERE (user1_id = $1 AND user2_id IS NULL) OR (user2_id = $1 AND user1_id IS NULL)"
+    )
+    .bind(auth.user_id)
+    .execute(&mut *tx)
+    .await
+    .db_err_ctx("Failed to delete orphaned conversations", "Failed to delete account")?;
+
     // Delete user — CASCADE removes posts, comments, likes, follows, blocks,
     // refresh_tokens, email_tokens, media_asset rows
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(auth.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .db_err("Failed to delete account")?;
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Failed to delete account")?;
 
     // Clean up files from disk (best-effort — orphaned files are acceptable)
     for (thumb, medium, full) in &media_keys {
@@ -604,13 +621,15 @@ pub async fn export_my_data(
     // WhatsApp/Instagram-style exports handle DMs — the alternative
     // (only your own sent messages) would produce a confusing, half-empty
     // conversation history for the person requesting their data.
+    // LEFT JOINs: the other participant may have deleted their account
+    // (NULL user id), and the conversation still belongs in this export.
     let conversations = sqlx::query_as::<_, (Uuid, String)>(
         r#"
         SELECT c.id,
-            CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END
+            COALESCE(CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END, 'Deleted user')
         FROM conversations c
-        JOIN users u1 ON u1.id = c.user1_id
-        JOIN users u2 ON u2.id = c.user2_id
+        LEFT JOIN users u1 ON u1.id = c.user1_id
+        LEFT JOIN users u2 ON u2.id = c.user2_id
         WHERE c.user1_id = $1 OR c.user2_id = $1
         ORDER BY c.updated_at DESC
         "#
@@ -624,8 +643,8 @@ pub async fn export_my_data(
     for (conv_id, other_username) in conversations {
         let messages = sqlx::query_as::<_, (String, String, DateTime<Utc>, Option<DateTime<Utc>>)>(
             r#"
-            SELECT u.username, m.body, m.created_at, m.edited_at
-            FROM messages m JOIN users u ON u.id = m.sender_id
+            SELECT COALESCE(u.username, 'Deleted user'), m.body, m.created_at, m.edited_at
+            FROM messages m LEFT JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = $1
             ORDER BY m.created_at
             "#

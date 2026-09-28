@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { chatsApi, ChatMessage } from "@/lib/api";
+import { chatsApi, DELETED_USER_LABEL, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/hooks/use-notifications";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,11 @@ import { getMediaUrl } from "@/lib/utils/media";
 
 interface ChatWindowProps {
   conversationId?: string;
-  receiverId: string;
-  receiverUsername: string;
+  /** receiverId/receiverUsername are null when the other participant
+   * deleted their account: the history stays readable, but nobody can
+   * reply to them any more. */
+  receiverId: string | null;
+  receiverUsername: string | null;
   receiverAvatar: string | null;
   /** Called right after a message is successfully sent, so the parent
    * (the conversation list in /chats) can update that conversation's
@@ -50,6 +53,8 @@ function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (e
 }
 
 export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent }: ChatWindowProps) {
+  const receiverDeleted = receiverId === null;
+  const displayName = receiverUsername ?? DELETED_USER_LABEL;
   const { user } = useAuth();
   const { lastMessageEvent, refreshChatUnreadCount } = useNotifications();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -124,6 +129,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
         setMessages(prev => prev.map(m => m.id === editingMessage.id ? { ...m, body: inputText, edited_at: new Date().toISOString() } : m));
         setEditingMessage(null);
       } else {
+        if (!receiverId) return;
         const newMsg = await chatsApi.sendMessage(receiverId, inputText, replyingTo?.id);
         setMessages(prev => [...prev, newMsg]);
         setReplyingTo(null);
@@ -179,23 +185,33 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
 return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
       
-      {/* Header -- clickable through to the other person's profile */}
-      <Link
-        href={`/users/${receiverUsername}`}
-        className="h-20 flex-none p-4 border-b flex items-center gap-3 bg-background/95 backdrop-blur hover:bg-muted/40 transition-colors"
-      >
-        <div className="w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
-          {receiverAvatar ? (
-            <img src={getMediaUrl(receiverAvatar)} alt={receiverUsername} className="w-full h-full object-cover" />
-          ) : (
-            <span className="font-bold text-muted-foreground">{receiverUsername.charAt(0).toUpperCase()}</span>
-          )}
-        </div>
-        <div>
-          <span className="font-semibold">{receiverUsername}</span>
-          <div className="text-xs text-muted-foreground">End-to-End Encrypted</div>
-        </div>
-      </Link>
+      {/* Header -- clickable through to the other person's profile
+          (plain, unlinked header for a deleted account) */}
+      {(() => {
+        const headerContent = (
+          <>
+            <div className="w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
+              {receiverAvatar ? (
+                <img src={getMediaUrl(receiverAvatar)} alt={displayName} className="w-full h-full object-cover" />
+              ) : (
+                <span className="font-bold text-muted-foreground">{receiverDeleted ? "?" : displayName.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <div>
+              <span className={`font-semibold ${receiverDeleted ? "italic text-muted-foreground" : ""}`}>{displayName}</span>
+              <div className="text-xs text-muted-foreground">End-to-End Encrypted</div>
+            </div>
+          </>
+        );
+        const headerClass = "h-20 flex-none p-4 border-b flex items-center gap-3 bg-background/95 backdrop-blur";
+        return receiverDeleted ? (
+          <div className={headerClass}>{headerContent}</div>
+        ) : (
+          <Link href={`/users/${receiverUsername}`} className={`${headerClass} hover:bg-muted/40 transition-colors`}>
+            {headerContent}
+          </Link>
+        );
+      })()}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -283,7 +299,12 @@ return (
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
+      {/* Input Area (replaced by a notice when the other account is gone) */}
+      {receiverDeleted ? (
+        <div className="flex-none p-4 border-t bg-muted/10 text-center text-sm text-muted-foreground">
+          This account has been deleted. You can still read this conversation, but you can&apos;t reply.
+        </div>
+      ) : (
       <div className="flex-none p-3 border-t bg-muted/10">
         {error && <p className="text-sm text-destructive mb-2 px-2">{error}</p>}
         
@@ -316,6 +337,7 @@ return (
           </Button>
         </form>
       </div>
+      )}
     </div>
   );
 }

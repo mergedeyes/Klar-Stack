@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO conversations (user1_id, user2_id)\n        VALUES (least($1::uuid, $2::uuid), greatest($1::uuid, $2::uuid))\n        ON CONFLICT (least(user1_id, user2_id), greatest(user1_id, user2_id))\n            WHERE user1_id IS NOT NULL AND user2_id IS NOT NULL\n        DO UPDATE SET updated_at = NOW()\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "563b9e09045e0a7e67cf69e90aee5aa9e8af8d0cbc8df989e841d1c29181b049"
+}

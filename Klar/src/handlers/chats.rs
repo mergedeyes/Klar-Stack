@@ -24,7 +24,9 @@ pub async fn get_conversations(
         r#"
         SELECT 
             c.id,
-            u.id as other_user_id,
+            -- NULL (and so no user row) when the other participant
+            -- deleted their account; the frontend shows "Deleted user".
+            CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END as other_user_id,
             u.username as other_username,
             u.avatar_url as other_avatar_url,
             la.kind as last_activity_kind,
@@ -34,7 +36,7 @@ pub async fn get_conversations(
             la.emoji as last_activity_emoji,
             c.updated_at
         FROM conversations c
-        JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+        LEFT JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
         LEFT JOIN LATERAL (
             (
                 SELECT
@@ -182,6 +184,7 @@ pub async fn send_message(
         INSERT INTO conversations (user1_id, user2_id)
         VALUES (least($1::uuid, $2::uuid), greatest($1::uuid, $2::uuid))
         ON CONFLICT (least(user1_id, user2_id), greatest(user1_id, user2_id))
+            WHERE user1_id IS NOT NULL AND user2_id IS NOT NULL
         DO UPDATE SET updated_at = NOW()
         RETURNING id
         "#,
@@ -263,7 +266,7 @@ pub async fn edit_message(
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
-    if msg_meta.sender_id != auth.user_id {
+    if msg_meta.sender_id != Some(auth.user_id) {
         return Err(AppError::forbidden("You can only edit your own messages"));
     }
 
@@ -289,7 +292,7 @@ pub async fn delete_message(
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
-    if msg_meta.sender_id != auth.user_id {
+    if msg_meta.sender_id != Some(auth.user_id) {
         return Err(AppError::forbidden("You can only delete your own messages"));
     }
 
@@ -315,7 +318,7 @@ pub async fn toggle_reaction(
     // Only the two participants of a conversation may react to its
     // messages. Same 404 whether the message doesn't exist or belongs to
     // someone else's conversation, so message ids can't be probed.
-    let (conversation_id, user1_id, user2_id) = sqlx::query_as::<_, (Uuid, Uuid, Uuid)>(
+    let (conversation_id, user1_id, user2_id) = sqlx::query_as::<_, (Uuid, Option<Uuid>, Option<Uuid>)>(
         r#"
         SELECT c.id, c.user1_id, c.user2_id
         FROM conversations c
@@ -371,13 +374,16 @@ pub async fn toggle_reaction(
     // than adding a separate "reaction" type, since the effect wanted is
     // identical: bump the Chat icon's badge, and make an open ChatWindow
     // on the other end live-refetch to show the new/removed reaction.
-    let target_user_id = if user1_id == auth.user_id { user2_id } else { user1_id };
+    // None when the other participant deleted their account -- nobody to notify.
+    let target_user_id = if user1_id == Some(auth.user_id) { user2_id } else { user1_id };
 
-    if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
-        .bind(auth.user_id)
-        .fetch_one(&state.db)
-        .await
-    {
+    if let (Some(target_user_id), Ok(actor_row)) = (
+        target_user_id,
+        sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await,
+    ) {
         let event = NotificationEvent {
             target_user_id,
             notification: NotificationResponse {
@@ -418,7 +424,7 @@ pub async fn mark_conversation_read(
     }
 
     sqlx::query(
-        "UPDATE messages SET is_read = TRUE WHERE conversation_id = $1 AND sender_id != $2 AND is_read = FALSE"
+        "UPDATE messages SET is_read = TRUE WHERE conversation_id = $1 AND sender_id IS DISTINCT FROM $2 AND is_read = FALSE"
     )
     .bind(conversation_id)
     .bind(auth.user_id)
@@ -441,7 +447,9 @@ pub async fn get_unread_count(
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         WHERE (c.user1_id = $1 OR c.user2_id = $1)
-          AND m.sender_id != $1
+          -- IS DISTINCT FROM, not !=: a deleted user's messages have a
+          -- NULL sender_id, and NULL != $1 is never true.
+          AND m.sender_id IS DISTINCT FROM $1
           AND m.is_read = FALSE
         "#
     )
