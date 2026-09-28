@@ -113,7 +113,7 @@ pub async fn toggle_comment_like(
                             created_at: chrono::Utc::now(),
                             post_id: Some(post_id),
                             post_thumb_url: thumb,
-                            actor: crate::models::UserResponse::from(actor_row),
+                            actor: crate::models::NotificationActor::from(actor_row),
                         }
                     });
                 }

@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
-use crate::models::UserResponse;
+use crate::models::NotificationActor;
 use crate::utils::{DbResultExt, ResolveMedia};
 
 /// Redis pub/sub channel that all backend replicas subscribe to for
@@ -34,7 +34,7 @@ pub struct NotificationResponse {
     pub type_name: String,
     pub is_read: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
-    pub actor: UserResponse,
+    pub actor: NotificationActor,
     pub post_id: Option<Uuid>,
     /// Storage key (not a full URL) for the post's first image, so the
     /// frontend can show a preview thumbnail on the notification without
@@ -61,14 +61,8 @@ struct NotificationRow {
     post_id: Option<Uuid>,
     actor_id: Uuid,
     actor_username: String,
-    actor_email: String,
     actor_display: Option<String>,
-    actor_bio: Option<String>,
     actor_avatar: Option<String>,
-    email_verified: bool,
-    actor_created: chrono::DateTime<chrono::Utc>,
-    actor_username_changed_at: Option<chrono::DateTime<chrono::Utc>>,
-    actor_is_private: bool,
     post_thumb_url: Option<String>,
 }
 
@@ -138,11 +132,8 @@ pub async fn get_notifications(
         r#"
         SELECT 
             n.id, n.type::text as type_name, n.is_read, n.created_at, n.post_id,
-            u.id as actor_id, u.username as actor_username, u.email as actor_email, 
-            u.display_name as actor_display, u.bio as actor_bio, 
-            u.avatar_url as actor_avatar, u.email_verified, u.created_at as actor_created,
-            u.username_changed_at as actor_username_changed_at,
-            u.is_private as actor_is_private,
+            u.id as actor_id, u.username as actor_username,
+            u.display_name as actor_display, u.avatar_url as actor_avatar,
             m.thumb_key as post_thumb_url
         FROM notifications n
         JOIN users u ON n.actor_id = u.id
@@ -164,17 +155,11 @@ pub async fn get_notifications(
         created_at: rec.created_at,
         post_id: rec.post_id,
         post_thumb_url: rec.post_thumb_url,
-        actor: UserResponse {
+        actor: NotificationActor {
             id: rec.actor_id,
             username: rec.actor_username,
-            email: rec.actor_email,
             display_name: rec.actor_display,
-            bio: rec.actor_bio,
             avatar_url: rec.actor_avatar,
-            email_verified: rec.email_verified,
-            created_at: rec.actor_created,
-            username_changed_at: rec.actor_username_changed_at,
-            is_private: rec.actor_is_private,
         },
     }).collect();
 

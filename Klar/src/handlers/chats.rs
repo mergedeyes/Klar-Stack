@@ -209,7 +209,7 @@ pub async fn send_message(
                 post_id: None,
                 // No post involved in a chat message.
                 post_thumb_url: None,
-                actor: crate::models::UserResponse::from(actor_row),
+                actor: crate::models::NotificationActor::from(actor_row),
             }
         };
         // Resolves actor.avatar_url internally (see publish_notification
@@ -350,7 +350,7 @@ pub async fn toggle_reaction(
                     created_at: Utc::now(),
                     post_id: None,
                     post_thumb_url: None,
-                    actor: crate::models::UserResponse::from(actor_row),
+                    actor: crate::models::NotificationActor::from(actor_row),
                 }
             };
             publish_notification(&state, &event).await;

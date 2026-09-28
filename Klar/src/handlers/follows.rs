@@ -14,7 +14,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
-use crate::models::{FollowRequestResponse, UserResponse};
+use crate::models::{FollowRequestResponse, NotificationActor, UserPublicResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
 
 /// Response for follow/unfollow actions
@@ -133,7 +133,7 @@ async fn establish_follow(
                         created_at: chrono::Utc::now(),
                         post_id: None,
                         post_thumb_url: None,
-                        actor: UserResponse::from(actor_row),
+                        actor: NotificationActor::from(actor_row),
                     }
                 });
             }
@@ -231,7 +231,7 @@ pub async fn follow_user(
                     created_at: chrono::Utc::now(),
                     post_id: None,
                     post_thumb_url: None,
-                    actor: UserResponse::from(actor_row),
+                    actor: NotificationActor::from(actor_row),
                 }
             };
             publish_notification(&state, &event).await;
@@ -402,7 +402,7 @@ pub async fn accept_follow_request(
                     created_at: chrono::Utc::now(),
                     post_id: None,
                     post_thumb_url: None,
-                    actor: UserResponse::from(actor_row),
+                    actor: NotificationActor::from(actor_row),
                 }
             };
             publish_notification(&state, &event).await;
@@ -443,7 +443,7 @@ pub async fn reject_follow_request(
 pub async fn get_followers(
     State(state): State<AppState>,
     Path(username): Path<String>,
-) -> Result<Json<Vec<UserResponse>>, AppError> {
+) -> Result<Json<Vec<UserPublicResponse>>, AppError> {
 
     let users = sqlx::query_as::<_, crate::models::UserRow>(
         r#"
@@ -460,7 +460,7 @@ pub async fn get_followers(
     .await
     .db_err("Database error")?;
 
-    let responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
+    let responses: Vec<UserPublicResponse> = users.into_iter().map(UserPublicResponse::from).collect();
     Ok(Json(responses.resolve_media(&state.storage)))
 }
 
@@ -468,7 +468,7 @@ pub async fn get_followers(
 pub async fn get_following(
     State(state): State<AppState>,
     Path(username): Path<String>,
-) -> Result<Json<Vec<UserResponse>>, AppError> {
+) -> Result<Json<Vec<UserPublicResponse>>, AppError> {
 
     let users = sqlx::query_as::<_, crate::models::UserRow>(
         r#"
@@ -485,7 +485,7 @@ pub async fn get_following(
     .await
     .db_err("Database error")?;
 
-    let responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
+    let responses: Vec<UserPublicResponse> = users.into_iter().map(UserPublicResponse::from).collect();
     Ok(Json(responses.resolve_media(&state.storage)))
 }
 

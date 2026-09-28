@@ -123,7 +123,7 @@ pub async fn create_comment(
                         created_at: chrono::Utc::now(),
                         post_id: Some(post_id),
                         post_thumb_url: thumb,
-                        actor: crate::models::UserResponse::from(actor_row),
+                        actor: crate::models::NotificationActor::from(actor_row),
                     }
                 });
             }

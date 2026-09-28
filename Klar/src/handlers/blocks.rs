@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
-use crate::models::UserResponse;
+use crate::models::UserPublicResponse;
 use crate::utils::{DbResultExt, ResolveMedia};
 
 #[derive(Serialize)]
@@ -175,7 +175,7 @@ pub async fn unblock_user(
 pub async fn get_blocked_users(
     State(state): State<AppState>,
     auth: AuthUser,
-) -> Result<Json<Vec<UserResponse>>, AppError> {
+) -> Result<Json<Vec<UserPublicResponse>>, AppError> {
     let users = sqlx::query_as::<_, crate::models::UserRow>(
         r#"
         SELECT u.*
@@ -190,6 +190,6 @@ pub async fn get_blocked_users(
     .await
     .db_err("Database error")?;
 
-    let responses: Vec<UserResponse> = users.into_iter().map(UserResponse::from).collect();
+    let responses: Vec<UserPublicResponse> = users.into_iter().map(UserPublicResponse::from).collect();
     Ok(Json(responses.resolve_media(&state.storage)))
 }
