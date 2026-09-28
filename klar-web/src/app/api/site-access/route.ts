@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 // Brute-force protection: at most MAX_FAILURES wrong guesses per client IP
@@ -25,12 +25,24 @@ function clientIp(req: NextRequest): string {
   return entries[Math.max(entries.length - hops, 0)];
 }
 
-// Hash both sides first so timingSafeEqual gets equal-length inputs and
-// the comparison time doesn't reveal the passcode's length or prefix.
+// Constant-time comparison. timingSafeEqual needs equal-length buffers, so
+// both sides are zero-padded to the longer length instead of returning
+// early on a length mismatch (which would leak the passcode's length).
+// The explicit length check is still required, or "abc" would match a
+// passcode of "abc\0"; it's combined with & so both always run.
 function passcodeMatches(given: string, expected: string): boolean {
-  const a = createHash("sha256").update(given).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
+  const givenBuf = Buffer.from(given, "utf8");
+  const expectedBuf = Buffer.from(expected, "utf8");
+  const len = Math.max(givenBuf.length, expectedBuf.length);
+
+  const a = Buffer.alloc(len);
+  const b = Buffer.alloc(len);
+  givenBuf.copy(a);
+  expectedBuf.copy(b);
+
+  const sameBytes = timingSafeEqual(a, b);
+  const sameLength = givenBuf.length === expectedBuf.length;
+  return sameBytes && sameLength;
 }
 
 /**
