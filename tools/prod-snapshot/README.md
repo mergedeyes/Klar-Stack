@@ -12,10 +12,12 @@ Needs Docker; `migrate` also needs `cargo sqlx` (`cargo install sqlx-cli`).
 
 ```sh
 cp tools/prod-snapshot/snapshot.env.example tools/prod-snapshot/snapshot.env
-# fill in the same storage-zone values the db-backup sidecar uses
+# fill in BUNNY_STORAGE_ZONE and BUNNY_STORAGE_PASSWORD of the backup zone
 ```
 
-`snapshot.env` is gitignored (`*.env`). A read-only key is enough.
+`snapshot.env` is gitignored (`*.env`). Bunny storage zones have no
+key/secret pair: the zone name is both bucket and access key id, the zone
+password is the secret. The read-only password is enough.
 
 ## Use
 

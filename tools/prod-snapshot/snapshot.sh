@@ -50,10 +50,18 @@ load_env() {
     [ -f "${env_file}" ] || die "missing ${env_file} (copy snapshot.env.example and fill it in)"
     # shellcheck disable=SC1090
     set -a; source "${env_file}"; set +a
-    : "${S3_ENDPOINT:?S3_ENDPOINT missing in snapshot.env}"
-    : "${S3_BUCKET:?S3_BUCKET missing in snapshot.env}"
-    : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID missing in snapshot.env}"
-    : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY missing in snapshot.env}"
+    # Bunny's S3 API: bucket and access key id are both the storage zone
+    # name, the secret is the zone password. The AWS_*/S3_BUCKET names are
+    # still accepted, e.g. copied straight from the backup sidecar's env.
+    : "${BUNNY_STORAGE_ZONE:=${S3_BUCKET:-}}"
+    : "${BUNNY_STORAGE_PASSWORD:=${AWS_SECRET_ACCESS_KEY:-}}"
+    [ -n "${BUNNY_STORAGE_ZONE}" ]     || die "BUNNY_STORAGE_ZONE missing in snapshot.env"
+    [ -n "${BUNNY_STORAGE_PASSWORD}" ] || die "BUNNY_STORAGE_PASSWORD missing in snapshot.env"
+    S3_BUCKET="${BUNNY_STORAGE_ZONE}"
+    AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${BUNNY_STORAGE_ZONE}}"
+    AWS_SECRET_ACCESS_KEY="${BUNNY_STORAGE_PASSWORD}"
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    : "${S3_ENDPOINT:=https://de-s3.storage.bunnycdn.com}"
     : "${S3_PREFIX:=backups}"
 }
 
