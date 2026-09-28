@@ -21,6 +21,7 @@ use crate::models::{
 };
 use crate::storage::Storage;
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{normalize_email, validate_new_email, validate_password, validate_username};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -134,10 +135,6 @@ pub async fn register(
     Json(input): Json<RegisterRequest>,
 ) -> Result<(StatusCode, HeaderMap, Json<AuthResponse>), AppError> {
 
-    if input.username.is_empty() || input.email.is_empty() || input.password.is_empty() {
-        return Err(AppError::bad_request("All fields are required"));
-    }
-
     // ToS/Privacy Policy consent -- enforced server-side, not just by the
     // frontend form's checkbox, so a direct POST /auth/register can't skip
     // it. See models/user.rs's RegisterRequest and migration
@@ -150,15 +147,9 @@ pub async fn register(
 
     // Case is preserved exactly as entered -- uniqueness and lookups are
     // case-insensitive (see idx_users_username_ci), not the stored value.
-    let username = input.username.trim().to_string();
-
-    if username.len() > 30 {
-        return Err(AppError::bad_request("Username must be 30 characters or less"));
-    }
-
-    if input.password.len() < 8 {
-        return Err(AppError::bad_request("Password must be at least 8 characters"));
-    }
+    let username = validate_username(&input.username)?;
+    let email = validate_new_email(&input.email)?;
+    validate_password(&input.password)?;
 
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -171,7 +162,7 @@ pub async fn register(
         "INSERT INTO users (username, email, password_hash, terms_accepted_at) VALUES ($1, $2, $3, NOW()) RETURNING *"
     )
     .bind(&username)
-    .bind(&input.email)
+    .bind(&email)
     .bind(&password_hash)
     .fetch_one(&state.db)
     .await
@@ -238,9 +229,9 @@ pub async fn login(
 ) -> Result<(HeaderMap, Json<AuthResponse>), AppError> {
 
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE email = $1"
+        "SELECT * FROM users WHERE LOWER(email) = $1"
     )
-    .bind(&input.email)
+    .bind(normalize_email(&input.email))
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?;
@@ -422,9 +413,9 @@ pub async fn forgot_password(
 ) -> Result<Json<serde_json::Value>, AppError> {
 
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE email = $1"
+        "SELECT * FROM users WHERE LOWER(email) = $1"
     )
-    .bind(&input.email)
+    .bind(normalize_email(&input.email))
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?;
@@ -480,9 +471,7 @@ pub async fn reset_password(
     Json(input): Json<ResetPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
 
-    if input.new_password.len() < 8 {
-        return Err(AppError::bad_request("Password must be at least 8 characters"));
-    }
+    validate_password(&input.new_password)?;
 
     // Hash before touching the token, so a hashing failure can't burn a
     // valid reset link.
@@ -563,9 +552,9 @@ pub async fn resend_verification(
     }));
 
     let user = sqlx::query_as::<_, (uuid::Uuid, String, bool)>(
-        "SELECT id, email, email_verified FROM users WHERE email = $1"
+        "SELECT id, email, email_verified FROM users WHERE LOWER(email) = $1"
     )
-    .bind(input.email.trim())
+    .bind(normalize_email(&input.email))
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?;

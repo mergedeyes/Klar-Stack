@@ -14,6 +14,9 @@ use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{
+    check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
+};
 use chrono::{DateTime, Duration, Utc};
 
 /// Search query parameters
@@ -38,9 +41,12 @@ pub async fn search_users(
         return Err(AppError::bad_request("Search query too long"));
     }
 
-    let limit = params.limit.unwrap_or(20).min(50).max(1);
+    let limit = page_limit(params.limit, 20, 50);
     let offset = params.offset.unwrap_or(0).max(0);
-    let pattern = format!("%{}%", query);
+    // Escaped so "%" or "_" in the query match literally instead of
+    // acting as wildcards.
+    let escaped = escape_like(&query);
+    let pattern = format!("%{}%", escaped);
 
     let users = sqlx::query_as::<_, UserRow>(
         r#"
@@ -53,7 +59,7 @@ pub async fn search_users(
         "#
     )
     .bind(&pattern)
-    .bind(&format!("{}%", query))
+    .bind(format!("{}%", escaped))
     .bind(limit)
     .bind(offset)
     .fetch_all(&state.db)
@@ -159,6 +165,13 @@ pub async fn update_profile(
         .await
         .db_err("Database error")?;
 
+    if let Some(display_name) = &input.display_name {
+        check_max_len(display_name, "Display name", DISPLAY_NAME_MAX)?;
+    }
+    if let Some(bio) = &input.bio {
+        check_max_len(bio, "Bio", BIO_MAX)?;
+    }
+
     let mut final_username = input.username.clone();
 
     // 2. Handle Username Logic (Validation)
@@ -169,10 +182,10 @@ pub async fn update_profile(
         final_username = Some(formatted_username.clone());
 
         if formatted_username.to_lowercase() != current_user.username.to_lowercase() {
-            // Check length/format
-            if formatted_username.len() < 3 || formatted_username.len() > 30 {
-                return Err(AppError::bad_request("Username must be between 3 and 30 characters"));
-            }
+            // Only a *changed* name is validated -- re-casing your own name
+            // skips this, so accounts created before these rules existed
+            // aren't forced to rename.
+            validate_username(&formatted_username)?;
 
             // Check 14-day cooldown
             if let Some(last_changed) = current_user.username_changed_at {
@@ -318,9 +331,7 @@ pub async fn change_password(
     Json(input): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, AppError> {
 
-    if input.new_password.len() < 8 {
-        return Err(AppError::bad_request("Password must be at least 8 characters"));
-    }
+    validate_password(&input.new_password)?;
     if input.current_password == input.new_password {
         return Err(AppError::bad_request("New password must be different from current password"));
     }

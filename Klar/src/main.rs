@@ -26,6 +26,7 @@ mod rate_limit;
 mod routes;
 mod storage;
 mod utils;
+mod validation;
 
 use email::{EmailProvider, EmailService};
 use futures::StreamExt;

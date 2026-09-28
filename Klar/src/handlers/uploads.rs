@@ -25,6 +25,7 @@ use crate::handlers::auth::AppState;
 use crate::media;
 use crate::models::{MediaAsset, NewPostResponse};
 use crate::utils::ResolveMedia;
+use crate::validation::{check_max_len, CAPTION_MAX};
 
 /// Combined response for a post with its media
 #[derive(Debug, Serialize)]
@@ -91,6 +92,15 @@ pub async fn upload_post(
 
     // Validate we got an image
     let raw_bytes = image_data.ok_or_else(|| AppError::bad_request("Image field is required"))?;
+
+    // Caption is optional for image posts; an all-whitespace one is stored
+    // as no caption rather than as blank text.
+    let caption = caption
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty());
+    if let Some(c) = &caption {
+        check_max_len(c, "Caption", CAPTION_MAX)?;
+    }
 
     // Validate content type
     if let Some(ref ct) = content_type {

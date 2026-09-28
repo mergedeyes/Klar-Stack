@@ -16,6 +16,7 @@ use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{required_text, COMMENT_MAX};
 
 /// posts.comment_count is maintained here (create/delete) instead of a
 /// correlated COUNT(*) subquery per post on every feed/profile render.
@@ -26,12 +27,7 @@ pub async fn create_comment(
     Json(input): Json<CreateCommentRequest>,
 ) -> Result<(StatusCode, Json<CommentResponse>), AppError> {
 
-    if input.body.trim().is_empty() {
-        return Err(AppError::bad_request("Comment body cannot be empty"));
-    }
-    if input.body.len() > 2000 {
-        return Err(AppError::bad_request("Comment must be 2000 characters or less"));
-    }
+    let body = required_text(&input.body, "Comment", COMMENT_MAX)?;
 
     let post_owner = require_visible_post(&state.db, Some(auth.user_id), post_id).await?;
 
@@ -73,7 +69,7 @@ pub async fn create_comment(
     .bind(post_id)
     .bind(auth.user_id)
     .bind(input.parent_comment_id)
-    .bind(input.body.trim())
+    .bind(body)
     .fetch_one(&mut *tx)
     .await
     .db_err("Failed to create comment")?;
@@ -190,12 +186,7 @@ pub async fn edit_comment(
     Json(input): Json<EditCommentRequest>,
 ) -> Result<Json<CommentResponse>, AppError> {
 
-    if input.body.trim().is_empty() {
-        return Err(AppError::bad_request("Comment body cannot be empty"));
-    }
-    if input.body.len() > 2000 {
-        return Err(AppError::bad_request("Comment must be 2000 characters or less"));
-    }
+    let body = required_text(&input.body, "Comment", COMMENT_MAX)?;
 
     let comment_author = sqlx::query_scalar::<_, Uuid>(
         "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2"
@@ -208,7 +199,7 @@ pub async fn edit_comment(
     .ok_or_else(|| AppError::not_found("Comment not found"))?;
 
     if comment_author != auth.user_id {
-        return Err(AppError::bad_request("You can only edit your own comments"));
+        return Err(AppError::forbidden("You can only edit your own comments"));
     }
 
     let comment = sqlx::query_as::<_, CommentResponse>(
@@ -225,7 +216,7 @@ pub async fn edit_comment(
             moderation_status::text
         "#
     )
-    .bind(input.body.trim())
+    .bind(body)
     .bind(comment_id)
     .fetch_one(&state.db)
     .await
@@ -262,7 +253,7 @@ pub async fn delete_comment(
     .db_err("Database error")?;
 
     if auth.user_id != comment_author && auth.user_id != post_owner {
-        return Err(AppError::bad_request(
+        return Err(AppError::forbidden(
             "You can only delete your own comments or comments on your posts",
         ));
     }

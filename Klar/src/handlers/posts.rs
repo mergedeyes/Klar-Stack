@@ -13,6 +13,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::follows::is_following;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{page_limit, required_text, CAPTION_MAX};
 
 /// Shared gate for both get_post and get_user_posts: can `viewer` see
 /// posts belonging to `owner_id`? Always yes if the owner isn't private,
@@ -92,9 +93,7 @@ pub async fn create_post(
     Json(input): Json<CreatePostRequest>,
 ) -> Result<(StatusCode, Json<PostResponse>), AppError> {
 
-    if input.caption.as_ref().map_or(true, |c| c.trim().is_empty()) {
-        return Err(AppError::bad_request("Post must have a caption"));
-    }
+    let caption = required_text(input.caption.as_deref().unwrap_or(""), "Caption", CAPTION_MAX)?;
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
@@ -119,7 +118,7 @@ pub async fn create_post(
         "#
     )
     .bind(auth.user_id)
-    .bind(&input.caption)
+    .bind(caption)
     .fetch_one(&mut *tx)
     .await
     .db_err("Failed to create post")?;
@@ -198,9 +197,7 @@ pub async fn edit_post(
     Json(input): Json<EditPostRequest>,
 ) -> Result<Json<PostResponse>, AppError> {
 
-    if input.caption.trim().is_empty() {
-        return Err(AppError::bad_request("Caption cannot be empty"));
-    }
+    let caption = required_text(&input.caption, "Caption", CAPTION_MAX)?;
 
     // Verify ownership
     let owner_id = sqlx::query_scalar::<_, Uuid>(
@@ -213,7 +210,7 @@ pub async fn edit_post(
     .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     if owner_id != auth.user_id {
-        return Err(AppError::bad_request("You can only edit your own posts"));
+        return Err(AppError::forbidden("You can only edit your own posts"));
     }
 
     // Update caption and set edited_at
@@ -238,7 +235,7 @@ pub async fn edit_post(
             moderation_status::text
         "#
     )
-    .bind(input.caption.trim())
+    .bind(caption)
     .bind(post_id)
     .fetch_one(&state.db)
     .await
@@ -269,7 +266,7 @@ pub async fn delete_post(
     .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     if owner_id != auth.user_id {
-        return Err(AppError::bad_request("You can only delete your own posts"));
+        return Err(AppError::forbidden("You can only delete your own posts"));
     }
 
     // Fetch media asset keys BEFORE deleting (CASCADE will remove the rows)
@@ -338,7 +335,7 @@ pub async fn get_user_posts(
     Query(query): Query<FeedQuery>,
 ) -> Result<Json<Vec<PostResponse>>, AppError> {
 
-    let limit = query.limit.unwrap_or(20).min(50);
+    let limit = page_limit(query.limit, 20, 50);
 
     // Not routed through utils::find_user_id_by_username: this lookup also
     // needs is_private, which that helper doesn't fetch.
@@ -450,7 +447,7 @@ pub async fn get_feed(
     Query(query): Query<FeedQuery>,
 ) -> Result<Json<Vec<PostResponse>>, AppError> {
 
-    let limit = query.limit.unwrap_or(20).min(50);
+    let limit = page_limit(query.limit, 20, 50);
 
     let posts = match query.cursor {
         Some(cursor) => {

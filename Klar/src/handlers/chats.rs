@@ -4,6 +4,7 @@ use chrono::Utc;
 use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{required_text, MESSAGE_MAX};
 
 pub async fn get_conversations(
     State(state): State<AppState>,
@@ -129,6 +130,7 @@ pub async fn send_message(
     if auth.user_id == payload.receiver_id {
         return Err(AppError::bad_request("You cannot message yourself"));
     }
+    let body = required_text(&payload.body, "Message", MESSAGE_MAX)?;
 
     let mutual_follow_count = sqlx::query!(
         r#"
@@ -146,6 +148,33 @@ pub async fn send_message(
 
     if mutual_follow_count != Some(2) {
         return Err(AppError::forbidden("You can only message users who follow you back."));
+    }
+
+    // A reply may only quote a message from this same conversation --
+    // otherwise any message id (including from someone else's chat) could
+    // be attached as the reply target.
+    if let Some(reply_to) = payload.reply_to_message_id {
+        let in_this_conversation = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE m.id = $1
+                  AND least(c.user1_id, c.user2_id) = least($2::uuid, $3::uuid)
+                  AND greatest(c.user1_id, c.user2_id) = greatest($2::uuid, $3::uuid)
+            )
+            "#
+        )
+        .bind(reply_to)
+        .bind(auth.user_id)
+        .bind(payload.receiver_id)
+        .fetch_one(&state.db)
+        .await
+        .db_err("Database error")?;
+
+        if !in_this_conversation {
+            return Err(AppError::bad_request("Reply target not found in this conversation"));
+        }
     }
 
     let conv_record = sqlx::query!(
@@ -168,7 +197,7 @@ pub async fn send_message(
         VALUES ($1, $2, $3, $4)
         RETURNING id
         "#,
-        conv_record.id, auth.user_id, payload.body, payload.reply_to_message_id
+        conv_record.id, auth.user_id, body, payload.reply_to_message_id
     )
     .fetch_one(&state.db)
     .await
@@ -226,6 +255,8 @@ pub async fn edit_message(
     Path(message_id): Path<Uuid>,
     Json(payload): Json<EditMessageRequest>,
 ) -> Result<StatusCode, AppError> {
+    let body = required_text(&payload.body, "Message", MESSAGE_MAX)?;
+
     let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
         .fetch_optional(&state.db)
         .await
@@ -238,7 +269,7 @@ pub async fn edit_message(
 
     sqlx::query!(
         "UPDATE messages SET body = $1, edited_at = $2 WHERE id = $3",
-        payload.body, Utc::now(), message_id
+        body, Utc::now(), message_id
     )
     .execute(&state.db)
     .await
