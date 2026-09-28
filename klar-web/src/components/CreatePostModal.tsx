@@ -4,11 +4,8 @@ import { useCallback, useRef, useState } from "react";
 import Image from "next/image";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { tokens } from "@/lib/api";
+import { posts } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { ENV } from '@/env';
-
-const API_URL = ENV.API_URL;
 
 interface CreatePostModalProps {
   onClose: () => void;
@@ -59,22 +56,7 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
     setError(null);
 
     try {
-      const form = new FormData();
-      form.append("image", file);
-      if (caption.trim()) form.append("caption", caption.trim());
-
-      const token = tokens.getAccess();
-      const res = await fetch(`${API_URL}/posts/upload`, {
-        method: "POST",
-        credentials: 'include',
-        headers: {
-          'Authorization': `Bearer ${token}` // <-- Diese Zeile einfügen
-        },
-        body: form,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      await posts.upload(file, caption.trim());
 
       onCreated();
       onClose();

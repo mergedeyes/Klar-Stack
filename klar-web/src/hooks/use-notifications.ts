@@ -2,10 +2,14 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, createElement } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { notifications as notificationsApi, chatsApi, auth, tokens, type AppNotification } from "@/lib/api";
+import { notifications as notificationsApi, chatsApi, getAccessToken, type AppNotification } from "@/lib/api";
 import { ENV } from '@/env';
 
 const API_URL = ENV.API_URL;
+
+// Reconnect backoff for the notification stream.
+const RETRY_MIN_MS = 1_000;
+const RETRY_MAX_MS = 60_000;
 
 export type { AppNotification };
 
@@ -78,18 +82,27 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     let cancelled = false;
     let eventSource: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = RETRY_MIN_MS;
 
-    const connect = () => {
+    const connect = async () => {
       if (cancelled) return;
 
-      const accessToken = tokens.getAccess();
-      const streamUrl = accessToken
-        ? `${API_URL}/notifications/stream?token=${encodeURIComponent(accessToken)}`
-        : `${API_URL}/notifications/stream`;
+      // getAccessToken() refreshes first if the token is about to expire,
+      // through the same shared refresh as every other request -- this used
+      // to refresh on its own, racing request()'s refresh with the same
+      // single-use token and logging the user out when it lost.
+      const accessToken = await getAccessToken();
+      if (cancelled) return;
+      if (!accessToken) return; // session is gone; a new login remounts this
 
-      eventSource = new EventSource(streamUrl, {
-        withCredentials: true,
-      });
+      eventSource = new EventSource(
+        `${API_URL}/notifications/stream?token=${encodeURIComponent(accessToken)}`,
+        { withCredentials: true }
+      );
+
+      eventSource.onopen = () => {
+        retryDelay = RETRY_MIN_MS;
+      };
 
       eventSource.onmessage = (event) => {
         try {
@@ -108,25 +121,18 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }
       };
 
+      // EventSource can't tell us *why* it failed (expired token, network
+      // blip, server restart), so always reconnect with backoff: connect()
+      // picks up a refreshed token if the old one was the problem.
       eventSource.onerror = () => {
         eventSource?.close();
         if (cancelled) return;
-
-        auth.refresh(tokens.getRefresh())
-          .then((res) => {
-            tokens.set(res.access_token, res.refresh_token);
-            if (!cancelled) {
-              retryTimer = setTimeout(connect, 1000);
-            }
-          })
-          .catch(() => {
-            // Refresh failed — session's actually gone. Don't retry; a
-            // real login will remount this provider via the `user` dep.
-          });
+        retryTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
       };
     };
 
-    connect();
+    void connect();
 
     return () => {
       cancelled = true;

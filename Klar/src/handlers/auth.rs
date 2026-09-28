@@ -12,7 +12,7 @@ use argon2::{
 use rand::Rng;
 use serde::Deserialize;
 
-use crate::auth::{create_access_token, generate_refresh_token, hash_refresh_token};
+use crate::auth::{cookie_value, create_access_token, generate_refresh_token, hash_refresh_token};
 use crate::email::EmailService;
 use crate::errors::AppError;
 use crate::models::{
@@ -293,11 +293,7 @@ pub async fn refresh(
     Json(body): Json<RefreshRequest>,
 ) -> Result<(HeaderMap, Json<RefreshResponse>), AppError> {
 
-    let cookie_header = headers.get(axum::http::header::COOKIE).and_then(|v| v.to_str().ok());
-    let cookie_token = cookie_header
-        .and_then(|h| h.split(';').map(|s| s.trim()).find(|s| s.starts_with("klar_refresh_token=")))
-        .and_then(|s| s.strip_prefix("klar_refresh_token="))
-        .map(|s| s.to_string());
+    let cookie_token = cookie_value(&headers, "klar_refresh_token").map(str::to_string);
 
     let raw_refresh_token = cookie_token
         .or(body.refresh_token)
@@ -305,25 +301,22 @@ pub async fn refresh(
 
     let token_hash = hash_refresh_token(&raw_refresh_token);
 
-    let token_row = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid)>(
+    // Consume the token in a single statement. A separate SELECT followed
+    // by a DELETE let two concurrent refreshes with the same token both
+    // pass the SELECT and both mint a new session; with DELETE .. RETURNING
+    // only one of them can get the row back.
+    let user_id = sqlx::query_scalar::<_, uuid::Uuid>(
         r#"
-        SELECT id, user_id FROM refresh_tokens
+        DELETE FROM refresh_tokens
         WHERE token_hash = $1 AND expires_at > NOW()
+        RETURNING user_id
         "#
     )
     .bind(&token_hash)
     .fetch_optional(&state.db)
     .await
-    .db_err("Database error")?;
-
-    let (old_token_id, user_id) = token_row
-        .ok_or_else(|| AppError::unauthorized("Invalid or expired refresh token"))?;
-
-    sqlx::query("DELETE FROM refresh_tokens WHERE id = $1")
-        .bind(old_token_id)
-        .execute(&state.db)
-        .await
-        .db_err_ctx("Failed to delete old refresh token", "Database error")?;
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::unauthorized("Invalid or expired refresh token"))?;
 
     let access_token = create_access_token(user_id, &state.jwt_secret)
         .map_err(|_| AppError::internal("Failed to create access token"))?;
@@ -355,11 +348,7 @@ pub async fn logout(
     Json(body): Json<LogoutRequest>,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), AppError> {
 
-    let cookie_header = headers.get(axum::http::header::COOKIE).and_then(|v| v.to_str().ok());
-    let cookie_token = cookie_header
-        .and_then(|h| h.split(';').map(|s| s.trim()).find(|s| s.starts_with("klar_refresh_token=")))
-        .and_then(|s| s.strip_prefix("klar_refresh_token="))
-        .map(|s| s.to_string());
+    let cookie_token = cookie_value(&headers, "klar_refresh_token").map(str::to_string);
 
     if let Some(raw_refresh_token) = cookie_token.or(body.refresh_token) {
         let token_hash = hash_refresh_token(&raw_refresh_token);
@@ -386,34 +375,33 @@ pub async fn verify_email(
     Query(query): Query<VerifyQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
 
-    let token_row = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid)>(
+    // Consume the token and verify in one transaction; UPDATE .. RETURNING
+    // makes the token single-use even under concurrent requests.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
+    let user_id = sqlx::query_scalar::<_, uuid::Uuid>(
         r#"
-        SELECT id, user_id FROM email_tokens
+        UPDATE email_tokens SET used_at = NOW()
         WHERE token = $1
           AND token_type = 'verification'
           AND used_at IS NULL
           AND expires_at > NOW()
+        RETURNING user_id
         "#
     )
     .bind(&query.token)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
-    .db_err("Database error")?;
-
-    let (token_id, user_id) = token_row
-        .ok_or_else(|| AppError::bad_request("Invalid or expired verification link"))?;
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::bad_request("Invalid or expired verification link"))?;
 
     sqlx::query("UPDATE users SET email_verified = TRUE WHERE id = $1")
         .bind(user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .db_err("Failed to verify email")?;
 
-    sqlx::query("UPDATE email_tokens SET used_at = NOW() WHERE id = $1")
-        .bind(token_id)
-        .execute(&state.db)
-        .await
-        .db_err("Failed to mark token as used")?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     tracing::info!("Email verified for user: {}", user_id);
 
@@ -496,23 +484,8 @@ pub async fn reset_password(
         return Err(AppError::bad_request("Password must be at least 8 characters"));
     }
 
-    let token_row = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid)>(
-        r#"
-        SELECT id, user_id FROM email_tokens
-        WHERE token = $1
-          AND token_type = 'password_reset'
-          AND used_at IS NULL
-          AND expires_at > NOW()
-        "#
-    )
-    .bind(&input.token)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?;
-
-    let (token_id, user_id) = token_row
-        .ok_or_else(|| AppError::bad_request("Invalid or expired reset link"))?;
-
+    // Hash before touching the token, so a hashing failure can't burn a
+    // valid reset link.
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
@@ -520,24 +493,41 @@ pub async fn reset_password(
         .map_err(|_| AppError::internal("Failed to hash password"))?
         .to_string();
 
+    // Consume the token, set the password and revoke every session as one
+    // unit. UPDATE .. RETURNING makes the link single-use even if it's
+    // submitted twice concurrently.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
+    let user_id = sqlx::query_scalar::<_, uuid::Uuid>(
+        r#"
+        UPDATE email_tokens SET used_at = NOW()
+        WHERE token = $1
+          AND token_type = 'password_reset'
+          AND used_at IS NULL
+          AND expires_at > NOW()
+        RETURNING user_id
+        "#
+    )
+    .bind(&input.token)
+    .fetch_optional(&mut *tx)
+    .await
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::bad_request("Invalid or expired reset link"))?;
+
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(&password_hash)
         .bind(user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .db_err("Failed to update password")?;
 
-    sqlx::query("UPDATE email_tokens SET used_at = NOW() WHERE id = $1")
-        .bind(token_id)
-        .execute(&state.db)
-        .await
-        .db_err_ctx("Failed to mark token as used", "Database error")?;
-
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .db_err_ctx("Failed to invalidate sessions", "Database error")?;
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     tracing::info!("Password reset for user: {}", user_id);
 
@@ -546,57 +536,97 @@ pub async fn reset_password(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct ResendVerificationRequest {
+    pub email: String,
+}
+
 /// POST /auth/resend-verification
+///
+/// Email-based and unauthenticated, like forgot-password: the page that
+/// calls it is reached from an expired verification link, typically while
+/// logged out. (It used to require a login and ignore the email, so it
+/// failed for exactly the people who needed it.) Always answers with the
+/// same generic message so it can't be used to probe which emails are
+/// registered or verified.
+///
+/// Besides the per-IP auth rate limit, each account gets at most one
+/// verification email per minute, so this can't be used to flood
+/// someone's inbox from many IPs.
 pub async fn resend_verification(
     State(state): State<AppState>,
-    auth: crate::auth::AuthUser,
+    Json(input): Json<ResendVerificationRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
 
-    let user = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE id = $1"
+    let generic = Json(serde_json::json!({
+        "message": "If an unverified account exists for that email, a new verification link has been sent"
+    }));
+
+    let user = sqlx::query_as::<_, (uuid::Uuid, String, bool)>(
+        "SELECT id, email, email_verified FROM users WHERE email = $1"
     )
-    .bind(auth.user_id)
+    .bind(input.email.trim())
+    .fetch_optional(&state.db)
+    .await
+    .db_err("Database error")?;
+
+    let Some((user_id, to_email, email_verified)) = user else {
+        return Ok(generic);
+    };
+    if email_verified {
+        return Ok(generic);
+    }
+
+    let recently_sent = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM email_tokens
+            WHERE user_id = $1 AND token_type = 'verification'
+              AND created_at > NOW() - INTERVAL '1 minute'
+        )
+        "#
+    )
+    .bind(user_id)
     .fetch_one(&state.db)
     .await
     .db_err("Database error")?;
 
-    if user.email_verified {
-        return Err(AppError::bad_request("Email is already verified"));
+    if recently_sent {
+        return Ok(generic);
     }
+
+    let token = generate_email_token();
+
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     sqlx::query(
         "UPDATE email_tokens SET used_at = NOW() WHERE user_id = $1 AND token_type = 'verification' AND used_at IS NULL"
     )
-    .bind(user.id)
-    .execute(&state.db)
+    .bind(user_id)
+    .execute(&mut *tx)
     .await
     .db_err_ctx("Failed to invalidate old tokens", "Database error")?;
 
-    let token = generate_email_token();
     sqlx::query(
         r#"
         INSERT INTO email_tokens (user_id, token, token_type, expires_at)
         VALUES ($1, $2, 'verification', NOW() + INTERVAL '24 hours')
         "#
     )
-    .bind(user.id)
+    .bind(user_id)
     .bind(&token)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .db_err("Failed to create verification token")?;
 
-    {
-        let email_service = state.email.clone();
-        let to_email = user.email.clone();
-        let verify_token = token.clone();
-        tokio::spawn(async move {
-            if let Err(e) = email_service.send_verification(&to_email, &verify_token).await {
-                tracing::error!("Failed to send verification email: {}", e);
-            }
-        });
-    }
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
-    Ok(Json(serde_json::json!({
-        "message": "Verification email sent"
-    })))
+    let email_service = state.email.clone();
+    tokio::spawn(async move {
+        if let Err(e) = email_service.send_verification(&to_email, &token).await {
+            tracing::error!("Failed to send verification email: {}", e);
+        }
+    });
+
+    Ok(generic)
 }

@@ -166,26 +166,110 @@ export const tokens = {
   },
 };
 
-// ── Core fetch wrapper ────────────────────────────────────────────────────────
+// ── Session refresh ───────────────────────────────────────────────────────────
+// Refresh tokens are single-use (the backend deletes one as it redeems it),
+// so every refresh in this tab has to go through refreshSession(), which
+// shares one in-flight request. Two independent refreshes with the same
+// token would race, and the loser would log the user out.
 
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: () => void; reject: (err: any) => void }> = [];
-
-function processQueue(error: Error | null) {
-  failedQueue.forEach((prom) => {
-    if (error) prom.reject(error);
-    else prom.resolve();
-  });
-  failedQueue = [];
+/** The server rejected the refresh token: the session is really over. */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("Session expired. Please log in again.");
+    this.name = "SessionExpiredError";
+  }
 }
 
-function buildFetchOptions(options: RequestInit): RequestInit {
+let refreshInFlight: Promise<void> | null = null;
+
+export function refreshSession(): Promise<void> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<void> {
+  const sent = tokens.getRefresh();
+
+  // Cookie is sent as a best-effort fallback (credentials: include), but
+  // the refresh_token in the body is what actually carries this cross-site,
+  // since third-party cookies may be blocked entirely.
+  const res = await fetch(`${API_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ refresh_token: sent ?? undefined }),
+  });
+
+  if (res.ok) {
+    const refreshed = (await res.json()) as { access_token: string; refresh_token: string };
+    tokens.set(refreshed.access_token, refreshed.refresh_token);
+    return;
+  }
+
+  // Another tab shares this localStorage and may have redeemed the same
+  // token a moment earlier. If storage now holds a different refresh token,
+  // that tab's refresh succeeded and its new tokens are ours to use too.
+  const current = tokens.getRefresh();
+  if (current && current !== sent) return;
+
+  throw new SessionExpiredError();
+}
+
+// Refresh this long before the access token actually expires, so a request
+// never leaves with a token that dies in flight.
+const EXPIRY_MARGIN_MS = 30_000;
+
+function accessTokenExpiresAt(token: string): number | null {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const { exp } = JSON.parse(atob(payload));
+    return typeof exp === "number" ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The stored access token, refreshed first if it's about to expire.
+ * Refreshing ahead of time (instead of only after a 401) matters for the
+ * endpoints with optional auth -- profiles, posts, media: an expired token
+ * there doesn't produce a 401, it silently makes you anonymous, so a
+ * private account you follow would show as "This account is private".
+ */
+export async function getAccessToken(): Promise<string | null> {
+  const token = tokens.getAccess();
+  if (!token || !tokens.getRefresh()) return token;
+
+  const expiresAt = accessTokenExpiresAt(token);
+  if (expiresAt !== null && expiresAt - Date.now() < EXPIRY_MARGIN_MS) {
+    try {
+      await refreshSession();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) tokens.clear();
+      // On a network error, carry on with the old token; the request
+      // itself will fail or 401 and be handled there.
+    }
+  }
+  return tokens.getAccess();
+}
+
+// ── Core fetch wrapper ────────────────────────────────────────────────────────
+
+async function buildFetchOptions(options: RequestInit): Promise<RequestInit> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+  // FormData needs the browser to set its own multipart Content-Type
+  // (with the boundary), so only default to JSON for everything else.
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
-  const accessToken = tokens.getAccess();
+  const accessToken = await getAccessToken();
   if (accessToken) {
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
@@ -200,79 +284,61 @@ function buildFetchOptions(options: RequestInit): RequestInit {
   };
 }
 
+/**
+ * fetch() against the API with auth attached. For `authenticated` calls,
+ * a 401 triggers one refresh and one retry. Returns the raw Response, for
+ * callers that need more than parsed JSON (e.g. the data export's Blob).
+ */
+export async function apiFetch(
+  path: string,
+  options: RequestInit = {},
+  authenticated = false
+): Promise<Response> {
+  const url = `${API_URL}${path}`;
+  const res = await fetch(url, await buildFetchOptions(options));
+
+  if (res.status !== 401 || !authenticated || !tokens.getRefresh()) return res;
+
+  try {
+    await refreshSession();
+  } catch (err) {
+    if (err instanceof SessionExpiredError) tokens.clear();
+    throw err;
+  }
+  return fetch(url, await buildFetchOptions(options));
+}
+
+// Reads a response body as JSON if it is JSON. Some endpoints return an
+// empty body, and axum's own rejections (malformed JSON, body too large)
+// are plain text, so neither may go through a bare JSON.parse.
+async function parseBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function errorMessage(data: unknown, status: number): string {
+  if (data && typeof data === "object" && typeof (data as ApiError).error === "string") {
+    return (data as ApiError).error;
+  }
+  if (typeof data === "string" && data.length <= 200) return data;
+  return `Something went wrong (${status})`;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  authenticated = false,
-  _isRetry = false
+  authenticated = false
 ): Promise<T> {
-  const fetchOptions = buildFetchOptions(options);
-
-  const res = await fetch(`${API_URL}${path}`, fetchOptions);
-
-  if (res.status === 401 && authenticated && !_isRetry) {
-    if (isRefreshing) {
-      return new Promise<T>((resolve, reject) => {
-        failedQueue.push({
-          resolve: () => {
-            resolve(
-              fetch(`${API_URL}${path}`, buildFetchOptions(options)).then(async (r) => {
-                if (r.status === 204) return undefined as T;
-                const text = await r.text();
-                return (text ? JSON.parse(text) : undefined) as T;
-              })
-            );
-          },
-          reject: (err) => reject(err),
-        });
-      });
-    }
-
-    isRefreshing = true;
-
-    try {
-      // Cookie is sent as a best-effort fallback (credentials: include),
-      // but the refresh_token in the body is what actually carries this
-      // cross-site, since third-party cookies may be blocked entirely.
-      const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ refresh_token: tokens.getRefresh() ?? undefined }),
-      });
-
-      if (!refreshRes.ok) throw new Error("Refresh failed");
-
-      const refreshed = (await refreshRes.json()) as { access_token: string; refresh_token: string };
-      tokens.set(refreshed.access_token, refreshed.refresh_token);
-
-      processQueue(null);
-
-      // Retry the original request with the freshly stored access token
-      const retryRes = await fetch(`${API_URL}${path}`, buildFetchOptions(options));
-      if (retryRes.status === 204) return undefined as T;
-      const retryText = await retryRes.text();
-      return (retryText ? JSON.parse(retryText) : undefined) as T;
-
-    } catch (error) {
-      processQueue(error as Error);
-      tokens.clear();
-      throw new Error("Session expired. Please log in again.");
-    } finally {
-      isRefreshing = false;
-    }
-  }
-
+  const res = await apiFetch(path, options, authenticated);
   if (res.status === 204) return undefined as T;
 
-  // Some endpoints (e.g. chat edit/reaction) return 200 with an empty body —
-  // read as text first so JSON.parse isn't called on an empty string.
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
-
-  if (!res.ok) {
-    throw new Error((data as ApiError)?.error ?? "Something went wrong");
-  }
+  const data = await parseBody(res);
+  if (!res.ok) throw new Error(errorMessage(data, res.status));
 
   return data as T;
 }
@@ -298,12 +364,6 @@ export const auth = {
 
   logout: (refreshToken?: string | null) =>
     request<void>("/auth/logout", {
-      method: "POST",
-      body: JSON.stringify({ refresh_token: refreshToken ?? tokens.getRefresh() ?? undefined }),
-    }),
-
-  refresh: (refreshToken?: string | null) =>
-    request<{ access_token: string; refresh_token: string }>("/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refresh_token: refreshToken ?? tokens.getRefresh() ?? undefined }),
     }),
@@ -358,41 +418,21 @@ export const users = {
   deleteAccount: () =>
     request<void>("/users/me", { method: "DELETE" }, true),
 
-  uploadAvatar: async (file: File): Promise<User> => {
+  uploadAvatar: (file: File) => {
     const form = new FormData();
     form.append("avatar", file);
-    const headers: Record<string, string> = {};
-    const accessToken = tokens.getAccess();
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-    const res = await fetch(`${API_URL}/users/me/avatar`, {
-      method: "POST",
-      credentials: "include",
-      headers,
-      body: form,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error((data as ApiError).error ?? "Upload failed");
-    return data as User;
+    return request<User>("/users/me/avatar", { method: "POST", body: form }, true);
   },
 
   // Right of access / data portability (Art. 15 + 20 DSGVO): fetches the
-  // full JSON export and triggers a browser download directly — bypasses
-  // the shared `request()` wrapper since we need the raw Blob and the
+  // full JSON export and triggers a browser download directly — uses
+  // apiFetch rather than `request()` since we need the raw Blob and the
   // filename from Content-Disposition, not parsed JSON to use in state.
   exportData: async (): Promise<void> => {
-    const headers: Record<string, string> = {};
-    const accessToken = tokens.getAccess();
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-
-    const res = await fetch(`${API_URL}/users/me/export`, {
-      method: "GET",
-      credentials: "include",
-      headers,
-    });
+    const res = await apiFetch("/users/me/export", {}, true);
 
     if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new Error((data as ApiError)?.error ?? "Export failed");
+      throw new Error(errorMessage(await parseBody(res), res.status));
     }
 
     const disposition = res.headers.get("Content-Disposition");
@@ -531,6 +571,13 @@ export const posts = {
 
   media: (postId: string) =>
     request<MediaAsset[]>(`/posts/${postId}/media`),
+
+  upload: (file: File, caption: string) => {
+    const form = new FormData();
+    form.append("image", file);
+    if (caption) form.append("caption", caption);
+    return request<unknown>("/posts/upload", { method: "POST", body: form }, true);
+  },
 
   toggleLike: (postId: string) =>
     request<LikeResponse>(`/posts/${postId}/like`, { method: "POST" }, true),

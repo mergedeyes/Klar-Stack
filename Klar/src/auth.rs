@@ -122,6 +122,21 @@ where
     }
 }
 
+/// Returns the value of cookie `name` from the request's Cookie header, if
+/// present and non-empty. Cookies are separated by "; ", each as
+/// "name=value". An empty value counts as absent, so a leftover cleared
+/// cookie can't shadow a token sent in the Authorization header or body.
+pub fn cookie_value<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get(header::COOKIE)?
+        .to_str()
+        .ok()?
+        .split(';')
+        .map(str::trim)
+        .find_map(|pair| pair.strip_prefix(name)?.strip_prefix('='))
+        .filter(|value| !value.is_empty())
+}
+
 /// Shared helper: pulls the token from the Cookie, falling back to the
 /// Authorization header, falling back to a "token" query parameter.
 ///
@@ -134,19 +149,9 @@ fn extract_user_id(parts: &Parts) -> Option<Uuid> {
     // Bail out immediately (returning None) if JWT_SECRET isn't set, since without it
     // no token could ever be validated anyway.
     let secret = std::env::var("JWT_SECRET").ok()?;
-    let mut token_str = None;
 
     // 1. Try to extract from httpOnly Cookie
-    if let Some(cookie_header) = parts.headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) {
-        if let Some(token) = cookie_header
-            .split(';')                                        // cookies are separated by "; "
-            .map(|s| s.trim())                                  // strip leading/trailing whitespace from each pair
-            .find(|s| s.starts_with("klar_access_token="))      // locate our specific cookie by name
-            .and_then(|s| s.strip_prefix("klar_access_token=")) // drop the "name=" prefix, leaving just the value
-        {
-            token_str = Some(token);
-        }
-    }
+    let mut token_str = cookie_value(&parts.headers, "klar_access_token");
 
     // 2. Fallback to Authorization Bearer header
     if token_str.is_none() {
@@ -181,4 +186,40 @@ fn extract_user_id(parts: &Parts) -> Option<Uuid> {
     // .ok() converts a validation error into None (rather than propagating the error type),
     // since both extractors above just want a plain Option<Uuid>.
     validate_token(token, &secret).ok().map(|claims| claims.sub)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cookie_value;
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    fn headers(cookie: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(header::COOKIE, HeaderValue::from_str(cookie).unwrap());
+        h
+    }
+
+    #[test]
+    fn finds_cookie_among_others() {
+        let h = headers("a=1; klar_refresh_token=abc; b=2");
+        assert_eq!(cookie_value(&h, "klar_refresh_token"), Some("abc"));
+    }
+
+    #[test]
+    fn does_not_match_name_prefix() {
+        // "klar_access_token_old" must not be read as "klar_access_token".
+        let h = headers("klar_access_token_old=stale");
+        assert_eq!(cookie_value(&h, "klar_access_token"), None);
+    }
+
+    #[test]
+    fn missing_header_or_cookie_is_none() {
+        assert_eq!(cookie_value(&HeaderMap::new(), "x"), None);
+        assert_eq!(cookie_value(&headers("a=1"), "x"), None);
+    }
+
+    #[test]
+    fn empty_value_is_none() {
+        assert_eq!(cookie_value(&headers("x="), "x"), None);
+    }
 }
