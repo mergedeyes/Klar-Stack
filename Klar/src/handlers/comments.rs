@@ -12,6 +12,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
+use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
 use crate::utils::{DbResultExt, ResolveMedia};
@@ -32,14 +33,7 @@ pub async fn create_comment(
         return Err(AppError::bad_request("Comment must be 2000 characters or less"));
     }
 
-    let post_owner = sqlx::query_scalar::<_, Uuid>(
-        "SELECT user_id FROM posts WHERE id = $1"
-    )
-    .bind(post_id)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found("Post not found"))?;
+    let post_owner = require_visible_post(&state.db, Some(auth.user_id), post_id).await?;
 
     if check_block(&state.db, auth.user_id, post_owner).await? {
         return Err(AppError::bad_request("Cannot comment on this post"));
@@ -123,7 +117,7 @@ pub async fn create_comment(
                         created_at: chrono::Utc::now(),
                         post_id: Some(post_id),
                         post_thumb_url: thumb,
-                        actor: crate::models::UserResponse::from(actor_row),
+                        actor: crate::models::NotificationActor::from(actor_row),
                     }
                 });
             }
@@ -156,6 +150,8 @@ pub async fn get_comments(
 ) -> Result<Json<Vec<CommentResponse>>, AppError> {
 
     let user_id = auth.user_id;
+
+    require_visible_post(&state.db, user_id, post_id).await?;
 
     let comments = sqlx::query_as::<_, CommentResponse>(
         r#"

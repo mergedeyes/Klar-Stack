@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::LikeResponse;
 use crate::utils::DbResultExt;
@@ -25,6 +26,8 @@ pub async fn toggle_comment_like(
 
     // Also fetches the comment's author, needed below to notify them (and
     // to know whether to skip notifying on a self-like).
+    require_visible_post(&state.db, Some(auth.user_id), post_id).await?;
+
     let comment_author = sqlx::query_scalar::<_, Uuid>(
         "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2"
     )
@@ -113,7 +116,7 @@ pub async fn toggle_comment_like(
                             created_at: chrono::Utc::now(),
                             post_id: Some(post_id),
                             post_thumb_url: thumb,
-                            actor: crate::models::UserResponse::from(actor_row),
+                            actor: crate::models::NotificationActor::from(actor_row),
                         }
                     });
                 }

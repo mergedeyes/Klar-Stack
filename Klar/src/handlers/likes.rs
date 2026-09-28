@@ -11,6 +11,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
+use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{EventType, LikeResponse};
 use crate::utils::DbResultExt;
@@ -26,14 +27,7 @@ pub async fn toggle_like(
     Path(post_id): Path<Uuid>,
 ) -> Result<Json<LikeResponse>, AppError> {
 
-    let post_owner = sqlx::query_scalar::<_, Uuid>(
-        "SELECT user_id FROM posts WHERE id = $1"
-    )
-    .bind(post_id)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found("Post not found"))?;
+    let post_owner = require_visible_post(&state.db, Some(auth.user_id), post_id).await?;
 
     if check_block(&state.db, auth.user_id, post_owner).await? {
         return Err(AppError::bad_request("Cannot like this post"));
@@ -114,7 +108,7 @@ pub async fn toggle_like(
                             created_at: chrono::Utc::now(),
                             post_id: Some(post_id),
                             post_thumb_url: thumb,
-                            actor: crate::models::UserResponse::from(actor_row),
+                            actor: crate::models::NotificationActor::from(actor_row),
                         }
                     });
                 }
@@ -151,6 +145,8 @@ pub async fn get_likes(
     auth: OptionalAuthUser,
     Path(post_id): Path<Uuid>,
 ) -> Result<Json<LikeResponse>, AppError> {
+
+    require_visible_post(&state.db, auth.user_id, post_id).await?;
 
     let like_count = sqlx::query_scalar::<_, i64>(
         "SELECT like_count FROM posts WHERE id = $1"

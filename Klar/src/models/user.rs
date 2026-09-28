@@ -113,6 +113,30 @@ impl From<UserRow> for UserResponse {
     }
 }
 
+/// The "who did this" part of a notification. Deliberately minimal --
+/// a notification is delivered to *another* user, so it must never carry
+/// the actor's private fields (email, verification state) the way
+/// UserResponse does. Deserialize is needed because notifications travel
+/// through Redis pub/sub between replicas.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NotificationActor {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+impl From<UserRow> for NotificationActor {
+    fn from(row: UserRow) -> Self {
+        Self {
+            id: row.id,
+            username: row.username,
+            display_name: row.display_name,
+            avatar_url: row.avatar_url,
+        }
+    }
+}
+
 impl From<UserRow> for UserPublicResponse {
     fn from(row: UserRow) -> Self {
         Self {

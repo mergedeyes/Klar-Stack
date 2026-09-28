@@ -6,7 +6,8 @@ use axum::{
 };
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::services::ServeDir;
-use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
+use tower_http::classify::{ServerErrorsAsFailures, SharedClassifier};
+use tower_http::trace::{DefaultOnFailure, DefaultOnResponse, MakeSpan, TraceLayer};
 use tracing::Level;
 
 use crate::handlers;
@@ -36,12 +37,31 @@ fn build_cors() -> CorsLayer {
         .allow_credentials(true)
 }
 
+/// Span for each request: like tower_http's DefaultMakeSpan, but records
+/// only the URI *path*, never the query string. Query strings carry
+/// secrets here -- the SSE stream's access token (?token=, see auth.rs's
+/// extract_user_id) and the email-verification token (/auth/verify?token=)
+/// -- and DefaultMakeSpan would write them into the logs on every request.
+#[derive(Clone, Copy)]
+struct PathOnlyMakeSpan;
+
+impl<B> MakeSpan<B> for PathOnlyMakeSpan {
+    fn make_span(&mut self, req: &axum::http::Request<B>) -> tracing::Span {
+        tracing::info_span!(
+            "request",
+            method = %req.method(),
+            path = %req.uri().path(),
+            version = ?req.version(),
+        )
+    }
+}
+
 /// Build the request/response tracing layer. Logs every request — method,
 /// path, status code, and latency — at INFO, so failures are always visible
 /// in the server console even for handlers that don't call tracing:: themselves.
-fn build_trace_layer() -> TraceLayer<tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>> {
+fn build_trace_layer() -> TraceLayer<SharedClassifier<ServerErrorsAsFailures>, PathOnlyMakeSpan> {
     TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+        .make_span_with(PathOnlyMakeSpan)
         .on_response(DefaultOnResponse::new().level(Level::INFO).latency_unit(tower_http::LatencyUnit::Millis))
         .on_failure(DefaultOnFailure::new().level(Level::ERROR))
 }

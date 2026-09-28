@@ -152,6 +152,13 @@ impl ResolveMedia for crate::models::UserPublicResponse {
     }
 }
 
+impl ResolveMedia for crate::models::NotificationActor {
+    fn resolve_media(mut self, storage: &Storage) -> Self {
+        self.avatar_url = storage.resolve(self.avatar_url);
+        self
+    }
+}
+
 impl ResolveMedia for crate::models::FollowRequestResponse {
     fn resolve_media(mut self, storage: &Storage) -> Self {
         self.requester_avatar_url = storage.resolve(self.requester_avatar_url);
@@ -182,7 +189,7 @@ impl ResolveMedia for crate::models::AdminReportRow {
 impl ResolveMedia for crate::handlers::notifications::NotificationResponse {
     fn resolve_media(mut self, storage: &Storage) -> Self {
         // Two different key fields at once here: post_thumb_url directly,
-        // and the embedded actor's avatar_url via UserResponse's own impl
+        // and the embedded actor's avatar_url via NotificationActor's own impl
         // above, rather than duplicating that logic.
         self.post_thumb_url = storage.resolve(self.post_thumb_url);
         self.actor = self.actor.resolve_media(storage);
