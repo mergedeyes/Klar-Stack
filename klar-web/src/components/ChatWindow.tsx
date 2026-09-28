@@ -199,7 +199,6 @@ return (
             </div>
             <div>
               <span className={`font-semibold ${receiverDeleted ? "italic text-muted-foreground" : ""}`}>{displayName}</span>
-              <div className="text-xs text-muted-foreground">End-to-End Encrypted</div>
             </div>
           </>
         );
