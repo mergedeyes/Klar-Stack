@@ -55,12 +55,7 @@ impl RateLimitState {
             });
         }
 
-        let trusted_proxy_hops = std::env::var("TRUSTED_PROXY_HOPS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1);
-
-        Self { limiter, trusted_proxy_hops }
+        Self { limiter, trusted_proxy_hops: trusted_proxy_hops() }
     }
 
     fn check(&self, ip: IpAddr) -> Result<(), u64> {
@@ -72,6 +67,14 @@ impl RateLimitState {
             }
         }
     }
+}
+
+/// TRUSTED_PROXY_HOPS, default 1. See extract_client_ip.
+pub fn trusted_proxy_hops() -> usize {
+    std::env::var("TRUSTED_PROXY_HOPS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
 }
 
 /// Resolves the real client IP.
@@ -88,7 +91,7 @@ impl RateLimitState {
 /// (direct exposure / local dev). If the header has fewer entries than
 /// expected, no untrusted value can have been prepended, so the leftmost
 /// one is used.
-fn extract_client_ip(req: &Request, trusted_proxy_hops: usize) -> IpAddr {
+pub fn extract_client_ip(req: &Request, trusted_proxy_hops: usize) -> IpAddr {
     let peer_ip = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()

@@ -98,6 +98,7 @@ pub fn create_router(state: AppState) -> Router {
         // Public
         .route("/", get(handlers::health::index))
         .route("/health", get(handlers::health::health_check))
+        .route("/debug/client-ip", get(handlers::health::debug_client_ip))
 
         // User search (must be before /users/{username})
         .route("/users/search", get(handlers::users::search_users))
