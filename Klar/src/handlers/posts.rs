@@ -112,8 +112,8 @@ pub async fn create_post(
             NULL as thumb_url,
             NULL as medium_url,
             NULL as full_url,
-            0 as comment_count,
-            0 as like_count,
+            0::bigint as comment_count,
+            0::bigint as like_count,
             moderation_status::text
         "#
     )
