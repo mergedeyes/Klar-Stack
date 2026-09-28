@@ -276,6 +276,29 @@ pub async fn toggle_reaction(
     Path(message_id): Path<Uuid>,
     Json(payload): Json<ToggleReactionRequest>,
 ) -> Result<StatusCode, AppError> {
+    let emoji_len = payload.emoji.chars().count();
+    if emoji_len == 0 || emoji_len > 16 {
+        return Err(AppError::bad_request("Invalid reaction"));
+    }
+
+    // Only the two participants of a conversation may react to its
+    // messages. Same 404 whether the message doesn't exist or belongs to
+    // someone else's conversation, so message ids can't be probed.
+    let (conversation_id, user1_id, user2_id) = sqlx::query_as::<_, (Uuid, Uuid, Uuid)>(
+        r#"
+        SELECT c.id, c.user1_id, c.user2_id
+        FROM conversations c
+        JOIN messages m ON m.conversation_id = c.id
+        WHERE m.id = $1 AND (c.user1_id = $2 OR c.user2_id = $2)
+        "#
+    )
+    .bind(message_id)
+    .bind(auth.user_id)
+    .fetch_optional(&state.db)
+    .await
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::not_found("Message not found"))?;
+
     let existing = sqlx::query!(
         "SELECT 1 as has_reacted FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
         message_id, auth.user_id, payload.emoji
@@ -302,59 +325,41 @@ pub async fn toggle_reaction(
         .db_err("Failed to add reaction")?;
     }
 
-    // Look up this message's conversation + both participants -- needed
-    // both to notify "the other side" and to bump conversations.updated_at
-    // so a reaction moves the conversation to the top of the list, same as
-    // a new message would (otherwise the richer "X reacted to..." preview
-    // in get_conversations would be correct but the conversation could sit
-    // buried below others that are actually less recently active).
-    let conv = sqlx::query_as::<_, (Uuid, Uuid, Uuid)>(
-        r#"
-        SELECT c.id, c.user1_id, c.user2_id
-        FROM conversations c
-        JOIN messages m ON m.conversation_id = c.id
-        WHERE m.id = $1
-        "#
-    )
-    .bind(message_id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
+    // Bump conversations.updated_at so a reaction moves the conversation
+    // to the top of the list, same as a new message would (otherwise the
+    // richer "X reacted to..." preview in get_conversations would be
+    // correct but the conversation could sit buried below others that are
+    // actually less recently active).
+    sqlx::query("UPDATE conversations SET updated_at = NOW() WHERE id = $1")
+        .bind(conversation_id)
+        .execute(&state.db)
+        .await
+        .ok();
 
-    if let Some((conversation_id, user1_id, user2_id)) = conv {
-        sqlx::query("UPDATE conversations SET updated_at = NOW() WHERE id = $1")
-            .bind(conversation_id)
-            .execute(&state.db)
-            .await
-            .ok();
+    // Reusing the same "message" SSE event type as send_message, rather
+    // than adding a separate "reaction" type, since the effect wanted is
+    // identical: bump the Chat icon's badge, and make an open ChatWindow
+    // on the other end live-refetch to show the new/removed reaction.
+    let target_user_id = if user1_id == auth.user_id { user2_id } else { user1_id };
 
-        // Reusing the same "message" SSE event type as send_message,
-        // rather than adding a separate "reaction" type, since the effect
-        // wanted is identical: bump the Chat icon's badge, and make an
-        // open ChatWindow on the other end live-refetch to show the
-        // new/removed reaction.
-        let target_user_id = if user1_id == auth.user_id { user2_id } else { user1_id };
-
-        if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
-            .bind(auth.user_id)
-            .fetch_one(&state.db)
-            .await
-        {
-            let event = NotificationEvent {
-                target_user_id,
-                notification: NotificationResponse {
-                    id: message_id,
-                    type_name: "message".to_string(),
-                    is_read: false,
-                    created_at: Utc::now(),
-                    post_id: None,
-                    post_thumb_url: None,
-                    actor: crate::models::NotificationActor::from(actor_row),
-                }
-            };
-            publish_notification(&state, &event).await;
-        }
+    if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
+        .bind(auth.user_id)
+        .fetch_one(&state.db)
+        .await
+    {
+        let event = NotificationEvent {
+            target_user_id,
+            notification: NotificationResponse {
+                id: message_id,
+                type_name: "message".to_string(),
+                is_read: false,
+                created_at: Utc::now(),
+                post_id: None,
+                post_thumb_url: None,
+                actor: crate::models::NotificationActor::from(actor_row),
+            }
+        };
+        publish_notification(&state, &event).await;
     }
 
     Ok(StatusCode::OK)
