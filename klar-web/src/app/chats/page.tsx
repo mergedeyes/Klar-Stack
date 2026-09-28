@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { chatsApi, type Conversation, type ChatMessage } from "@/lib/api";
+import { chatsApi, DELETED_USER_LABEL, type Conversation, type ChatMessage } from "@/lib/api";
 import { MessageSquarePlus, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMediaUrl } from "@/lib/utils/media";
@@ -31,18 +31,19 @@ function previewText(conv: Conversation, currentUserId: string | undefined): str
   if (!conv.last_activity_kind) return "Neuer Chat";
 
   const actorIsMe = conv.last_activity_actor_id === currentUserId;
-  const actorLabel = actorIsMe ? "Me" : conv.other_username;
+  const otherName = conv.other_username ?? DELETED_USER_LABEL;
+  const actorLabel = actorIsMe ? "Me" : otherName;
   const text = conv.last_activity_text ?? "";
 
   if (conv.last_activity_kind === "reaction") {
     const messageIsMine = conv.last_activity_message_sender_id === currentUserId;
-    const possessive = messageIsMine ? "your" : `${conv.other_username}'s`;
+    const possessive = messageIsMine ? "your" : `${otherName}'s`;
     const emoji = conv.last_activity_emoji ? `${conv.last_activity_emoji} ` : "";
     return `${actorLabel} reacted ${emoji}to ${possessive} message: ${text}`;
   }
 
   if (conv.last_activity_kind === "reply") {
-    return actorIsMe ? `Me: replied: ${text}` : `${conv.other_username} replied: ${text}`;
+    return actorIsMe ? `Me: replied: ${text}` : `${otherName} replied: ${text}`;
   }
 
   return actorIsMe ? `Me: ${text}` : text;
@@ -72,8 +73,9 @@ function UnifiedChatsPageContent() {
   // Aktiver Chat (entweder aus bestehenden Conversations oder via URL-Params von der Profilseite)
   const [activeChat, setActiveChat] = useState<{
     id?: string;
-    uid: string;
-    un: string;
+    // null for a conversation whose other participant deleted their account
+    uid: string | null;
+    un: string | null;
     av: string | null;
   } | null>(null);
 
@@ -215,19 +217,28 @@ return (
                   activeChat?.id === conv.id ? "bg-primary/10" : "hover:bg-muted"
                 }`}
               >
-                <Link
-                  href={`/users/${conv.other_username}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-12 h-12 bg-background border rounded-full flex-shrink-0 mr-4 flex items-center justify-center overflow-hidden"
-                >
-                  {conv.other_avatar_url ? (
-                    <img src={getMediaUrl(conv.other_avatar_url)} alt={conv.other_username} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="font-bold">{conv.other_username.charAt(0).toUpperCase()}</span>
-                  )}
-                </Link>
+                {conv.other_username ? (
+                  <Link
+                    href={`/users/${conv.other_username}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-12 h-12 bg-background border rounded-full flex-shrink-0 mr-4 flex items-center justify-center overflow-hidden"
+                  >
+                    {conv.other_avatar_url ? (
+                      <img src={getMediaUrl(conv.other_avatar_url)} alt={conv.other_username} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="font-bold">{conv.other_username.charAt(0).toUpperCase()}</span>
+                    )}
+                  </Link>
+                ) : (
+                  // Deleted account: no profile to link to.
+                  <div className="w-12 h-12 bg-muted border rounded-full flex-shrink-0 mr-4 flex items-center justify-center">
+                    <span className="font-bold text-muted-foreground">?</span>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold truncate">{conv.other_username}</h2>
+                  <h2 className={`font-semibold truncate ${conv.other_username ? "" : "italic text-muted-foreground"}`}>
+                    {conv.other_username ?? DELETED_USER_LABEL}
+                  </h2>
                   <p className="text-sm text-muted-foreground truncate">
                     {previewText(conv, user?.id)}
                   </p>
@@ -242,7 +253,7 @@ return (
           {activeChat ? (
             <ChatWindow 
               // Ein key erzwingt einen kompletten Rerender des ChatWindows, wenn der User wechselt
-              key={activeChat.uid} 
+              key={activeChat.id ?? activeChat.uid ?? ""} 
               conversationId={activeChat.id}
               receiverId={activeChat.uid}
               receiverUsername={activeChat.un}

@@ -4,6 +4,7 @@ use chrono::Utc;
 use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{required_text, MESSAGE_MAX};
 
 pub async fn get_conversations(
     State(state): State<AppState>,
@@ -23,7 +24,9 @@ pub async fn get_conversations(
         r#"
         SELECT 
             c.id,
-            u.id as other_user_id,
+            -- NULL (and so no user row) when the other participant
+            -- deleted their account; the frontend shows "Deleted user".
+            CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END as other_user_id,
             u.username as other_username,
             u.avatar_url as other_avatar_url,
             la.kind as last_activity_kind,
@@ -33,7 +36,7 @@ pub async fn get_conversations(
             la.emoji as last_activity_emoji,
             c.updated_at
         FROM conversations c
-        JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+        LEFT JOIN users u ON u.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
         LEFT JOIN LATERAL (
             (
                 SELECT
@@ -129,6 +132,7 @@ pub async fn send_message(
     if auth.user_id == payload.receiver_id {
         return Err(AppError::bad_request("You cannot message yourself"));
     }
+    let body = required_text(&payload.body, "Message", MESSAGE_MAX)?;
 
     let mutual_follow_count = sqlx::query!(
         r#"
@@ -148,11 +152,39 @@ pub async fn send_message(
         return Err(AppError::forbidden("You can only message users who follow you back."));
     }
 
+    // A reply may only quote a message from this same conversation --
+    // otherwise any message id (including from someone else's chat) could
+    // be attached as the reply target.
+    if let Some(reply_to) = payload.reply_to_message_id {
+        let in_this_conversation = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE m.id = $1
+                  AND least(c.user1_id, c.user2_id) = least($2::uuid, $3::uuid)
+                  AND greatest(c.user1_id, c.user2_id) = greatest($2::uuid, $3::uuid)
+            )
+            "#
+        )
+        .bind(reply_to)
+        .bind(auth.user_id)
+        .bind(payload.receiver_id)
+        .fetch_one(&state.db)
+        .await
+        .db_err("Database error")?;
+
+        if !in_this_conversation {
+            return Err(AppError::bad_request("Reply target not found in this conversation"));
+        }
+    }
+
     let conv_record = sqlx::query!(
         r#"
         INSERT INTO conversations (user1_id, user2_id)
         VALUES (least($1::uuid, $2::uuid), greatest($1::uuid, $2::uuid))
         ON CONFLICT (least(user1_id, user2_id), greatest(user1_id, user2_id))
+            WHERE user1_id IS NOT NULL AND user2_id IS NOT NULL
         DO UPDATE SET updated_at = NOW()
         RETURNING id
         "#,
@@ -168,7 +200,7 @@ pub async fn send_message(
         VALUES ($1, $2, $3, $4)
         RETURNING id
         "#,
-        conv_record.id, auth.user_id, payload.body, payload.reply_to_message_id
+        conv_record.id, auth.user_id, body, payload.reply_to_message_id
     )
     .fetch_one(&state.db)
     .await
@@ -226,19 +258,21 @@ pub async fn edit_message(
     Path(message_id): Path<Uuid>,
     Json(payload): Json<EditMessageRequest>,
 ) -> Result<StatusCode, AppError> {
+    let body = required_text(&payload.body, "Message", MESSAGE_MAX)?;
+
     let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
         .fetch_optional(&state.db)
         .await
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
-    if msg_meta.sender_id != auth.user_id {
+    if msg_meta.sender_id != Some(auth.user_id) {
         return Err(AppError::forbidden("You can only edit your own messages"));
     }
 
     sqlx::query!(
         "UPDATE messages SET body = $1, edited_at = $2 WHERE id = $3",
-        payload.body, Utc::now(), message_id
+        body, Utc::now(), message_id
     )
     .execute(&state.db)
     .await
@@ -258,7 +292,7 @@ pub async fn delete_message(
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
-    if msg_meta.sender_id != auth.user_id {
+    if msg_meta.sender_id != Some(auth.user_id) {
         return Err(AppError::forbidden("You can only delete your own messages"));
     }
 
@@ -284,7 +318,7 @@ pub async fn toggle_reaction(
     // Only the two participants of a conversation may react to its
     // messages. Same 404 whether the message doesn't exist or belongs to
     // someone else's conversation, so message ids can't be probed.
-    let (conversation_id, user1_id, user2_id) = sqlx::query_as::<_, (Uuid, Uuid, Uuid)>(
+    let (conversation_id, user1_id, user2_id) = sqlx::query_as::<_, (Uuid, Option<Uuid>, Option<Uuid>)>(
         r#"
         SELECT c.id, c.user1_id, c.user2_id
         FROM conversations c
@@ -340,13 +374,16 @@ pub async fn toggle_reaction(
     // than adding a separate "reaction" type, since the effect wanted is
     // identical: bump the Chat icon's badge, and make an open ChatWindow
     // on the other end live-refetch to show the new/removed reaction.
-    let target_user_id = if user1_id == auth.user_id { user2_id } else { user1_id };
+    // None when the other participant deleted their account -- nobody to notify.
+    let target_user_id = if user1_id == Some(auth.user_id) { user2_id } else { user1_id };
 
-    if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
-        .bind(auth.user_id)
-        .fetch_one(&state.db)
-        .await
-    {
+    if let (Some(target_user_id), Ok(actor_row)) = (
+        target_user_id,
+        sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await,
+    ) {
         let event = NotificationEvent {
             target_user_id,
             notification: NotificationResponse {
@@ -387,7 +424,7 @@ pub async fn mark_conversation_read(
     }
 
     sqlx::query(
-        "UPDATE messages SET is_read = TRUE WHERE conversation_id = $1 AND sender_id != $2 AND is_read = FALSE"
+        "UPDATE messages SET is_read = TRUE WHERE conversation_id = $1 AND sender_id IS DISTINCT FROM $2 AND is_read = FALSE"
     )
     .bind(conversation_id)
     .bind(auth.user_id)
@@ -410,7 +447,9 @@ pub async fn get_unread_count(
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         WHERE (c.user1_id = $1 OR c.user2_id = $1)
-          AND m.sender_id != $1
+          -- IS DISTINCT FROM, not !=: a deleted user's messages have a
+          -- NULL sender_id, and NULL != $1 is never true.
+          AND m.sender_id IS DISTINCT FROM $1
           AND m.is_read = FALSE
         "#
     )

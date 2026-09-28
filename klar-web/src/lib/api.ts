@@ -652,10 +652,15 @@ export interface ReactionEntry {
   username: string;
 }
 
+// Shown in place of a chat participant who deleted their account (the
+// conversation stays for the other person; see migration 20260929000100).
+export const DELETED_USER_LABEL = "Deleted user";
+
 export interface Conversation {
   id: string;
-  other_user_id: string;
-  other_username: string;
+  // Both null when the other participant deleted their account.
+  other_user_id: string | null;
+  other_username: string | null;
   other_avatar_url: string | null;
   // Whichever is more recent: the last message, or the last reaction on
   // any message in the conversation. null only for a brand new
@@ -675,7 +680,8 @@ export interface Conversation {
 export interface ChatMessage {
   id: string;
   conversation_id: string;
-  sender_id: string;
+  // null when the sender deleted their account.
+  sender_id: string | null;
   body: string;
   created_at: string;
   edited_at: string | null;

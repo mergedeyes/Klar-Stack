@@ -23,8 +23,9 @@ pub struct ToggleReactionRequest {
 #[derive(Debug, Serialize, Clone, FromRow)]
 pub struct ConversationResponse {
     pub id: Uuid,
-    pub other_user_id: Uuid,
-    pub other_username: String,
+    /// None when the other participant deleted their account.
+    pub other_user_id: Option<Uuid>,
+    pub other_username: Option<String>,
     pub other_avatar_url: Option<String>,
     /// Whichever is more recent: the last message sent, or the last
     /// reaction on any message in this conversation -- lets the overview
@@ -52,7 +53,8 @@ pub struct ConversationResponse {
 pub struct MessageResponse {
     pub id: Uuid,
     pub conversation_id: Uuid,
-    pub sender_id: Uuid,
+    /// None when the sender deleted their account.
+    pub sender_id: Option<Uuid>,
     pub body: String,
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,

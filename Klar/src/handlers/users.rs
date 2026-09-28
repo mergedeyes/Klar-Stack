@@ -14,6 +14,9 @@ use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
+use crate::validation::{
+    check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
+};
 use chrono::{DateTime, Duration, Utc};
 
 /// Search query parameters
@@ -38,9 +41,12 @@ pub async fn search_users(
         return Err(AppError::bad_request("Search query too long"));
     }
 
-    let limit = params.limit.unwrap_or(20).min(50).max(1);
+    let limit = page_limit(params.limit, 20, 50);
     let offset = params.offset.unwrap_or(0).max(0);
-    let pattern = format!("%{}%", query);
+    // Escaped so "%" or "_" in the query match literally instead of
+    // acting as wildcards.
+    let escaped = escape_like(&query);
+    let pattern = format!("%{}%", escaped);
 
     let users = sqlx::query_as::<_, UserRow>(
         r#"
@@ -53,7 +59,7 @@ pub async fn search_users(
         "#
     )
     .bind(&pattern)
-    .bind(&format!("{}%", query))
+    .bind(format!("{}%", escaped))
     .bind(limit)
     .bind(offset)
     .fetch_all(&state.db)
@@ -159,6 +165,13 @@ pub async fn update_profile(
         .await
         .db_err("Database error")?;
 
+    if let Some(display_name) = &input.display_name {
+        check_max_len(display_name, "Display name", DISPLAY_NAME_MAX)?;
+    }
+    if let Some(bio) = &input.bio {
+        check_max_len(bio, "Bio", BIO_MAX)?;
+    }
+
     let mut final_username = input.username.clone();
 
     // 2. Handle Username Logic (Validation)
@@ -169,10 +182,10 @@ pub async fn update_profile(
         final_username = Some(formatted_username.clone());
 
         if formatted_username.to_lowercase() != current_user.username.to_lowercase() {
-            // Check length/format
-            if formatted_username.len() < 3 || formatted_username.len() > 30 {
-                return Err(AppError::bad_request("Username must be between 3 and 30 characters"));
-            }
+            // Only a *changed* name is validated -- re-casing your own name
+            // skips this, so accounts created before these rules existed
+            // aren't forced to rename.
+            validate_username(&formatted_username)?;
 
             // Check 14-day cooldown
             if let Some(last_changed) = current_user.username_changed_at {
@@ -318,9 +331,7 @@ pub async fn change_password(
     Json(input): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, AppError> {
 
-    if input.new_password.len() < 8 {
-        return Err(AppError::bad_request("Password must be at least 8 characters"));
-    }
+    validate_password(&input.new_password)?;
     if input.current_password == input.new_password {
         return Err(AppError::bad_request("New password must be different from current password"));
     }
@@ -403,13 +414,30 @@ pub async fn delete_account(
     .await
     .db_err("Database error")?;
 
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
+    // Conversations whose other participant already deleted their account
+    // would be left with nobody in them once this user goes too -- remove
+    // them outright. Conversations with a remaining participant are kept
+    // for that person; this user's side becomes NULL ("Deleted user") via
+    // ON DELETE SET NULL (migration 20260929000100).
+    sqlx::query(
+        "DELETE FROM conversations WHERE (user1_id = $1 AND user2_id IS NULL) OR (user2_id = $1 AND user1_id IS NULL)"
+    )
+    .bind(auth.user_id)
+    .execute(&mut *tx)
+    .await
+    .db_err_ctx("Failed to delete orphaned conversations", "Failed to delete account")?;
+
     // Delete user — CASCADE removes posts, comments, likes, follows, blocks,
     // refresh_tokens, email_tokens, media_asset rows
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(auth.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .db_err("Failed to delete account")?;
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Failed to delete account")?;
 
     // Clean up files from disk (best-effort — orphaned files are acceptable)
     for (thumb, medium, full) in &media_keys {
@@ -593,13 +621,15 @@ pub async fn export_my_data(
     // WhatsApp/Instagram-style exports handle DMs — the alternative
     // (only your own sent messages) would produce a confusing, half-empty
     // conversation history for the person requesting their data.
+    // LEFT JOINs: the other participant may have deleted their account
+    // (NULL user id), and the conversation still belongs in this export.
     let conversations = sqlx::query_as::<_, (Uuid, String)>(
         r#"
         SELECT c.id,
-            CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END
+            COALESCE(CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END, 'Deleted user')
         FROM conversations c
-        JOIN users u1 ON u1.id = c.user1_id
-        JOIN users u2 ON u2.id = c.user2_id
+        LEFT JOIN users u1 ON u1.id = c.user1_id
+        LEFT JOIN users u2 ON u2.id = c.user2_id
         WHERE c.user1_id = $1 OR c.user2_id = $1
         ORDER BY c.updated_at DESC
         "#
@@ -613,8 +643,8 @@ pub async fn export_my_data(
     for (conv_id, other_username) in conversations {
         let messages = sqlx::query_as::<_, (String, String, DateTime<Utc>, Option<DateTime<Utc>>)>(
             r#"
-            SELECT u.username, m.body, m.created_at, m.edited_at
-            FROM messages m JOIN users u ON u.id = m.sender_id
+            SELECT COALESCE(u.username, 'Deleted user'), m.body, m.created_at, m.edited_at
+            FROM messages m LEFT JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = $1
             ORDER BY m.created_at
             "#

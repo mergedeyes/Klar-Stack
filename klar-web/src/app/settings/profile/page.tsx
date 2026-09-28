@@ -215,7 +215,7 @@ export default function EditProfilePage() {
           <Input
             id="username"
             value={username}
-            onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_.-]/g, ''))} // Basic strict character filtering
+            onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} // Same rule as registration and the backend's validate_username
             placeholder="username"
             maxLength={30}
             disabled={isOnCooldown || saving}
