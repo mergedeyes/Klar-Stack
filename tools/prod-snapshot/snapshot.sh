@@ -3,6 +3,7 @@
 # nightly backup. See README.md in this directory.
 #
 #   ./snapshot.sh refresh [--from-file DUMP]   rebuild from the latest backup
+#   ./snapshot.sh backups                      list the backups in storage
 #   ./snapshot.sh psql [ARGS...]               open psql (or run: psql -c '...')
 #   ./snapshot.sh checks                       run every checks/*.sql
 #   ./snapshot.sh migrate                      apply this checkout's pending migrations
@@ -75,11 +76,32 @@ aws_cli() {
         "${S3_ENDPOINT}" "$@"
 }
 
-latest_backup_key() {
-    # Keys embed a sortable UTC timestamp (klar-<db>-YYYYMMDDTHHMMSSZ.dump).
+# Prints "<timestamp> <key> <bytes>" per backup, oldest first. Sorted by
+# the UTC timestamp embedded in the name (klar-<db>-YYYYMMDDTHHMMSSZ.dump),
+# not by the whole key: the name also contains the database name, and
+# after a rename (e.g. klar-db -> klar) sorting whole keys would put old
+# "klar-klar-db-..." backups after new "klar-klar-2026..." ones.
+list_backups() {
     aws_cli s3api list-objects-v2 --bucket "${S3_BUCKET}" --prefix "${S3_PREFIX}/" \
-        --query 'Contents[].Key' --output text \
-        | tr '\t' '\n' | grep -E '\.dump$' | sort | tail -n 1
+        --query 'Contents[].[Key, Size]' --output text \
+        | awk 'match($1, /[0-9]{8}T[0-9]{6}Z\.dump$/) { print substr($1, RSTART, 16), $1, $2 }' \
+        | sort
+}
+
+ts_epoch() { date -u -d "${1:0:8} ${1:9:2}:${1:11:2}:${1:13:2}" +%s; }
+
+# Age of a backup timestamp in whole hours.
+ts_age_hours() { echo $(( ($(date -u +%s) - $(ts_epoch "$1")) / 3600 )); }
+
+# The nightly sidecar should never leave the newest backup older than this.
+STALE_AFTER_HOURS=48
+
+warn_if_stale() {
+    local ts="$1" age
+    age="$(ts_age_hours "${ts}")"
+    if [ "${age}" -gt "${STALE_AFTER_HOURS}" ]; then
+        printf '\033[33mwarning:\033[0m the newest backup is %s days old -- the db-backup sidecar has likely\n         stopped producing backups. Check its logs in the Bunny dashboard.\n' "$(( age / 24 ))" >&2
+    fi
 }
 
 start_container() {
@@ -113,9 +135,12 @@ cmd_refresh() {
     if [ -z "${from_file}" ]; then
         load_env
         log "Looking up the latest backup in s3://${S3_BUCKET}/${S3_PREFIX}/"
-        key="$(latest_backup_key)"
-        [ -n "${key}" ] || die "no backups found"
-        log "Latest: ${key}"
+        local latest ts
+        latest="$(list_backups | tail -n 1)"
+        [ -n "${latest}" ] || die "no backups found"
+        read -r ts key _ <<< "${latest}"
+        log "Latest: ${key} ($(( $(ts_age_hours "${ts}") / 24 )) days old)"
+        warn_if_stale "${ts}"
     fi
 
     start_container
@@ -173,6 +198,21 @@ cmd_migrate() {
     docker logs "${CONTAINER}" 2>&1 | grep -E 'WARNING' | tail -n 20 || echo "    (none)"
 }
 
+cmd_backups() {
+    load_env
+    local rows ts key bytes n=0
+    rows="$(list_backups)"
+    [ -n "${rows}" ] || die "no backups found in s3://${S3_BUCKET}/${S3_PREFIX}/"
+    printf '%-20s %9s  %s\n' "TAKEN (UTC)" "SIZE" "KEY"
+    while read -r ts key bytes; do
+        n=$((n + 1))
+        printf '%-20s %7s K  %s\n' "$(date -u -d "@$(ts_epoch "${ts}")" '+%F %H:%M')" "$(( bytes / 1024 ))" "${key}"
+    done <<< "${rows}"
+    ts="$(tail -n 1 <<< "${rows}" | cut -d' ' -f1)"
+    log "${n} backups, newest $(( $(ts_age_hours "${ts}") / 24 )) days old"
+    warn_if_stale "${ts}"
+}
+
 cmd_url()  { echo "postgres://postgres:${PGPASS}@127.0.0.1:${PORT}/${DB}"; }
 
 cmd_drop() {
@@ -181,6 +221,7 @@ cmd_drop() {
 
 case "${1:-}" in
     refresh) shift; cmd_refresh "$@" ;;
+    backups) cmd_backups ;;
     psql)    shift; cmd_psql "$@" ;;
     checks)  cmd_checks ;;
     migrate) cmd_migrate ;;

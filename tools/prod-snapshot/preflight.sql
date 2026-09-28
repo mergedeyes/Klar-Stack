@@ -9,13 +9,24 @@
 
 \pset footer off
 
+-- The backup can be older than the checkout, so a check that needs a
+-- column added by a later migration must test for it first (\gset + \if).
+SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'terms_accepted_at'
+) AS has_terms_accepted_at \gset
+
 \echo '── Accounts'
 SELECT
     COUNT(*)                                              AS users,
     COUNT(*) FILTER (WHERE email_verified)                AS verified,
-    COUNT(*) FILTER (WHERE is_private)                    AS private,
-    COUNT(*) FILTER (WHERE terms_accepted_at IS NULL)     AS without_terms_consent
+    COUNT(*) FILTER (WHERE is_private)                    AS private
 FROM users;
+\if :has_terms_accepted_at
+SELECT COUNT(*) FILTER (WHERE terms_accepted_at IS NULL) AS without_terms_consent FROM users;
+\else
+\echo '   (no terms_accepted_at column yet: this backup predates migration 20260825000000)'
+\endif
 
 \echo '── Emails (migration 20260929000000 needs duplicate_groups = 0)'
 SELECT
