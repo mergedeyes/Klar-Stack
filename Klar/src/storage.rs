@@ -193,9 +193,13 @@ impl S3Storage {
         let bucket = std::env::var("S3_STORAGE_BUCKET").expect("S3_STORAGE_BUCKET missing");
 
         // Bunny: Access Key ID = Storage-Zone-Name = Bucket. Fallback auf den Bucket,
-        // wenn kein expliziter Access-Key gesetzt ist.
+        // wenn kein expliziter Access-Key gesetzt ist. Leer zählt als nicht
+        // gesetzt -- das Dockerfile deklariert die Variable leer, damit Bunny
+        // sie anzeigt, und "" als Access-Key würde jede Signatur brechen.
         let access_key = std::env::var("S3_STORAGE_ACCESS_KEY")
-            .unwrap_or_else(|_| bucket.clone());
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| bucket.clone());
 
         // Secret = Storage-Zone-Passwort. Akzeptiert auch den alten Namen.
         let secret_key = std::env::var("S3_STORAGE_SECRET_ACCESS_KEY")

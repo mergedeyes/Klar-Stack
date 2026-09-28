@@ -61,6 +61,7 @@ ENV HOST=0.0.0.0 \
     STORAGE_PROVIDER=s3 \
     S3_STORAGE_ENDPOINT=https://de-s3.storage.bunnycdn.com \
     S3_STORAGE_BUCKET="" \
+    S3_STORAGE_ACCESS_KEY="" \
     S3_STORAGE_SECRET_ACCESS_KEY="" \
     S3_PUBLIC_STORAGE_URL=https://cdn.klarsocial.eu \
     TRUSTED_PROXY_HOPS=1 \
