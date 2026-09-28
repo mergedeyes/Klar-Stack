@@ -41,28 +41,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // On mount — if we have a stored token, fetch the current user
   useEffect(() => {
     const restore = async () => {
-      if (!tokens.getAccess()) {
+      if (!tokens.getAccess() && !tokens.getRefresh()) {
         setLoading(false);
         return;
       }
       try {
+        // request() refreshes an expired access token itself (and clears
+        // the tokens if the server rejects the refresh token), so there's
+        // no separate refresh attempt here -- a second, independent refresh
+        // would race it with the same single-use token.
         const me = await users.me();
         setUser(me);
       } catch {
-        // Token expired or invalid — try refresh
-        const refreshToken = tokens.getRefresh();
-        if (refreshToken) {
-          try {
-            const refreshed = await auth.refresh(refreshToken);
-            tokens.set(refreshed.access_token, refreshed.refresh_token);
-            const me = await users.me();
-            setUser(me);
-          } catch {
-            tokens.clear();
-          }
-        } else {
-          tokens.clear();
-        }
+        // Session gone (tokens already cleared) or a network error (tokens
+        // kept, so a reload can restore the session) -- logged out either way.
       } finally {
         setLoading(false);
       }
