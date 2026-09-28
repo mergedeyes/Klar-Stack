@@ -178,5 +178,5 @@ case "${1:-}" in
     migrate) cmd_migrate ;;
     url)     cmd_url ;;
     drop)    cmd_drop ;;
-    *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
