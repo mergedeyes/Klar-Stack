@@ -67,6 +67,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await auth.login(email, password);
     tokens.set(res.access_token, res.refresh_token);
     setUser(res.user);
+    // The login response is the owner-only UserResponse, which has no
+    // is_admin flag -- only GET /users/me computes it. Without this the
+    // admin menu entry stays hidden until the next page reload.
+    try {
+      setUser(await users.me());
+    } catch {
+      // Keep the user from the login response; a reload retries.
+    }
   }, []);
 
   const register = useCallback(
