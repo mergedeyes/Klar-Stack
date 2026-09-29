@@ -62,6 +62,14 @@ jobs:
             fi
           done
 
+          # A page can already carry today's date (a second legal-page change
+          # on the same day), in which case sed changes nothing and
+          # `git commit` would fail the whole deploy with "nothing to commit".
+          if [ "$UPDATED" = true ] && git diff --quiet -- "${FILES[@]}"; then
+            echo "Legal pages already show $TODAY."
+            UPDATED=false
+          fi
+
           if [ "$UPDATED" = true ]; then
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
