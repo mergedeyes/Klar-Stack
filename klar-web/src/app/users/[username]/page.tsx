@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Grid3X3, Lock, Flag } from "lucide-react";
 import Image from "next/image";
@@ -10,9 +10,11 @@ import {
   followRequestsApi,
   blocks as blocksApi,
   posts as postsApi,
+  cursorAfter,
   type User,
   type ProfileStats,
   type Post,
+  type PostCursor,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getMediaUrl } from "@/lib/utils/media";
@@ -60,6 +62,9 @@ function GridCell({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// A multiple of three so every page fills whole grid rows.
+const POSTS_PAGE_SIZE = 30;
+
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const { user: me, loading: authLoading } = useAuth();
@@ -69,6 +74,14 @@ export default function ProfilePage() {
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [postsBlocked, setPostsBlocked] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const postsCursorRef = useRef<PostCursor | undefined>(undefined);
+  // Bumped whenever the grid is reloaded from the first page or the
+  // profile changes, so a request still in flight for the old list drops
+  // its result instead of mixing it into the new one.
+  const postsGenRef = useRef(0);
   const [followLoading, setFollowLoading] = useState(false);
   const [requestActionLoading, setRequestActionLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -104,14 +117,71 @@ export default function ProfilePage() {
 
   const refreshPosts = useCallback(() => {
     if (!username || !canSeePosts) return;
-    postsApi.userPosts(username, undefined, 50)
-      .then((data) => { setUserPosts(data); setPostsBlocked(false); })
-      .catch(() => setPostsBlocked(true));
+    const gen = ++postsGenRef.current;
+    postsCursorRef.current = undefined;
+    postsApi.userPosts(username, undefined, POSTS_PAGE_SIZE)
+      .then((page) => {
+        if (gen !== postsGenRef.current) return;
+        const full = page.length >= POSTS_PAGE_SIZE;
+        setUserPosts(page);
+        setPostsBlocked(false);
+        setHasMorePosts(full);
+        setLoadMoreFailed(false);
+        postsCursorRef.current = full ? cursorAfter(page) : undefined;
+      })
+      .catch(() => {
+        if (gen === postsGenRef.current) setPostsBlocked(true);
+      });
   }, [username, canSeePosts]);
+
+  const loadMorePosts = useCallback(async () => {
+    const cursor = postsCursorRef.current;
+    if (!username || !canSeePosts || !cursor) return;
+    const gen = postsGenRef.current;
+    setLoadingMorePosts(true);
+    try {
+      const page = await postsApi.userPosts(username, cursor, POSTS_PAGE_SIZE);
+      if (gen !== postsGenRef.current) return;
+      setUserPosts((prev) => [...prev, ...page]);
+      const full = page.length >= POSTS_PAGE_SIZE;
+      setHasMorePosts(full);
+      postsCursorRef.current = full ? cursorAfter(page) : undefined;
+    } catch {
+      // Keep what's already shown and stop auto-loading; otherwise the
+      // re-created observer would retry in a tight loop while the sentinel
+      // stays on screen. The user retries explicitly.
+      if (gen === postsGenRef.current) setLoadMoreFailed(true);
+    } finally {
+      setLoadingMorePosts(false);
+    }
+  }, [username, canSeePosts]);
+
+  // A callback ref rather than an effect because the sentinel only mounts
+  // once the profile has loaded. Re-created whenever the list changes, so
+  // the observer's initial callback fetches again if the sentinel is still
+  // on screen (e.g. a tall window that one page doesn't fill).
+  const postsSentinelRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node || userPosts.length === 0) return;
+    if (!hasMorePosts || loadingMorePosts || loadMoreFailed) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          observer.disconnect();
+          loadMorePosts();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMorePosts, loadingMorePosts, loadMoreFailed, loadMorePosts, userPosts]);
 
   useEffect(() => {
     if (!username) return;
     let cancelled = false;
+    // The previous profile's cursor must not be used against this one.
+    postsGenRef.current++;
+    postsCursorRef.current = undefined;
 
     usersApi.get(username)
       .then((profileData) => {
@@ -429,6 +499,21 @@ export default function ProfilePage() {
                   onClick={() => setActivePost(post)}
                 />
               ))}
+            </div>
+          )}
+          {canSeePosts && !postsBlocked && hasMorePosts && (
+            <div ref={postsSentinelRef} className="flex justify-center py-6">
+              {loadMoreFailed ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setLoadMoreFailed(false); loadMorePosts(); }}
+                >
+                  Couldn&apos;t load more posts — retry
+                </Button>
+              ) : loadingMorePosts && (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+              )}
             </div>
           )}
         </div>
