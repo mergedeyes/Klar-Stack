@@ -89,7 +89,7 @@ export default function TransparenzPage() {
               kommentiert, wird das kurz gespeichert (wer, was, wann), damit
               du es in deiner Benachrichtigungsliste siehst. Diese Ereignisse
               werden dir außerdem in Echtzeit zugestellt (siehe „Echtzeit-
-              Benachrichtigungen" unten).
+              Benachrichtigungen“ unten).
             </p>
           </div>
 
@@ -123,14 +123,12 @@ export default function TransparenzPage() {
             Damit Benachrichtigungen sofort ankommen (auch wenn unser Backend
             auf mehreren Servern läuft), werden sie kurzzeitig über einen
             externen, verschlüsselt angebundenen Dienst (Upstash) geleitet.
-            Dabei werden Benutzername, Profilbild-URL und E-Mail-Adresse der
-            auslösenden Person mitübertragen (technisch notwendig, um die
-            Benachrichtigung zusammenzustellen) — die Übertragung ist
-            TLS-verschlüsselt, die Daten werden dort nicht dauerhaft
-            gespeichert, und deine E-Mail-Adresse wird in der App-Oberfläche
-            nirgends angezeigt. 
-            <strong> Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
-            übertragen werden müssen.</strong>
+            Dabei werden nur die interne Nutzer-ID, der Benutzername, der
+            Anzeigename und die Profilbild-URL der auslösenden Person
+            mitübertragen (technisch notwendig, um die Benachrichtigung
+            zusammenzustellen) — <strong>keine E-Mail-Adressen</strong>. Die
+            Übertragung ist TLS-verschlüsselt, und die Daten werden dort nicht
+            dauerhaft gespeichert.
           </p>
         </section>
 
@@ -166,14 +164,27 @@ export default function TransparenzPage() {
             E-Mail-Versands) findest du in der{" "}
             <Link href="/datenschutz" className="underline">Datenschutzerklärung</Link>.
           </p>
+          <p className="mt-2">
+            Jede Nacht sichern wir die Datenbank, ebenfalls bei Bunny.net in
+            Deutschland; jede Sicherung wird nach 14 Tagen automatisch
+            gelöscht. Ob die Sicherung geklappt hat, meldet unser Server an
+            Healthchecks.io (EU) — nur ein „hat funktioniert“ oder „ist
+            fehlgeschlagen“, ohne jegliche Nutzerdaten. So merken wir sofort,
+            wenn etwas nicht stimmt.
+          </p>
         </section>
 
         <section className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">Löschung</h2>
           <p>
             Löschst du dein Konto in den Einstellungen, werden dein Profil,
-            deine Beiträge, Kommentare und Nachrichten entfernt. Serverseitige
-            Zugriffsprotokolle laufen unabhängig davon ohnehin nach 3 Tagen ab.
+            deine Beiträge, Kommentare und Likes sofort entfernt. Nachrichten,
+            die du anderen geschickt hast, bleiben in deren Chat erhalten —
+            dort stehst du dann als „Deleted user“, ohne Link zu einem Profil.
+            In den nächtlichen Sicherungen können deine Daten noch bis zu 14
+            Tage liegen, bevor diese automatisch gelöscht werden.
+            Serverseitige Zugriffsprotokolle laufen unabhängig davon ohnehin
+            nach 3 Tagen ab.
           </p>
         </section>
 
@@ -194,7 +205,7 @@ export default function TransparenzPage() {
           und die{" "}
           <Link href="/nutzungsbedingungen" className="underline">Nutzungsbedingungen</Link>.
           <br />
-          Stand: 25.08.2026
+          Stand: 29.09.2026
         </p>
       </div>
     </div>
