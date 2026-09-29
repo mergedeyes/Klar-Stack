@@ -1,4 +1,4 @@
-/// Content reporting & moderation models.
+//! Content reporting & moderation models.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -1,4 +1,4 @@
-/// Media asset models.
+//! Media asset models.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;

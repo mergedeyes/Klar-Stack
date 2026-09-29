@@ -1,12 +1,12 @@
-/// Email service: sends verification and password reset emails.
-///
-/// Dev: MailHog on localhost:1025, view emails at http://localhost:8025
-/// Prod: Scaleway TEM (HTTPS APIs). Bunny Magic Containers blocks
-/// outbound SMTP ports (25/465/587/2525) by default, so raw SMTP relays
-/// (like IONOS) time out from inside the container. Both providers' APIs
-/// run over plain HTTPS (443), which is already open for everything else
-/// (image pulls, DB, etc). Scaleway TEM is the EU-data-residency option:
-/// sending and account/log data stays in the EU.
+//! Email service: sends verification and password reset emails.
+//!
+//! Dev: MailHog on localhost:1025, view emails at http://localhost:8025
+//! Prod: Scaleway TEM (HTTPS APIs). Bunny Magic Containers blocks
+//! outbound SMTP ports (25/465/587/2525) by default, so raw SMTP relays
+//! (like IONOS) time out from inside the container. Both providers' APIs
+//! run over plain HTTPS (443), which is already open for everything else
+//! (image pulls, DB, etc). Scaleway TEM is the EU-data-residency option:
+//! sending and account/log data stays in the EU.
 
 use lettre::{
     message::{header::ContentType, MultiPart, SinglePart}, // building a multipart (text + HTML) email body

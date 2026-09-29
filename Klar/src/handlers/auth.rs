@@ -1,4 +1,4 @@
-/// Auth handlers — registration, login, refresh, logout, email verification, password reset.
+//! Auth handlers — registration, login, refresh, logout, email verification, password reset.
 
 use axum::{
     extract::{Query, State},

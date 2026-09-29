@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { chatsApi, DELETED_USER_LABEL, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -136,8 +137,8 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
         onMessageSent?.(newMsg);
       }
       setInputText("");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 10);
@@ -190,9 +191,9 @@ return (
       {(() => {
         const headerContent = (
           <>
-            <div className="w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
+            <div className="relative w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
               {receiverAvatar ? (
-                <img src={getMediaUrl(receiverAvatar)} alt={displayName} className="w-full h-full object-cover" />
+                <Image src={getMediaUrl(receiverAvatar)} alt={displayName} fill className="object-cover" unoptimized />
               ) : (
                 <span className="font-bold text-muted-foreground">{receiverDeleted ? "?" : displayName.charAt(0).toUpperCase()}</span>
               )}

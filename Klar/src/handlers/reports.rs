@@ -1,29 +1,29 @@
-/// Content reporting & moderation.
-///
-/// POST /reports is available to any authenticated user. Everything else
-/// here (the review queue, dismiss, remove) is gated to a small set of
-/// admin/moderator accounts via the ADMIN_EMAILS env var -- a
-/// comma-separated list of emails, compared case-insensitively (see
-/// utils::is_admin_email, shared with GET /users/me's is_admin flag)
-/// rather than a full roles system, proportionate to a solo-dev,
-/// pre-launch scale. Worth revisiting once moderation needs
-/// finer-grained permissions than "can do everything or nothing."
-///
-/// JWTs only carry user_id (see auth.rs's Claims -- deliberately no
-/// email, so a token doesn't go stale if someone changes their address),
-/// so checking against an email allowlist means one extra lookup per
-/// admin-gated request to resolve user_id -> email. Cheap, and these
-/// endpoints are low-frequency (moderation actions, not hot-path reads).
-///
-/// require_admin also requires email_verified, not just an email-string
-/// match against ADMIN_EMAILS -- without that, adding an address to
-/// ADMIN_EMAILS before its real owner has registered would let *anyone*
-/// who registers with that exact address first get admin instantly, with
-/// no proof they actually control that inbox. Always register + verify
-/// the real admin's account before adding it to ADMIN_EMAILS, never the
-/// other way around -- email_verified is defense in depth for that
-/// ordering mistake, not a substitute for it (email is UNIQUE, so
-/// whoever registers it first keeps it either way).
+//! Content reporting & moderation.
+//!
+//! POST /reports is available to any authenticated user. Everything else
+//! here (the review queue, dismiss, remove) is gated to a small set of
+//! admin/moderator accounts via the ADMIN_EMAILS env var -- a
+//! comma-separated list of emails, compared case-insensitively (see
+//! utils::is_admin_email, shared with GET /users/me's is_admin flag)
+//! rather than a full roles system, proportionate to a solo-dev,
+//! pre-launch scale. Worth revisiting once moderation needs
+//! finer-grained permissions than "can do everything or nothing."
+//!
+//! JWTs only carry user_id (see auth.rs's Claims -- deliberately no
+//! email, so a token doesn't go stale if someone changes their address),
+//! so checking against an email allowlist means one extra lookup per
+//! admin-gated request to resolve user_id -> email. Cheap, and these
+//! endpoints are low-frequency (moderation actions, not hot-path reads).
+//!
+//! require_admin also requires email_verified, not just an email-string
+//! match against ADMIN_EMAILS -- without that, adding an address to
+//! ADMIN_EMAILS before its real owner has registered would let *anyone*
+//! who registers with that exact address first get admin instantly, with
+//! no proof they actually control that inbox. Always register + verify
+//! the real admin's account before adding it to ADMIN_EMAILS, never the
+//! other way around -- email_verified is defense in depth for that
+//! ordering mistake, not a substitute for it (email is UNIQUE, so
+//! whoever registers it first keeps it either way).
 
 use axum::{
     extract::{Path, State},

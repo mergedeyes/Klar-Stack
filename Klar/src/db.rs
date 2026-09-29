@@ -1,6 +1,6 @@
-/// Database setup: connection pool creation and migration runner.
-/// Everything database-infrastructure lives here.
-/// Actual queries live in handlers, close to where they're used.
+//! Database setup: connection pool creation and migration runner.
+//! Everything database-infrastructure lives here.
+//! Actual queries live in handlers, close to where they're used.
 
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions}; // typed builders for a single Postgres connection and for the pool around it
 use sqlx::PgPool; // the connection pool type handed out to the rest of the app

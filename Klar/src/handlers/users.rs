@@ -238,7 +238,7 @@ pub async fn update_profile(
     .bind(&input.display_name)
     .bind(&input.bio)
     .bind(auth.user_id)
-    .bind(&input.is_private)
+    .bind(input.is_private)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {

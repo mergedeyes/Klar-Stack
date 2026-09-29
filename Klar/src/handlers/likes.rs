@@ -1,4 +1,4 @@
-/// Like handlers — toggle likes on posts.
+//! Like handlers — toggle likes on posts.
 
 use axum::{
     extract::{Path, State},

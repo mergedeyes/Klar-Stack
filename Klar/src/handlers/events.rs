@@ -1,10 +1,10 @@
-/// Interaction event log handlers.
-///
-/// `record_event` is called directly from other handlers (likes,
-/// comments) right where the action already happens server-side --
-/// no extra request needed for those. The one thing the server can't
-/// observe on its own is whether a post was actually seen, so `POST
-/// /events` exists for the frontend to report view/impression events.
+//! Interaction event log handlers.
+//!
+//! `record_event` is called directly from other handlers (likes,
+//! comments) right where the action already happens server-side --
+//! no extra request needed for those. The one thing the server can't
+//! observe on its own is whether a post was actually seen, so `POST
+//! /events` exists for the frontend to report view/impression events.
 
 use axum::{extract::State, http::StatusCode, Json};
 use sqlx::PgPool;

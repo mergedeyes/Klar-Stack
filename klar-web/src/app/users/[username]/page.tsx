@@ -73,7 +73,11 @@ export default function ProfilePage() {
   const [requestActionLoading, setRequestActionLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockLoading, setBlockLoading] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // The username whose profile fetch last settled. Loading is derived from
+  // it, so navigating to another profile shows the spinner again without
+  // setting state from the effect.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const loading = loadedFor !== username;
   const [activePost, setActivePost] = useState<Post | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -94,6 +98,9 @@ export default function ProfilePage() {
   // the posts endpoint doesn't even need to be called (and 403) for a
   // private account you can't see into.
   const canSeePosts = !!profile && (!profile.is_private || isMe || isFollowing);
+  // Posts fetched while the account was visible stay in state after e.g.
+  // an unfollow of a private account; they just aren't shown.
+  const visiblePosts = canSeePosts ? userPosts : [];
 
   const refreshPosts = useCallback(() => {
     if (!username || !canSeePosts) return;
@@ -106,7 +113,6 @@ export default function ProfilePage() {
     if (!username) return;
     let cancelled = false;
 
-    setLoading(true);
     usersApi.get(username)
       .then((profileData) => {
         if (cancelled) return;
@@ -116,7 +122,7 @@ export default function ProfilePage() {
         if (!cancelled) router.push("/feed");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoadedFor(username);
       });
 
     usersApi.stats(username).then((s) => { if (!cancelled) setStats(s); }).catch(() => {});
@@ -127,8 +133,7 @@ export default function ProfilePage() {
   // Fetch posts once we know whether we're allowed to see them (depends
   // on the profile fetch above having resolved viewer_relationship).
   useEffect(() => {
-    if (!profile) return;
-    if (!canSeePosts) { setUserPosts([]); return; }
+    if (!profile || !canSeePosts) return;
     refreshPosts();
   }, [profile, canSeePosts, refreshPosts]);
 
@@ -410,14 +415,14 @@ export default function ProfilePage() {
             <div className="py-16 text-center">
               <p className="text-sm text-muted-foreground">Couldn&apos;t load posts</p>
             </div>
-          ) : userPosts.length === 0 ? (
+          ) : visiblePosts.length === 0 ? (
             <div className="py-16 text-center">
               <Grid3X3 size={32} className="mx-auto mb-3 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">No posts yet</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-1">
-              {userPosts.map((post) => (
+              {visiblePosts.map((post) => (
                 <GridCell
                   key={post.id}
                   post={post}

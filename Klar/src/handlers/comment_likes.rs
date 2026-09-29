@@ -1,4 +1,4 @@
-/// Comment like handlers — toggle likes on comments.
+//! Comment like handlers — toggle likes on comments.
 
 use axum::{
     extract::{Path, State},

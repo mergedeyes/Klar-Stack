@@ -34,14 +34,18 @@ export default function EditProfilePage() {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
-  // Pre-fill from current profile
-  useEffect(() => {
-    if (!user) return;
+  // Pre-fill from the current profile whenever the user object changes
+  // (first load, and after a save refreshes it). Adjusted during render,
+  // React's recommended alternative to an effect that copies props/context
+  // into state.
+  const [prefilledFrom, setPrefilledFrom] = useState<typeof user>(null);
+  if (user && user !== prefilledFrom) {
+    setPrefilledFrom(user);
     setUsername(user.username ?? "");
     setDisplayName(user.display_name ?? "");
     setBio(user.bio ?? "");
     setIsPrivate(user.is_private ?? false);
-  }, [user]);
+  }
 
   // Cooldown Calculation (14 days)
   const COOLDOWN_DAYS = 14;

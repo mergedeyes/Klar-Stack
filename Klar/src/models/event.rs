@@ -1,7 +1,7 @@
-/// Interaction event log models — the foundation for future ranking/
-/// recommendation work and for export to an analytics store (see the
-/// ClickHouse notes). See migrations/20260720001000_post_events_partitioned.sql
-/// for the schema and reasoning.
+//! Interaction event log models — the foundation for future ranking/
+//! recommendation work and for export to an analytics store (see the
+//! ClickHouse notes). See migrations/20260720001000_post_events_partitioned.sql
+//! for the schema and reasoning.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

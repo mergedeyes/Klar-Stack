@@ -15,11 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import EditedBadge from "@/components/EditedBadge";
 import ReportModal from "@/components/ReportModal";
-import { useRouter } from "next/navigation";
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '@/env';
 
-const API_URL = ENV.API_URL;
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -261,7 +258,6 @@ interface PostModalProps {
 
 export default function PostModal({ post, onClose, onLikeChange, onDeleted }: PostModalProps) {
   const { user } = useAuth();
-  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);

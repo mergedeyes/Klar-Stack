@@ -40,20 +40,15 @@ export default function FeedPage() {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
-  const refreshFeed = useCallback(() => {
-    cursorRef.current = undefined;
-    setLoading(true);
-    setError(null);
-    setHasMore(true);
-
+  // Fetches the first page and only sets state once the request settles,
+  // so the initial load can run from an effect; refreshFeed adds the
+  // resets for a manual refresh (e.g. after creating a post).
+  const loadFirstPage = useCallback(() => {
     postsApi.feed(undefined, 20)
       .then((page) => {
         setFeedPosts(page);
-        if (page.length < 20) {
-          setHasMore(false);
-        } else {
-          cursorRef.current = cursorAfter(page);
-        }
+        setHasMore(page.length >= 20);
+        cursorRef.current = page.length < 20 ? undefined : cursorAfter(page);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load feed");
@@ -63,10 +58,18 @@ export default function FeedPage() {
       });
   }, []);
 
+  const refreshFeed = useCallback(() => {
+    cursorRef.current = undefined;
+    setLoading(true);
+    setError(null);
+    setHasMore(true);
+    loadFirstPage();
+  }, [loadFirstPage]);
+
   useEffect(() => {
     if (authLoading || !user) return;
-    refreshFeed();
-  }, [authLoading, user, refreshFeed]);
+    loadFirstPage();
+  }, [authLoading, user, loadFirstPage]);
 
   const loadMore = useCallback(async () => {
     if (!cursorRef.current) return;

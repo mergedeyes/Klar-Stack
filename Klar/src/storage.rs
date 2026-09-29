@@ -332,7 +332,7 @@ impl BunnyStorage {
     }
 
     pub fn public_url(&self, key: &str) -> String {
-        let clean_key = if key.starts_with('/') { &key[1..] } else { key };
+        let clean_key = key.strip_prefix('/').unwrap_or(key);
         format!("{}/{}", self.public_url_base, clean_key)
     }
 }
@@ -473,7 +473,7 @@ impl S3Storage {
     }
 
     pub fn public_url(&self, key: &str) -> String {
-        let clean_key = if key.starts_with('/') { &key[1..] } else { key };
+        let clean_key = key.strip_prefix('/').unwrap_or(key);
         format!("{}/{}", self.public_url_base, clean_key)
     }
 }

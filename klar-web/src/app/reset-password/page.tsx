@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -35,9 +35,9 @@ function ResetPasswordForm() {
     defaultValues: { password: "", confirmPassword: "" },
   });
 
-  useEffect(() => {
-    if (!token) setError("Invalid or missing reset link. Please request a new one.");
-  }, [token]);
+  // Derived rather than set from an effect: the link is unusable for as
+  // long as it has no token.
+  const shownError = error ?? (token ? null : "Invalid or missing reset link. Please request a new one.");
 
   const onSubmit = async (values: Values) => {
     if (!token) return;
@@ -77,9 +77,9 @@ function ResetPasswordForm() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {error && (
+              {shownError && (
                 <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {error}
+                  {shownError}
                 </div>
               )}
 

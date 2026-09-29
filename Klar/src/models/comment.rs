@@ -1,4 +1,4 @@
-/// Comment models.
+//! Comment models.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

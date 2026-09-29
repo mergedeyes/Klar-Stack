@@ -1,6 +1,6 @@
-/// Shared error response type.
-/// Every handler that can fail returns this shape,
-/// so the API is consistent for clients.
+//! Shared error response type.
+//! Every handler that can fail returns this shape,
+//! so the API is consistent for clients.
 
 use axum::{
     http::StatusCode,
