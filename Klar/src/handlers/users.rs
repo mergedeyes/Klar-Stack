@@ -425,8 +425,9 @@ pub async fn delete_account(
     // Conversations whose other participant already deleted their account
     // would be left with nobody in them once this user goes too -- remove
     // them outright. Conversations with a remaining participant are kept
-    // for that person; this user's side becomes NULL ("Deleted user") via
-    // ON DELETE SET NULL (migration 20260929000100).
+    // for that person; this user's side becomes NULL ("Deleted User") via
+    // ON DELETE SET NULL (migration 20260929000100), and this user's
+    // messages in it are erased via ON DELETE CASCADE (20260930000000).
     sqlx::query(
         "DELETE FROM conversations WHERE (user1_id = $1 AND user2_id IS NULL) OR (user2_id = $1 AND user1_id IS NULL)"
     )
@@ -436,7 +437,7 @@ pub async fn delete_account(
     .db_err_ctx("Failed to delete orphaned conversations", "Failed to delete account")?;
 
     // Delete user — CASCADE removes posts, comments, likes, follows, blocks,
-    // refresh_tokens, email_tokens, media_asset rows
+    // sent messages, refresh_tokens, email_tokens, media_asset rows
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(auth.user_id)
         .execute(&mut *tx)
@@ -643,7 +644,7 @@ pub async fn export_my_data(
     let conversations = sqlx::query_as::<_, (Uuid, String)>(
         r#"
         SELECT c.id,
-            COALESCE(CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END, 'Deleted user')
+            COALESCE(CASE WHEN c.user1_id = $1 THEN u2.username ELSE u1.username END, 'Deleted User')
         FROM conversations c
         LEFT JOIN users u1 ON u1.id = c.user1_id
         LEFT JOIN users u2 ON u2.id = c.user2_id
@@ -660,8 +661,8 @@ pub async fn export_my_data(
     for (conv_id, other_username) in conversations {
         let messages = sqlx::query_as::<_, (String, String, DateTime<Utc>, Option<DateTime<Utc>>)>(
             r#"
-            SELECT COALESCE(u.username, 'Deleted user'), m.body, m.created_at, m.edited_at
-            FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+            SELECT u.username, m.body, m.created_at, m.edited_at
+            FROM messages m JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = $1
             ORDER BY m.created_at
             "#

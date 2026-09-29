@@ -53,7 +53,8 @@ pub struct ConversationResponse {
 pub struct MessageResponse {
     pub id: Uuid,
     pub conversation_id: Uuid,
-    /// None when the sender deleted their account.
+    /// Never None in practice: a deleted account's messages are erased
+    /// with it (the column is only nullable for schema history).
     pub sender_id: Option<Uuid>,
     pub body: String,
     pub created_at: DateTime<Utc>,

@@ -178,9 +178,10 @@ export default function TransparenzPage() {
           <h2 className="mb-2 text-lg font-semibold">Löschung</h2>
           <p>
             Löschst du dein Konto in den Einstellungen, werden dein Profil,
-            deine Beiträge, Kommentare und Likes sofort entfernt. Nachrichten,
-            die du anderen geschickt hast, bleiben in deren Chat erhalten —
-            dort stehst du dann als „Deleted user“, ohne Link zu einem Profil.
+            deine Beiträge, Kommentare, Likes und Direktnachrichten sofort
+            entfernt — Nachrichten, die du anderen geschickt hast, auch aus
+            deren Chat. Dort stehst du dann als „Deleted User“, ohne Link zu
+            einem Profil.
             In den nächtlichen Sicherungen können deine Daten noch bis zu 14
             Tage liegen, bevor diese automatisch gelöscht werden.
             Serverseitige Zugriffsprotokolle laufen unabhängig davon ohnehin
