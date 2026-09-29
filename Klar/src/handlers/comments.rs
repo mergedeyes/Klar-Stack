@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
+use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
@@ -228,6 +229,11 @@ pub async fn delete_comment(
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
+    // A reported comment (or reply under it) is preserved as evidence
+    // before it goes; see evidence.rs.
+    let scope = evidence::Scope { comments: vec![comment_id], ..Default::default() };
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::UserDeletion, Some(auth.user_id)).await?;
+
     // Replies cascade-delete with their parent (parent_comment_id ON DELETE
     // CASCADE), so comment_count must drop by the whole deleted subtree's
     // size, not just 1 -- count it first via a recursive CTE.
@@ -260,6 +266,9 @@ pub async fn delete_comment(
         .db_err_ctx("Failed to update comment_count", "Database error")?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    // Comments have no files; this only finishes the bookkeeping.
+    evidence::finish(&state, preserved, Vec::new()).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

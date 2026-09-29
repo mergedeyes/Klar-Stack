@@ -4,24 +4,13 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ShieldAlert, Trash2, X } from "lucide-react";
+import { Archive, ShieldAlert, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { adminReportsApi, type AdminReport } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import { getMediaUrl } from "@/lib/utils/media";
-
-const REASON_LABELS: Record<string, string> = {
-  spam: "Spam",
-  harassment: "Harassment or bullying",
-  hate_speech: "Hate speech",
-  violence: "Violence or graphic content",
-  self_harm: "Self-harm or suicide",
-  sexual_content: "Sexual content",
-  csam: "Child sexual abuse material",
-  impersonation: "Impersonation",
-  other: "Something else",
-};
+import { REASON_LABELS } from "@/lib/moderation";
 
 const CRITICAL_REASONS = new Set(["csam"]);
 const HIGH_REASONS = new Set(["violence", "self_harm", "sexual_content"]);
@@ -73,7 +62,10 @@ export default function AdminReportsPage() {
   };
 
   const handleRemove = async (report: AdminReport) => {
-    if (!window.confirm("Remove this content? This can't be undone.")) return;
+    const prompt = report.target_type === "user" || report.evidence_id
+      ? "Confirm this violation? The preserved copy is kept as evidence for the retention period."
+      : "Remove this content? This can't be undone.";
+    if (!window.confirm(prompt)) return;
     setBusyId(report.id);
     try {
       await adminReportsApi.remove(report.id, noteDrafts[report.id]);
@@ -91,7 +83,10 @@ export default function AdminReportsPage() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton aria-label="Back" />
-        <span className="font-semibold">Reports</span>
+        <span className="flex-1 font-semibold">Reports</span>
+        <Link href="/admin/evidence" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Archive size={16} /> Evidence
+        </Link>
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-4">
@@ -157,6 +152,17 @@ export default function AdminReportsPage() {
                 </div>
               )}
 
+              {/* The content was deleted while this report was pending and
+                  kept as evidence -- that copy is what to review now. */}
+              {report.evidence_id && (
+                <Link
+                  href={`/admin/evidence/${report.evidence_id}`}
+                  className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/50 p-2 text-sm underline-offset-2 hover:underline"
+                >
+                  <Archive size={14} /> Deleted, preserved as evidence — review it there
+                </Link>
+              )}
+
               {report.details && (
                 <p className="mb-2 rounded-md bg-muted/30 p-2 text-sm italic">&ldquo;{report.details}&rdquo;</p>
               )}
@@ -182,14 +188,30 @@ export default function AdminReportsPage() {
                 >
                   <X size={14} className="mr-1" /> Dismiss
                 </Button>
-                {report.target_type !== "user" && (
+                {report.target_type !== "user" ? (
                   <Button
                     size="sm"
                     variant="destructive"
                     onClick={() => handleRemove(report)}
                     disabled={busyId === report.id}
                   >
-                    <Trash2 size={14} className="mr-1" /> Remove content
+                    {/* Already deleted and preserved: nothing left to
+                        remove, but confirming keeps the evidence. */}
+                    {report.evidence_id
+                      ? <><ShieldAlert size={14} className="mr-1" /> Confirm violation</>
+                      : <><Trash2 size={14} className="mr-1" /> Remove content</>}
+                  </Button>
+                ) : !report.target_username && (
+                  // The account is already deleted: nothing left to remove,
+                  // but confirming keeps its preserved profile as evidence
+                  // (dismissing would purge it).
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleRemove(report)}
+                    disabled={busyId === report.id}
+                  >
+                    <ShieldAlert size={14} className="mr-1" /> Confirm violation
                   </Button>
                 )}
               </div>

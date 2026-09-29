@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
+import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { SmartBackButton } from '@/components/SmartBackButton';
@@ -54,6 +54,12 @@ export default function SettingsPage() {
           icon: ShieldAlert,
           label: "Reports",
           description: "Review reported content",
+        },
+        {
+          href: "/admin/evidence",
+          icon: Archive,
+          label: "Evidence",
+          description: "Preserved copies of deleted, likely-illegal content",
         },
       ]
     : sections;

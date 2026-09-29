@@ -3,6 +3,7 @@ pub mod blocks;
 pub mod comment_likes;
 pub mod comments;
 pub mod events;
+pub mod evidence;
 pub mod follows;
 pub mod health;
 pub mod likes;

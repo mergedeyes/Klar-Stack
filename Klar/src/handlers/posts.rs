@@ -9,10 +9,11 @@ use uuid::Uuid;
 
 use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
+use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::follows::is_following;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
-use crate::utils::{delete_media, DbResultExt, ResolveMedia};
+use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{page_limit, required_text, CAPTION_MAX};
 
 /// Shared gate for both get_post and get_user_posts: can `viewer` see
@@ -266,7 +267,7 @@ pub async fn edit_post(
 /// post_count is decremented here since it's denormalized.
 ///
 /// Returns the post's storage keys, which the caller must pass to
-/// delete_media() after commit -- storage can't take part in the
+/// evidence::finish() after commit -- storage can't take part in the
 /// transaction. None if the post no longer exists.
 pub async fn delete_post_with_media(
     tx: &mut sqlx::PgConnection,
@@ -328,6 +329,12 @@ pub async fn delete_post(
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
+    // Deleting a post doesn't make a pending report of it go away:
+    // likely-illegal content (and reported comments under it) is
+    // preserved as evidence first.
+    let scope = evidence::Scope { posts: vec![post_id], ..Default::default() };
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::UserDeletion, Some(auth.user_id)).await?;
+
     let media_keys = delete_post_with_media(&mut tx, post_id)
         .await?
         .ok_or_else(|| AppError::not_found("Post not found"))?;
@@ -337,9 +344,7 @@ pub async fn delete_post(
     // Delete the files only after the DB delete, so a failure leaves
     // orphaned files (cleanable) rather than DB records pointing to
     // missing files (broken).
-    for key in &media_keys {
-        delete_media(&state, key).await;
-    }
+    evidence::finish(&state, preserved, media_keys).await;
 
     tracing::info!("Post deleted: {}", post_id);
     Ok(StatusCode::NO_CONTENT)

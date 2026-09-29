@@ -63,6 +63,9 @@ loads more as you scroll.
 
 - [ ] Reporting a post, comment or user from the other account works and appears in `/admin/reports`
 - [ ] Dismissing restores visibility; removing deletes the content and its media
+- [ ] Deleting content (as admin, as its author, or by deleting the account) while it has a pending report for a likely-illegal reason creates a record under `/admin/evidence`, and the report in the queue links to it; with only a spam report, nothing is kept
+- [ ] Opening an evidence record or one of its files asks for a reason, and the audit trail shows exactly one entry per action
+- [ ] Dismissing the last report on preserved content purges the record at the next sweep; a legal hold stops the purge
 
 ## Legal pages and passcode gate
 

@@ -55,4 +55,7 @@ pub struct AdminReportRow {
     /// The username being reported, if target_type = "user", or the
     /// author of the reported post/comment otherwise.
     pub target_username: Option<String>,
+    /// Set when the target was deleted while reported and preserved as
+    /// evidence (evidence.rs).
+    pub evidence_id: Option<Uuid>,
 }

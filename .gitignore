@@ -40,6 +40,8 @@ target
 *.sublime-project
 *.sublime-workspace
 uploads
+# Local evidence storage (EvidenceStorage with STORAGE_PROVIDER=local).
+/Klar/evidence
 *.iml
 *.log
 

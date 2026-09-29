@@ -182,6 +182,13 @@ export default function TransparenzPage() {
             entfernt — Nachrichten, die du anderen geschickt hast, auch aus
             deren Chat. Dort stehst du dann als „Deleted User“, ohne Link zu
             einem Profil.
+            Ausnahme: Wurde etwas von dir wegen eines möglicherweise
+            strafbaren Inhalts gemeldet und ist die Meldung noch offen, heben
+            wir eine Kopie davon als Beweismittel auf — getrennt von allem
+            anderen, nur für die Moderation einsehbar, und jeder Blick darauf
+            wird protokolliert. War die Meldung unbegründet, löschen wir die
+            Kopie sofort, sonst nach sechs Monaten, außer eine Behörde
+            braucht sie länger.
             In den nächtlichen Sicherungen können deine Daten noch bis zu 14
             Tage liegen, bevor diese automatisch gelöscht werden.
             Serverseitige Zugriffsprotokolle laufen unabhängig davon ohnehin

@@ -173,10 +173,32 @@ export default function DatenschutzPage() {
             Minderjährigen) führen automatisiert zu einer sofortigen
             Ausblendung des gemeldeten Inhalts; andere Meldegründe können
             zunächst zu einer Kennzeichnung mit Warnhinweis führen, bis eine
-            manuelle Prüfung erfolgt ist. Meldedaten sind aktuell an den
-            Lebenszyklus des jeweiligen Accounts gekoppelt; eine über die
-            Kontolöschung hinausgehende gesonderte Aufbewahrung findet
-            derzeit nicht statt.
+            manuelle Prüfung erfolgt ist. Löschst du dein Konto, bleiben von
+            dir abgegebene Meldungen bestehen, sind aber nicht mehr mit dir
+            verknüpft.
+          </p>
+          <p className="mt-2">
+            <strong>Beweissicherung:</strong> Wird ein Inhalt oder Profil
+            gelöscht, während eine Meldung wegen eines möglicherweise
+            strafbaren Inhalts offen ist (etwa Darstellung sexuellen
+            Missbrauchs von Minderjährigen, Gewalt, Hass oder Belästigung),
+            bewahren wir eine Kopie auf — unabhängig davon, ob die Löschung
+            durch unsere Moderation, durch die verfassende Person selbst oder
+            mit ihrem Konto erfolgt. Die Kopie umfasst den Inhalt
+            einschließlich Bildern, die Kontodaten der verfassenden Person
+            (Nutzer-ID, Nutzername, Anzeigename, E-Mail-Adresse,
+            Registrierungsdatum), den Zusammenhang (z. B. den kommentierten
+            Beitrag) und die zugehörigen Meldungen. Sie liegt in einem
+            gesonderten, nicht öffentlich erreichbaren Speicher bei Bunny.net
+            in Deutschland; nur unser Moderationsteam hat Zugriff, und jeder
+            Zugriff wird mit Person, Zeitpunkt und Grund protokolliert.
+            Rechtsgrundlage ist Art. 6 Abs. 1 lit. c und f DSGVO; das Recht
+            auf Löschung ist insoweit nach Art. 17 Abs. 3 lit. e DSGVO
+            eingeschränkt. Erweist sich die Meldung als unbegründet, löschen
+            wir die Kopie umgehend, andernfalls sechs Monate nach unserer
+            Entscheidung — es sei denn, sie wird für ein laufendes Verfahren
+            oder auf Anforderung einer Behörde länger benötigt. Diese Kopien
+            sind nicht Teil des Datenexports.
           </p>
         </section>
 
@@ -206,7 +228,11 @@ export default function DatenschutzPage() {
             Profil, deine Beiträge, Kommentare und Likes werden dabei
             unmittelbar mit dem Klick auf den dazugehörigen Button aus unserer
             Datenbank entfernt — <strong>nicht</strong>, wie bei anderen
-            Plattformen üblich, erst nach einer Wartefrist.
+            Plattformen üblich, erst nach einer Wartefrist. Einzige Ausnahme
+            sind Inhalte mit einer offenen Meldung wegen eines möglicherweise
+            strafbaren Inhalts: Sie werden zwar ebenfalls sofort entfernt,
+            eine Kopie bewahren wir aber als Beweismittel auf (siehe
+            Abschnitt 7).
           </p>
           <p className="mt-2">
             <strong>Direktnachrichten</strong>, die du anderen geschickt hast,

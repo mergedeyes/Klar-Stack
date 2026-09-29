@@ -179,6 +179,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/reports", get(handlers::reports::get_reports))
         .route("/admin/reports/{report_id}/dismiss", post(handlers::reports::dismiss_report))
         .route("/admin/reports/{report_id}/remove", post(handlers::reports::remove_reported_content))
+        .route("/admin/evidence", get(handlers::evidence::list_evidence))
+        .route("/admin/evidence/{evidence_id}/open", post(handlers::evidence::open_evidence))
+        .route("/admin/evidence/{evidence_id}/files/{file_id}", post(handlers::evidence::get_evidence_file))
+        .route("/admin/evidence/{evidence_id}/hold", post(handlers::evidence::set_legal_hold))
+        .route("/admin/evidence/{evidence_id}/authority-report", post(handlers::evidence::record_authority_report))
         // ────────────────────────────────────────────────────────────
 
         .route_layer(middleware::from_fn_with_state(

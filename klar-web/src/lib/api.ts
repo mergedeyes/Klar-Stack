@@ -525,6 +525,9 @@ export interface AdminReport {
   // Only set after review (dismiss/remove) -- always null in the pending
   // queue itself, since get_reports only returns status='pending' rows.
   review_note?: string | null;
+  // Set when the target was deleted while reported and preserved as
+  // evidence (see /admin/evidence).
+  evidence_id: string | null;
 }
 
 export const reportsApi = {
@@ -548,6 +551,91 @@ export const adminReportsApi = {
     request<void>(
       `/admin/reports/${reportId}/remove`,
       { method: "POST", body: JSON.stringify({ note: note || null }) },
+      true
+    ),
+};
+
+// ── Evidence (admin) ──────────────────────────────────────────────────────────
+// Preserved copies of deleted, likely-illegal content. Everything that shows
+// content takes a reason, which the backend logs before answering.
+
+export interface EvidenceSummary {
+  id: string;
+  target_type: ReportTargetType;
+  target_id: string;
+  trigger: "moderation_removal" | "user_deletion" | "account_deletion";
+  reasons: ReportReason[];
+  created_at: string;
+  decision: "removed" | "dismissed" | null;
+  decided_at: string | null;
+  retain_until: string | null;
+  legal_hold: boolean;
+  purged_at: string | null;
+  file_count: number;
+}
+
+export interface EvidenceFile {
+  id: string;
+  kind: "post_media" | "avatar";
+  content_type: string;
+  size_bytes: number | null;
+  sha256: string | null;
+  // null while the copy into the evidence zone is still pending.
+  copied_at: string | null;
+}
+
+export interface EvidenceEvent {
+  id: string;
+  actor_id: string | null;
+  actor_username: string | null;
+  action: string;
+  reason: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface EvidenceDetail extends EvidenceSummary {
+  // The snapshot; null once purged. Its shape depends on target_type.
+  content: Record<string, unknown> | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  files: EvidenceFile[];
+  events: EvidenceEvent[];
+}
+
+export const adminEvidenceApi = {
+  list: (includePurged = false) =>
+    request<EvidenceSummary[]>(`/admin/evidence?include_purged=${includePurged}`, {}, true),
+  open: (id: string, reason: string) =>
+    request<EvidenceDetail>(
+      `/admin/evidence/${id}/open`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      true
+    ),
+  // Returns an object URL for the file; the caller revokes it. POST keeps
+  // the reason out of the URL.
+  fileUrl: async (id: string, fileId: string, reason: string): Promise<string> => {
+    const res = await apiFetch(
+      `/admin/evidence/${id}/files/${fileId}`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      true
+    );
+    if (!res.ok) throw new Error(errorMessage(await parseBody(res), res.status));
+    return URL.createObjectURL(await res.blob());
+  },
+  setHold: (id: string, hold: boolean, reason: string) =>
+    request<EvidenceSummary>(
+      `/admin/evidence/${id}/hold`,
+      { method: "POST", body: JSON.stringify({ hold, reason }) },
+      true
+    ),
+  recordAuthorityReport: (id: string, authority: string, reportedOn: string, reference?: string, note?: string) =>
+    request<void>(
+      `/admin/evidence/${id}/authority-report`,
+      {
+        method: "POST",
+        body: JSON.stringify({ authority, reported_on: reportedOn, reference: reference || null, note: note || null }),
+      },
       true
     ),
 };

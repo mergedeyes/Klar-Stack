@@ -11,6 +11,7 @@ use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::follows::{has_pending_follow_request, is_following};
+use crate::evidence;
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
 use crate::utils::{delete_media, DbResultExt, ResolveMedia};
@@ -422,6 +423,25 @@ pub async fn delete_account(
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
+    // The deletion goes ahead (Art. 17), but content with a pending
+    // likely-illegal report -- this user's posts and comments, comments
+    // under their posts, and the profile itself -- is preserved as
+    // evidence first (Art. 17(3)(e)); see evidence.rs.
+    let scope = evidence::Scope {
+        posts: sqlx::query_scalar::<_, Uuid>("SELECT id FROM posts WHERE user_id = $1")
+            .bind(auth.user_id)
+            .fetch_all(&mut *tx)
+            .await
+            .db_err_ctx("Failed to list posts", "Failed to delete account")?,
+        comments: sqlx::query_scalar::<_, Uuid>("SELECT id FROM comments WHERE user_id = $1")
+            .bind(auth.user_id)
+            .fetch_all(&mut *tx)
+            .await
+            .db_err_ctx("Failed to list comments", "Failed to delete account")?,
+        user: Some(auth.user_id),
+    };
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::AccountDeletion, Some(auth.user_id)).await?;
+
     // Conversations whose other participant already deleted their account
     // would be left with nobody in them once this user goes too -- remove
     // them outright. Conversations with a remaining participant are kept
@@ -447,17 +467,14 @@ pub async fn delete_account(
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Failed to delete account")?;
 
     // Clean up the files and their CDN copies (best-effort, failures are
-    // logged by delete_media)
-    for (thumb, medium, full) in &media_keys {
-        for key in [thumb, medium, full] {
-            delete_media(&state, key).await;
-        }
-    }
-
-    if let Some(url) = avatar_url {
-        let key = url.strip_prefix("/media/").unwrap_or(&url);
-        delete_media(&state, key).await;
-    }
+    // logged by delete_media), apart from preserved ones still waiting
+    // for their evidence copy.
+    let avatar_key = avatar_url.map(|url| url.strip_prefix("/media/").unwrap_or(&url).to_string());
+    let keys = media_keys
+        .into_iter()
+        .flat_map(|(thumb, medium, full)| [thumb, medium, full])
+        .chain(avatar_key);
+    evidence::finish(&state, preserved, keys).await;
 
     tracing::info!("Account deleted: {}", auth.user_id);
     Ok(StatusCode::NO_CONTENT)
