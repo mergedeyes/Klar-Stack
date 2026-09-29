@@ -1,5 +1,11 @@
-# --- Build stage ---
-FROM rust:1.97-slim-bookworm AS builder
+# --- Build stages (cargo-chef) ---
+# Dependencies are compiled in their own layer that only depends on
+# Cargo.toml/Cargo.lock, so CI (which persists layers via the GitHub
+# Actions cache) only recompiles our own crate on a normal source change.
+# cargo-chef also discards the placeholder artifacts for our crate after
+# `cook`, which avoids the stale-binary bug the old hand-rolled dummy
+# main.rs trick had.
+FROM rust:1.97-slim-bookworm AS chef
 
 WORKDIR /app
 
@@ -10,18 +16,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy manifests and full source together — no dummy-build caching trick.
-# With no persisted BuildKit cache across CI runs, that trick only cost a
-# wasted double-compile for zero benefit, and was the source of a bug where
-# Cargo's object cache relinked a stale artifact from the placeholder main.rs.
+RUN cargo install cargo-chef --locked
+
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY .sqlx ./.sqlx
-COPY migrations ./migrations
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
 
 # SQLX_OFFLINE=true forces sqlx macros to verify queries against .sqlx/
 # instead of connecting to a live database during compilation
 ENV SQLX_OFFLINE=true
+
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json
+
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY .sqlx ./.sqlx
+COPY migrations ./migrations
 RUN cargo build --release --locked
 
 # --- Runtime stage ---
