@@ -10,7 +10,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::posts::require_visible_post;
-use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
+use crate::handlers::notifications::{insert_notification, publish_notification, NotificationEvent, NotificationKind};
 use crate::models::LikeResponse;
 use crate::utils::DbResultExt;
 
@@ -88,40 +88,9 @@ pub async fn toggle_comment_like(
         .await
         .db_err_ctx("Failed to update comment like_count", "Database error")?;
 
-        // Notify the comment's author, unless they're liking their own comment.
-        if auth.user_id != comment_author {
-            let notif_id = sqlx::query_scalar::<_, Uuid>(
-                "INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id)
-                 VALUES ($1, $2, 'comment_like'::notification_type, $3, $4)
-                 ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
-                 DO NOTHING RETURNING id"
-            )
-            .bind(comment_author)
-            .bind(auth.user_id)
-            .bind(post_id)
-            .bind(comment_id)
-            .fetch_optional(&mut *tx)
-            .await
-            .unwrap_or_default();
-
-            if let Some(nid) = notif_id {
-                if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
-                    let thumb = fetch_post_thumb_in_tx(&mut tx, post_id).await;
-                    pending_notification = Some(NotificationEvent {
-                        target_user_id: comment_author,
-                        notification: NotificationResponse {
-                            id: nid,
-                            type_name: "comment_like".to_string(),
-                            is_read: false,
-                            created_at: chrono::Utc::now(),
-                            post_id: Some(post_id),
-                            post_thumb_url: thumb,
-                            actor: crate::models::NotificationActor::from(actor_row),
-                        }
-                    });
-                }
-            }
-        }
+        pending_notification = insert_notification(
+            &mut tx, comment_author, auth.user_id, NotificationKind::CommentLike, Some(post_id), Some(comment_id),
+        ).await;
     }
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;

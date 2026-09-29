@@ -67,24 +67,120 @@ struct NotificationRow {
     post_thumb_url: Option<String>,
 }
 
-/// Fetch a post's first image (sort_order = 0) as a raw storage key, for
-/// embedding in a notification preview -- used by the notification-
-/// creating handlers (likes/comments/comment_likes), which run this
-/// inside their own open transaction, before their own commit. Best-
-/// effort: a post with no image yet (or none at all) just yields None,
-/// never an error -- a missing thumbnail shouldn't block the notification.
-pub async fn fetch_post_thumb_in_tx(
-    tx: &mut sqlx::PgConnection,
-    post_id: Uuid,
-) -> Option<String> {
-    sqlx::query_scalar::<_, String>(
-        "SELECT thumb_key FROM media_assets WHERE post_id = $1 AND sort_order = 0"
+/// The notification kinds that are persisted in the `notifications` table,
+/// mirroring the Postgres `notification_type` enum. An enum rather than
+/// string literals at each call site so a typo can't reach the DB cast.
+#[derive(Clone, Copy, Debug)]
+pub enum NotificationKind {
+    Follow,
+    FollowRequest,
+    FollowAccepted,
+    PostLike,
+    Comment,
+    CommentLike,
+}
+
+impl NotificationKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Follow => "follow",
+            Self::FollowRequest => "follow_request",
+            Self::FollowAccepted => "follow_accepted",
+            Self::PostLike => "post_like",
+            Self::Comment => "comment",
+            Self::CommentLike => "comment_like",
+        }
+    }
+}
+
+/// Store a notification and build the event to push live, for the caller
+/// to hand to publish_notification() once its transaction has committed
+/// -- publishing before commit could announce something that then rolls
+/// back, and publishing inside it would hold the transaction open across
+/// a network call.
+///
+/// Returns None when there's nothing to push: a self-notification (liking
+/// your own post), a duplicate (the unique index makes re-liking after an
+/// unlike a no-op instead of a second notification), or a failed actor
+/// lookup. A failed INSERT is only logged, but note that inside a
+/// transaction it still aborts that transaction, so the caller's commit
+/// fails as before.
+pub async fn insert_notification(
+    conn: &mut sqlx::PgConnection,
+    target_user_id: Uuid,
+    actor_id: Uuid,
+    kind: NotificationKind,
+    post_id: Option<Uuid>,
+    comment_id: Option<Uuid>,
+) -> Option<NotificationEvent> {
+    if target_user_id == actor_id {
+        return None;
+    }
+
+    let notification_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id)
+         VALUES ($1, $2, $3::notification_type, $4, $5)
+         ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
+         DO NOTHING RETURNING id"
     )
+    .bind(target_user_id)
+    .bind(actor_id)
+    .bind(kind.as_str())
     .bind(post_id)
-    .fetch_optional(&mut *tx)
+    .bind(comment_id)
+    .fetch_optional(&mut *conn)
     .await
+    .inspect_err(|e| tracing::error!("Failed to insert {} notification: {}", kind.as_str(), e))
     .ok()
-    .flatten()
+    .flatten()?;
+
+    build_event(conn, target_user_id, actor_id, notification_id, kind.as_str(), post_id).await
+}
+
+/// Build a live event without storing anything: loads the actor and, for
+/// post-related events, the post's first image as a preview thumbnail.
+/// Used directly by chats for their live-only "message" signal (those are
+/// never written to the notifications table). Best-effort: a post without
+/// an image just gets no thumbnail, and a failed actor lookup skips the
+/// live push -- the stored row still shows up on the next GET /notifications.
+pub async fn build_event(
+    conn: &mut sqlx::PgConnection,
+    target_user_id: Uuid,
+    actor_id: Uuid,
+    id: Uuid,
+    type_name: &str,
+    post_id: Option<Uuid>,
+) -> Option<NotificationEvent> {
+    let actor_row = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
+        .bind(actor_id)
+        .fetch_one(&mut *conn)
+        .await
+        .ok()?;
+
+    let post_thumb_url = match post_id {
+        Some(post_id) => sqlx::query_scalar::<_, String>(
+            "SELECT thumb_key FROM media_assets WHERE post_id = $1 AND sort_order = 0"
+        )
+        .bind(post_id)
+        .fetch_optional(&mut *conn)
+        .await
+        .ok()
+        .flatten(),
+        None => None,
+    };
+
+    Some(NotificationEvent {
+        target_user_id,
+        notification: NotificationResponse {
+            id,
+            type_name: type_name.to_string(),
+            is_read: false,
+            created_at: chrono::Utc::now(),
+            post_id,
+            post_thumb_url,
+            actor: NotificationActor::from(actor_row),
+        },
+    })
 }
 
 /// Publish a notification event to Redis so every backend replica (not
@@ -99,9 +195,8 @@ pub async fn fetch_post_thumb_in_tx(
 /// payload through unchanged (see main.rs's subscriber task and
 /// notification_stream below), so this is the only point in the live
 /// push path where the active Storage provider is actually available to
-/// call. The callers building NotificationEvent (likes.rs, comments.rs,
-/// comment_likes.rs, follows.rs) all still pass raw storage keys in, same
-/// as everywhere else -- resolution is centralized here, not duplicated
+/// call. insert_notification()/build_event() still produce raw storage
+/// keys, same as everywhere else -- resolution is centralized here, not duplicated
 /// at each call site.
 pub async fn publish_notification(state: &AppState, event: &NotificationEvent) {
     let resolved_event = NotificationEvent {

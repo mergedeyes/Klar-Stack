@@ -2,7 +2,7 @@ use axum::{extract::{State, Path}, http::StatusCode, Json};
 use uuid::Uuid;
 use chrono::Utc;
 use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
-use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
+use crate::handlers::notifications::{build_event, publish_notification};
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{required_text, MESSAGE_MAX};
 
@@ -226,27 +226,14 @@ pub async fn send_message(
     // listener special-cases this type_name instead of adding it to the
     // notification dropdown list. `id` here is the message's own id, not
     // a notifications-table row id, since none exists.
-    if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
-        .bind(auth.user_id)
-        .fetch_one(&state.db)
-        .await
-    {
-        let event = NotificationEvent {
-            target_user_id: payload.receiver_id,
-            notification: NotificationResponse {
-                id: message_id,
-                type_name: "message".to_string(),
-                is_read: false,
-                created_at: Utc::now(),
-                post_id: None,
-                // No post involved in a chat message.
-                post_thumb_url: None,
-                actor: crate::models::NotificationActor::from(actor_row),
-            }
-        };
-        // Resolves actor.avatar_url internally (see publish_notification
-        // in notifications.rs), same as every other notification path.
-        publish_notification(&state, &event).await;
+    // Best-effort like the push itself: the message is already stored, so
+    // a failure here must not turn into an error response.
+    if let Ok(mut conn) = state.db.acquire().await {
+        if let Some(event) = build_event(&mut conn, payload.receiver_id, auth.user_id, message_id, "message", None).await {
+            // Resolves actor.avatar_url internally (see publish_notification
+            // in notifications.rs), same as every other notification path.
+            publish_notification(&state, &event).await;
+        }
     }
 
     Ok(Json(message))
@@ -377,26 +364,10 @@ pub async fn toggle_reaction(
     // None when the other participant deleted their account -- nobody to notify.
     let target_user_id = if user1_id == Some(auth.user_id) { user2_id } else { user1_id };
 
-    if let (Some(target_user_id), Ok(actor_row)) = (
-        target_user_id,
-        sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1")
-            .bind(auth.user_id)
-            .fetch_one(&state.db)
-            .await,
-    ) {
-        let event = NotificationEvent {
-            target_user_id,
-            notification: NotificationResponse {
-                id: message_id,
-                type_name: "message".to_string(),
-                is_read: false,
-                created_at: Utc::now(),
-                post_id: None,
-                post_thumb_url: None,
-                actor: crate::models::NotificationActor::from(actor_row),
-            }
-        };
-        publish_notification(&state, &event).await;
+    if let (Some(target_user_id), Ok(mut conn)) = (target_user_id, state.db.acquire().await) {
+        if let Some(event) = build_event(&mut conn, target_user_id, auth.user_id, message_id, "message", None).await {
+            publish_notification(&state, &event).await;
+        }
     }
 
     Ok(StatusCode::OK)
