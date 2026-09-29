@@ -39,9 +39,9 @@ fn build_cors() -> CorsLayer {
 
 /// Span for each request: like tower_http's DefaultMakeSpan, but records
 /// only the URI *path*, never the query string. Query strings carry
-/// secrets here -- the SSE stream's access token (?token=, see auth.rs's
-/// extract_user_id) and the email-verification token (/auth/verify?token=)
-/// -- and DefaultMakeSpan would write them into the logs on every request.
+/// secrets here -- the SSE stream ticket (?ticket=, see notifications.rs)
+/// and the email-verification token (/auth/verify?token=) -- and
+/// DefaultMakeSpan would write them into the logs on every request.
 #[derive(Clone, Copy)]
 struct PathOnlyMakeSpan;
 
@@ -168,6 +168,7 @@ pub fn create_router(state: AppState) -> Router {
         // Notifications
         .route("/notifications", get(handlers::notifications::get_notifications))
         .route("/notifications/stream", get(handlers::notifications::notification_stream))
+        .route("/notifications/stream-ticket", post(handlers::notifications::create_stream_ticket))
         .route("/notifications/read", patch(handlers::notifications::mark_read))
 
         // Interaction event log (client-reported views)

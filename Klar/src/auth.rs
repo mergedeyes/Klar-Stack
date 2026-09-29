@@ -94,7 +94,7 @@ impl FromRequestParts<AppState> for AuthUser {
         if let Some(user_id) = extract_user_id(parts, &state.jwt_secret) {
             Ok(AuthUser { user_id })
         } else {
-            // No valid token found anywhere (cookie, header, or query param), so reject with 401.
+            // No valid token found anywhere (cookie or header), so reject with 401.
             Err(AppError::unauthorized("Missing or invalid token"))
         }
     }
@@ -136,13 +136,12 @@ pub fn cookie_value<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Optio
 }
 
 /// Shared helper: pulls the token from the Cookie, falling back to the
-/// Authorization header, falling back to a "token" query parameter.
+/// Authorization header.
 ///
-/// The query-param fallback exists specifically for EventSource (used by
-/// the /notifications/stream SSE endpoint): browsers' EventSource API can't
-/// set custom headers at all, and with klarsocial.eu/.de being genuinely
-/// cross-site, third-party cookie blocking means EventSource's cookie may
-/// never arrive either. A query param is the only channel left it can use.
+/// Access tokens are deliberately never accepted from the query string:
+/// URLs end up in proxy/CDN logs. The SSE stream, whose EventSource can't
+/// set headers, authenticates with a single-use ticket instead (see
+/// notifications.rs's create_stream_ticket).
 fn extract_user_id(parts: &Parts, secret: &str) -> Option<Uuid> {
     // 1. Try to extract from httpOnly Cookie
     let mut token_str = cookie_value(&parts.headers, "klar_access_token");
@@ -156,24 +155,7 @@ fn extract_user_id(parts: &Parts, secret: &str) -> Option<Uuid> {
         }
     }
 
-    // 3. Fallback to a "token" query parameter (EventSource can't set headers,
-    // and may not reliably receive the cookie cross-site either). JWTs are
-    // base64url-encoded (RFC 4648 par. 5), which is already URL-safe, so no
-    // percent-decoding is needed for this specific token format.
-    if token_str.is_none() {
-        if let Some(query) = parts.uri.query() {
-            // Manually scan "key=value&key=value" pairs for one named "token", avoiding
-            // the need to pull in a query-string parsing crate for this single use case.
-            token_str = query.split('&').find_map(|pair| {
-                let mut kv = pair.splitn(2, '='); // split into at most 2 parts, in case the value itself contains "="
-                let key = kv.next()?;
-                let val = kv.next()?;
-                if key == "token" { Some(val) } else { None }
-            });
-        }
-    }
-
-    // At this point, token_str is either the token found via one of the three methods
+    // At this point, token_str is either the token found via one of the two methods
     // above, or None if all of them failed, in which case we return None here too.
     let token = token_str?;
     // Validate the token's signature and expiry; on success, extract the user ID (the sub claim).

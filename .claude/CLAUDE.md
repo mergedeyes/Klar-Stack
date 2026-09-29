@@ -27,7 +27,7 @@ Chronological, no-ranking social network. Solo project, pre-launch, running behi
 - Visibility: private accounts gated via `can_view_posts` (posts.rs); `moderation_status = 'hidden'` content is invisible to everyone but the owner.
 - Other users must only ever be serialized as `UserPublicResponse` — `UserResponse` contains the email and is for the account owner only.
 - Notifications: insert inside the tx, `publish_notification` to Redis only after commit.
-- Auth: short-lived JWT (15 min) via Bearer header (cross-site domains klarsocial.eu/.de → api.klarsocial.eu); refresh tokens stored hashed and rotated on use.
+- Auth: short-lived JWT (15 min) via Bearer header (cross-site domains klarsocial.eu/.de → api.klarsocial.eu); refresh tokens stored hashed and rotated on use. Never accept tokens from the query string (URLs land in CDN logs) — the SSE stream uses a single-use 30s ticket from `POST /notifications/stream-ticket`.
 
 ## Compliance
 
