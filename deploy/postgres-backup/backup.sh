@@ -18,7 +18,14 @@ set -euo pipefail
 : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY fehlt}"
 : "${S3_PREFIX:=backups}"
 : "${RETENTION_DAYS:=14}"
-: "${BACKUP_INTERVAL_SECONDS:=86400}"          # 24h
+: "${BACKUP_TIME:=03:00}"                      # HH:MM, UTC
+: "${BACKUP_RETRY_SECONDS:=3600}"              # Wartezeit nach einem Fehlschlag
+: "${BACKUP_TOLERANCE_MINUTES:=20}"            # Toleranz um BACKUP_TIME, s. backup_due
+
+if ! [[ "${BACKUP_TIME}" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+  echo "BACKUP_TIME muss HH:MM (UTC) sein, ist aber '${BACKUP_TIME}'" >&2
+  exit 1
+fi
 
 # --- Alerting (optional, aber dringend empfohlen) ---
 # Dead-Man's-Switch im Healthchecks.io-Format: nach jedem erfolgreichen
@@ -93,6 +100,55 @@ run_backup() {
   prune_old
 }
 
+# Prints the timestamps (YYYYMMDDTHHMMSSZ) of all dumps in the bucket, one
+# per line and sorted. A failed listing prints nothing, which callers treat
+# as "no backup exists" -- erring towards an extra dump rather than a gap.
+list_backup_ts() {
+  aws --endpoint-url "${S3_ENDPOINT}" s3api list-objects-v2 \
+        --bucket "${S3_BUCKET}" --prefix "${S3_PREFIX}/" \
+        --query "Contents[].Key" --output text 2>/dev/null \
+    | tr '\t' '\n' \
+    | sed -n 's/.*-\([0-9]\{8\}T[0-9]\{6\}Z\)\.dump$/\1/p' \
+    | sort || true
+}
+
+# Epoch seconds of the most recent BACKUP_TIME that is not in the future,
+# i.e. today's slot once it has passed, otherwise yesterday's.
+last_slot_epoch() {
+  local now slot
+  now="$(date -u +%s)"
+  slot="$(date -u -d "$(date -u +%F) ${BACKUP_TIME} UTC" +%s)"
+  if [ "${now}" -lt "${slot}" ]; then
+    slot=$((slot - 86400))
+  fi
+  echo "${slot}"
+}
+
+# A backup is due when the bucket holds nothing taken at or after the last
+# slot. Checking the bucket instead of keeping local state means restarts and
+# redeploys no longer produce extra dumps, while a slot that was missed
+# (container down at 03:00, or the run failed) is caught up right away.
+# A dump from up to BACKUP_TOLERANCE_MINUTES before the slot also counts, so
+# a catch-up run shortly before 03:00 isn't immediately followed by another.
+backup_due() {
+  local slot_ts latest
+  slot_ts="$(date -u -d "@$(( $(last_slot_epoch) - BACKUP_TOLERANCE_MINUTES * 60 ))" +%Y%m%dT%H%M%SZ)"
+  latest="$(list_backup_ts | tail -n 1)"
+  if [ -n "${latest}" ] && [[ ! "${latest}" < "${slot_ts}" ]]; then
+    log "Backup für Slot ${slot_ts} vorhanden (${latest}), überspringe"
+    return 1
+  fi
+  return 0
+}
+
+sleep_until_next_slot() {
+  local next secs
+  next=$(( $(last_slot_epoch) + 86400 ))
+  secs=$(( next - $(date -u +%s) ))
+  log "Nächstes Backup um $(date -u -d "@${next}" +%FT%TZ)"
+  sleep "${secs}"
+}
+
 prune_old() {
   # Retention über den im Dateinamen kodierten Zeitstempel (YYYYMMDDTHHMMSSZ),
   # nicht über S3 LastModified – das umgeht Format-Fallstricke beim Datumsvergleich.
@@ -114,15 +170,19 @@ prune_old() {
       done
 }
 
-log "Backup-Sidecar gestartet (Intervall ${BACKUP_INTERVAL_SECONDS}s, Retention ${RETENTION_DAYS}d)"
+log "Backup-Sidecar gestartet (täglich ${BACKUP_TIME} UTC, Retention ${RETENTION_DAYS}d)"
 [ -n "${HEALTHCHECK_URL}" ] || log "WARNUNG: HEALTHCHECK_URL nicht gesetzt -- fehlschlagende Backups bleiben unbemerkt" >&2
 while true; do
-  if run_backup; then
-    log "Backup ok"
-    ping_healthcheck ""
-  else
-    log "Backup FEHLGESCHLAGEN" >&2
-    ping_healthcheck "/fail"
+  if backup_due; then
+    if run_backup; then
+      log "Backup ok"
+      ping_healthcheck ""
+    else
+      log "Backup FEHLGESCHLAGEN, neuer Versuch in ${BACKUP_RETRY_SECONDS}s" >&2
+      ping_healthcheck "/fail"
+      sleep "${BACKUP_RETRY_SECONDS}"
+      continue
+    fi
   fi
-  sleep "${BACKUP_INTERVAL_SECONDS}"
+  sleep_until_next_slot
 done
