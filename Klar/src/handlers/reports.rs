@@ -231,7 +231,7 @@ pub async fn get_reports(
                 WHEN 'user' THEN u_target.username
             END as target_username
         FROM reports r
-        JOIN users u_reporter ON u_reporter.id = r.reporter_id
+        LEFT JOIN users u_reporter ON u_reporter.id = r.reporter_id
         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
         LEFT JOIN media_assets pm ON pm.post_id = p.id AND pm.sort_order = 0
         LEFT JOIN users u_post ON u_post.id = p.user_id
@@ -338,56 +338,85 @@ pub async fn remove_reported_content(
         }
     }
 
+    // Everything below runs in one transaction: the content deletion, the
+    // denormalized counters and the report status change either all
+    // happen or none do. FOR UPDATE makes two admins clicking "remove" on
+    // the same report at once serialize, so the counters are only
+    // decremented once.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let report = sqlx::query_as::<_, (String, Uuid)>(
-        "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending'"
+        "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending' FOR UPDATE"
     )
     .bind(report_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Report not found or already reviewed"))?;
 
     let (target_type, target_id) = report;
 
+    // Storage objects can't take part in the transaction, so their keys
+    // are collected here and the files deleted only after commit.
+    let mut media_keys = Vec::new();
+
     match target_type.as_str() {
         "post" => {
             // Mirror posts::delete_post's cleanup: fetch media keys
-            // before the row (and its CASCADE) removes them, delete the
-            // post, then best-effort delete the actual files.
-            let media_keys = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
+            // before the row (and its CASCADE) removes them.
+            media_keys = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
                 "SELECT thumb_key, medium_key, full_key FROM media_assets WHERE post_id = $1"
             )
             .bind(target_id)
-            .fetch_all(&state.db)
+            .fetch_all(&mut *tx)
             .await
             .db_err("Database error")?;
 
-            let owner_id = sqlx::query_scalar::<_, Uuid>("SELECT user_id FROM posts WHERE id = $1")
+            let owner_id = sqlx::query_scalar::<_, Uuid>("DELETE FROM posts WHERE id = $1 RETURNING user_id")
                 .bind(target_id)
-                .fetch_optional(&state.db)
+                .fetch_optional(&mut *tx)
                 .await
-                .db_err("Database error")?;
-
-            sqlx::query("DELETE FROM posts WHERE id = $1")
-                .bind(target_id).execute(&state.db).await
                 .db_err("Failed to remove content")?;
 
             if let Some(owner_id) = owner_id {
                 sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
-                    .bind(owner_id).execute(&state.db).await
+                    .bind(owner_id).execute(&mut *tx).await
                     .db_err_ctx("Failed to update post_count", "Database error")?;
-            }
-
-            for (thumb, medium, full) in media_keys {
-                if let Some(t) = thumb { let _ = state.storage.delete(&t).await; }
-                if let Some(m) = medium { let _ = state.storage.delete(&m).await; }
-                if let Some(f) = full { let _ = state.storage.delete(&f).await; }
             }
         }
         "comment" => {
-            sqlx::query("DELETE FROM comments WHERE id = $1")
-                .bind(target_id).execute(&state.db).await
-                .db_err("Failed to remove content")?;
+            // Replies cascade-delete with their parent, so comment_count
+            // drops by the whole subtree -- same as comments::delete_comment.
+            let removed = sqlx::query_as::<_, (Uuid, i64)>(
+                r#"
+                WITH RECURSIVE subtree AS (
+                    SELECT id FROM comments WHERE id = $1
+                    UNION ALL
+                    SELECT c.id FROM comments c JOIN subtree s ON c.parent_comment_id = s.id
+                )
+                SELECT c.post_id, (SELECT COUNT(*) FROM subtree)
+                FROM comments c WHERE c.id = $1
+                "#
+            )
+            .bind(target_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .db_err_ctx("Failed to count comment subtree", "Database error")?;
+
+            // None: the comment is already gone (deleted by its author or
+            // with its post), so there's nothing to remove or recount.
+            if let Some((post_id, removed_count)) = removed {
+                sqlx::query("DELETE FROM comments WHERE id = $1")
+                    .bind(target_id).execute(&mut *tx).await
+                    .db_err("Failed to remove content")?;
+
+                sqlx::query("UPDATE posts SET comment_count = GREATEST(comment_count - $1, 0) WHERE id = $2")
+                    .bind(removed_count)
+                    .bind(post_id)
+                    .execute(&mut *tx)
+                    .await
+                    .db_err_ctx("Failed to update comment_count", "Database error")?;
+            }
         }
         "user" => {
             return Err(AppError::bad_request(
@@ -403,9 +432,17 @@ pub async fn remove_reported_content(
     .bind(auth.user_id)
     .bind(&input.note)
     .bind(report_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .db_err_ctx("Failed to update report", "Database error")?;
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    for (thumb, medium, full) in media_keys {
+        for key in [thumb, medium, full].into_iter().flatten() {
+            let _ = state.storage.delete(&key).await;
+        }
+    }
 
     tracing::info!("Report {} actioned (content removed) by admin {}", report_id, auth.user_id);
     Ok(StatusCode::NO_CONTENT)

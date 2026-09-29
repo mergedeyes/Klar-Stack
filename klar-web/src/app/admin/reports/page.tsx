@@ -125,7 +125,7 @@ export default function AdminReportsPage() {
               </div>
 
               <p className="mb-2 text-xs text-muted-foreground">
-                Reported by <strong>{report.reporter_username}</strong>
+                Reported by <strong>{report.reporter_username ?? "deleted account"}</strong>
                 {report.target_username && (
                   <>
                     {" "}·{" "}
