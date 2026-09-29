@@ -10,6 +10,13 @@ permissions:
   contents: read
   packages: write
 
+# A newer push to main supersedes a running deploy of the same component:
+# its image would be replaced moments later anyway, and two runs racing
+# could leave the older image live if it happened to finish last.
+concurrency:
+  group: deploy-db-backup
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build and deploy
