@@ -41,8 +41,11 @@ pub struct AppState {
     pub redis: redis::aio::ConnectionManager,
 }
 
-/// Helper to generate secure Set-Cookie headers
-fn build_auth_cookies(access: &str, refresh: &str) -> HeaderMap {
+/// Set-Cookie headers for the two auth cookies: `Some((access, refresh))`
+/// sets them, `None` clears them (empty value, Max-Age=0) on logout. One
+/// function for both so the attributes can't drift apart -- a clearing
+/// cookie whose attributes differ from the original may not replace it.
+fn auth_cookie_headers(tokens: Option<(&str, &str)>) -> HeaderMap {
     // Prüfen, ob wir in Produktion sind (z.B. über eine ENV-Variable)
     let is_prod = std::env::var("ENV").unwrap_or_default() == "production";
 
@@ -61,41 +64,26 @@ fn build_auth_cookies(access: &str, refresh: &str) -> HeaderMap {
     // (see AuthResponse/RefreshResponse below, and auth.rs's extractor).
     let same_site = if is_prod { "None" } else { "Lax" };
 
-    let mut headers = HeaderMap::new();
-
-    headers.insert(
-        axum::http::header::SET_COOKIE,
-        HeaderValue::from_str(&format!(
-            "klar_access_token={}; HttpOnly; {}SameSite={}; Path=/; Max-Age=900",
-            access, secure_flag, same_site
-        )).unwrap(),
-    );
-
-    headers.append(
-        axum::http::header::SET_COOKIE,
-        HeaderValue::from_str(&format!(
-            "klar_refresh_token={}; HttpOnly; {}SameSite={}; Path=/; Max-Age=2592000",
-            refresh, secure_flag, same_site
-        )).unwrap(),
-    );
-
-    headers
-}
-
-fn build_clear_cookies() -> HeaderMap {
-    let is_prod = std::env::var("ENV").unwrap_or_default() == "production";
-    let secure_flag = if is_prod { "Secure; " } else { "" };
-    let same_site = if is_prod { "None" } else { "Lax" };
+    // Max-Age matches the token lifetimes: 15 minutes for the access token
+    // (auth.rs), 30 days for the refresh token (create_and_store_refresh_token).
+    let (access, refresh, access_max_age, refresh_max_age) = match tokens {
+        Some((access, refresh)) => (access, refresh, 900, 2_592_000),
+        None => ("", "", 0, 0),
+    };
 
     let mut headers = HeaderMap::new();
-    headers.insert(
-        axum::http::header::SET_COOKIE,
-        HeaderValue::from_str(&format!("klar_access_token=; HttpOnly; {}SameSite={}; Path=/; Max-Age=0", secure_flag, same_site)).unwrap(),
-    );
-    headers.append(
-        axum::http::header::SET_COOKIE,
-        HeaderValue::from_str(&format!("klar_refresh_token=; HttpOnly; {}SameSite={}; Path=/; Max-Age=0", secure_flag, same_site)).unwrap(),
-    );
+    for (name, value, max_age) in [
+        ("klar_access_token", access, access_max_age),
+        ("klar_refresh_token", refresh, refresh_max_age),
+    ] {
+        headers.append(
+            axum::http::header::SET_COOKIE,
+            HeaderValue::from_str(&format!(
+                "{name}={value}; HttpOnly; {secure_flag}SameSite={same_site}; Path=/; Max-Age={max_age}"
+            )).unwrap(),
+        );
+    }
+
     headers
 }
 
@@ -211,7 +199,7 @@ pub async fn register(
 
     Ok((
         StatusCode::CREATED,
-        build_auth_cookies(&access_token, &refresh_token),
+        auth_cookie_headers(Some((&access_token, &refresh_token))),
         Json(AuthResponse {
             // Returned in the body now (not blanked) so cross-site clients
             // that can't rely on third-party cookies can store these and
@@ -259,7 +247,7 @@ pub async fn login(
     tracing::info!("User logged in: {} ({})", user.username, user.id);
 
     Ok((
-        build_auth_cookies(&access_token, &refresh_token),
+        auth_cookie_headers(Some((&access_token, &refresh_token))),
         Json(AuthResponse {
             access_token,
             refresh_token,
@@ -317,7 +305,7 @@ pub async fn refresh(
     tracing::info!("Token refreshed for user: {}", user_id);
 
     Ok((
-        build_auth_cookies(&access_token, &new_refresh_token),
+        auth_cookie_headers(Some((&access_token, &new_refresh_token))),
         Json(RefreshResponse {
             access_token,
             refresh_token: new_refresh_token,
@@ -351,7 +339,7 @@ pub async fn logout(
     }
 
     Ok((
-        build_clear_cookies(),
+        auth_cookie_headers(None),
         Json(serde_json::json!({ "message": "Logged out successfully" }))
     ))
 }
@@ -619,4 +607,36 @@ pub async fn resend_verification(
     });
 
     Ok(generic)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set_cookies(headers: &HeaderMap) -> Vec<&str> {
+        headers
+            .get_all(axum::http::header::SET_COOKIE)
+            .iter()
+            .map(|v| v.to_str().unwrap())
+            .collect()
+    }
+
+    // Outside production (ENV unset in tests): no Secure flag, SameSite=Lax.
+    #[test]
+    fn sets_both_cookies_with_token_lifetimes() {
+        let headers = auth_cookie_headers(Some(("acc", "ref")));
+        assert_eq!(set_cookies(&headers), [
+            "klar_access_token=acc; HttpOnly; SameSite=Lax; Path=/; Max-Age=900",
+            "klar_refresh_token=ref; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000",
+        ]);
+    }
+
+    #[test]
+    fn clears_both_cookies_with_same_attributes() {
+        let headers = auth_cookie_headers(None);
+        assert_eq!(set_cookies(&headers), [
+            "klar_access_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+            "klar_refresh_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+        ]);
+    }
 }
