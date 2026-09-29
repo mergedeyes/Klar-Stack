@@ -1,3 +1,7 @@
+# check=skip=SecretsUsedInArgOrEnv
+# The secret ENV vars below are declared *empty* on purpose (see the ENV
+# block) so Bunny lists them in the dashboard; no value is baked into the
+# image, so BuildKit's SecretsUsedInArgOrEnv warning is a false positive.
 # --- Build stages (cargo-chef) ---
 # Dependencies are compiled in their own layer that only depends on
 # Cargo.toml/Cargo.lock, so CI (which persists layers via the GitHub

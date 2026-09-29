@@ -17,7 +17,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::UserPublicResponse;
-use crate::utils::{DbResultExt, ResolveMedia};
+use crate::utils::{find_user_id_by_username, DbResultExt, ResolveMedia};
 
 #[derive(Serialize)]
 pub struct BlockResponse {
@@ -83,12 +83,7 @@ pub async fn block_user(
     auth: AuthUser,
     Path(username): Path<String>,
 ) -> Result<(StatusCode, Json<BlockResponse>), AppError> {
-    let target = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
-        .bind(&username)
-        .fetch_optional(&state.db)
-        .await
-        .db_err("Database error")?
-        .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
+    let target = find_user_id_by_username(&state.db, &username).await?;
 
     if target == auth.user_id {
         return Err(AppError::bad_request("You can't block yourself"));
@@ -152,12 +147,7 @@ pub async fn unblock_user(
     auth: AuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<BlockResponse>, AppError> {
-    let target = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
-        .bind(&username)
-        .fetch_optional(&state.db)
-        .await
-        .db_err("Database error")?
-        .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
+    let target = find_user_id_by_username(&state.db, &username).await?;
 
     sqlx::query("DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2")
         .bind(auth.user_id)

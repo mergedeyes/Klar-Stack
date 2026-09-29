@@ -16,7 +16,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
 use crate::models::{FollowRequestResponse, NotificationActor, UserPublicResponse};
-use crate::utils::{DbResultExt, ResolveMedia};
+use crate::utils::{find_user_id_by_username, DbResultExt, ResolveMedia};
 
 /// Response for follow/unfollow actions
 #[derive(Serialize)]
@@ -257,14 +257,7 @@ pub async fn unfollow_user(
     Path(username): Path<String>,
 ) -> Result<Json<FollowResponse>, AppError> {
 
-    let target = sqlx::query_scalar::<_, uuid::Uuid>(
-        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)"
-    )
-    .bind(&username)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))?;
+    let target = find_user_id_by_username(&state.db, &username).await?;
 
     // Always clear a pending request, regardless of whether an actual
     // follow also exists (it shouldn't -- a private account only ever has
@@ -355,14 +348,7 @@ pub async fn accept_follow_request(
     auth: AuthUser,
     Path(requester_username): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let requester_id = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)"
-    )
-    .bind(&requester_username)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found(format!("User '{}' not found", requester_username)))?;
+    let requester_id = find_user_id_by_username(&state.db, &requester_username).await?;
 
     let deleted = sqlx::query_scalar::<_, Uuid>(
         "DELETE FROM follow_requests WHERE requester_id = $1 AND target_id = $2 RETURNING requester_id"
@@ -421,14 +407,7 @@ pub async fn reject_follow_request(
     auth: AuthUser,
     Path(requester_username): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let requester_id = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)"
-    )
-    .bind(&requester_username)
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found(format!("User '{}' not found", requester_username)))?;
+    let requester_id = find_user_id_by_username(&state.db, &requester_username).await?;
 
     sqlx::query("DELETE FROM follow_requests WHERE requester_id = $1 AND target_id = $2")
         .bind(requester_id)
