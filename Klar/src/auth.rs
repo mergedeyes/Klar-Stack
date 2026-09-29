@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize}; // derive macros to (de)serialize the JWT c
 use sha2::{Sha256, Digest}; // SHA-256 hashing, used to hash refresh tokens before storing them
 use uuid::Uuid;
 use crate::errors::AppError;
+use crate::handlers::auth::AppState;
 
 /// JWT claims, stored inside the access token
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,16 +82,16 @@ pub struct AuthUser {
 // Implementing FromRequestParts lets Axum inject AuthUser directly as a handler
 // argument. Axum calls this automatically before the handler runs, and if it
 // returns Err, the handler is never called and the rejection is returned instead.
-impl<S> FromRequestParts<S> for AuthUser
-where
-    S: Send + Sync,
-{
+// Implemented for AppState rather than any state S, so the token is checked
+// against the secret config.rs validated at startup instead of re-reading
+// JWT_SECRET from the environment on every request.
+impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError; // what gets returned to the client if extraction fails
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         // Hier rufen wir deinen Helper auf, der zuerst ins Cookie und dann in den Header schaut
         // (Here we call the shared helper, which checks the cookie first, then the header.)
-        if let Some(user_id) = extract_user_id(parts) {
+        if let Some(user_id) = extract_user_id(parts, &state.jwt_secret) {
             Ok(AuthUser { user_id })
         } else {
             // No valid token found anywhere (cookie, header, or query param), so reject with 401.
@@ -109,15 +110,12 @@ pub struct OptionalAuthUser {
 // Same idea as AuthUser, but this extractor can never fail (Rejection = Infallible).
 // Instead of rejecting the request, a missing or invalid token just results in
 // user_id: None, letting the handler itself decide how to treat anonymous requests.
-impl<S> FromRequestParts<S> for OptionalAuthUser
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<AppState> for OptionalAuthUser {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         Ok(OptionalAuthUser {
-            user_id: extract_user_id(parts),
+            user_id: extract_user_id(parts, &state.jwt_secret),
         })
     }
 }
@@ -145,11 +143,7 @@ pub fn cookie_value<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Optio
 /// set custom headers at all, and with klarsocial.eu/.de being genuinely
 /// cross-site, third-party cookie blocking means EventSource's cookie may
 /// never arrive either. A query param is the only channel left it can use.
-fn extract_user_id(parts: &Parts) -> Option<Uuid> {
-    // Bail out immediately (returning None) if JWT_SECRET isn't set, since without it
-    // no token could ever be validated anyway.
-    let secret = std::env::var("JWT_SECRET").ok()?;
-
+fn extract_user_id(parts: &Parts, secret: &str) -> Option<Uuid> {
     // 1. Try to extract from httpOnly Cookie
     let mut token_str = cookie_value(&parts.headers, "klar_access_token");
 
@@ -185,7 +179,7 @@ fn extract_user_id(parts: &Parts) -> Option<Uuid> {
     // Validate the token's signature and expiry; on success, extract the user ID (the sub claim).
     // .ok() converts a validation error into None (rather than propagating the error type),
     // since both extractors above just want a plain Option<Uuid>.
-    validate_token(token, &secret).ok().map(|claims| claims.sub)
+    validate_token(token, secret).ok().map(|claims| claims.sub)
 }
 
 #[cfg(test)]
