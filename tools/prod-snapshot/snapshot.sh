@@ -2,7 +2,9 @@
 # Anonymized local copy of the production database, built from the latest
 # nightly backup. See README.md in this directory.
 #
-#   ./snapshot.sh refresh [--from-file DUMP]   rebuild from the latest backup
+#   ./snapshot.sh refresh [--from-file DUMP] [--user NAME]
+#                                              rebuild from the latest backup
+#   ./snapshot.sh me                           your account's id + snapshot login
 #   ./snapshot.sh backups                      list the backups in storage
 #   ./snapshot.sh psql [ARGS...]               open psql (or run: psql -c '...')
 #   ./snapshot.sh checks                       run every checks/*.sql
@@ -125,10 +127,21 @@ start_container() {
 }
 
 cmd_refresh() {
-    local from_file=""
-    if [ "${1:-}" = "--from-file" ]; then
-        from_file="${2:?--from-file needs a path}"
+    local from_file="" user=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --from-file) from_file="${2:?--from-file needs a path}"; shift 2 ;;
+            --user)      user="${2:?--user needs a username}"; shift 2 ;;
+            *) die "unknown option: $1" ;;
+        esac
+    done
+    if [ -n "${from_file}" ]; then
         [ -f "${from_file}" ] || die "no such file: ${from_file}"
+    fi
+    # Default for --user: SNAPSHOT_USER from snapshot.env (optional, and
+    # read on its own so --from-file still works without the file).
+    if [ -z "${user}" ] && [ -f "${HERE}/snapshot.env" ]; then
+        user="$(set -a; source "${HERE}/snapshot.env"; echo "${SNAPSHOT_USER:-}")"
     fi
 
     local key=""
@@ -158,16 +171,29 @@ cmd_refresh() {
     log "Pre-flight checks on the real data (counts only)"
     psql_db "${IMPORT_DB}" -q < "${HERE}/preflight.sql"
 
+    # The username only exists before anonymizing, so the lookup happens
+    # here. Only the id is kept (ids survive anonymization anyway); it's
+    # stored as a database setting for "me" to read back later.
+    local my_id=""
+    if [ -n "${user}" ]; then
+        my_id="$(psql_db "${IMPORT_DB}" -tA -v u="${user}" <<< "SELECT id FROM users WHERE LOWER(username) = LOWER(:'u')")"
+        [ -n "${my_id}" ] || printf '\033[33mwarning:\033[0m no user "%s" in this backup\n' "${user}" >&2
+    fi
+
     log "Anonymizing"
     psql_db "${IMPORT_DB}" -q --single-transaction < "${HERE}/anonymize.sql"
 
     # Only the anonymized database is ever called "${DB}".
     psql_db postgres -q -c "ALTER DATABASE ${IMPORT_DB} RENAME TO ${DB}"
     RAW_IMPORT_LIVE=0
+    if [ -n "${my_id}" ]; then
+        psql_db postgres -q -c "ALTER DATABASE ${DB} SET klar.snapshot_user_id = '${my_id}'"
+    fi
 
     log "Snapshot ready${key:+ (from ${key})}"
     echo "    DATABASE_URL=$(cmd_url)"
     echo "    every account's password: klar-dev-password"
+    [ -z "${my_id}" ] || cmd_me
     echo "    next: $0 checks | $0 migrate | $0 psql"
 }
 
@@ -213,6 +239,17 @@ cmd_backups() {
     warn_if_stale "${ts}"
 }
 
+cmd_me() {
+    require_running
+    local row id username
+    row="$(psql_db "${DB}" -tA -F ' ' -c \
+        "SELECT id, username FROM users WHERE id = NULLIF(current_setting('klar.snapshot_user_id', true), '')::uuid")"
+    [ -n "${row}" ] || die "no user recorded -- run: $0 refresh --user NAME (or set SNAPSHOT_USER in snapshot.env)"
+    read -r id username <<< "${row}"
+    echo "    your user id: ${id}"
+    echo "    log in as:    ${username} / klar-dev-password"
+}
+
 cmd_url()  { echo "postgres://postgres:${PGPASS}@127.0.0.1:${PORT}/${DB}"; }
 
 cmd_drop() {
@@ -225,6 +262,7 @@ case "${1:-}" in
     psql)    shift; cmd_psql "$@" ;;
     checks)  cmd_checks ;;
     migrate) cmd_migrate ;;
+    me)      cmd_me ;;
     url)     cmd_url ;;
     drop)    cmd_drop ;;
     *) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 1 ;;

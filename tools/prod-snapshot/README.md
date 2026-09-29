@@ -23,6 +23,8 @@ password is the secret. The read-only password is enough.
 
 ```sh
 tools/prod-snapshot/snapshot.sh refresh     # latest backup -> fresh anonymized snapshot
+tools/prod-snapshot/snapshot.sh refresh --user NAME   # ...and remember which account is yours
+tools/prod-snapshot/snapshot.sh me          # your account's id and user_<n> login
 tools/prod-snapshot/snapshot.sh checks      # run every checks/*.sql
 tools/prod-snapshot/snapshot.sh migrate     # apply this checkout's pending migrations
 tools/prod-snapshot/snapshot.sh psql        # interactive psql
@@ -34,6 +36,12 @@ tools/prod-snapshot/snapshot.sh drop        # delete it
 Every account's password in the snapshot is `klar-dev-password`, so you
 can run the backend against it (`DATABASE_URL=$(… url) cargo run`) and log
 in as any user (`user_<n>@example.invalid`).
+
+Usernames are anonymized, so your own account can only be found while
+`refresh` still has the real data: pass `--user NAME` (or set
+`SNAPSHOT_USER` in `snapshot.env`). Only its id is kept, stored as the
+database setting `klar.snapshot_user_id`; `me` prints it with the
+matching `user_<n>` login.
 
 **Before deploying a PR with migrations:** `refresh`, then `migrate` from
 that branch. It applies exactly what the backend would apply on startup and
