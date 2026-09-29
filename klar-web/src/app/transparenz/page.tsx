@@ -192,8 +192,8 @@ export default function TransparenzPage() {
           <h2 className="mb-2 text-lg font-semibold">Deine Kontrolle</h2>
           <p>
             Unter <strong>Einstellungen → Download your data</strong> kannst
-            du jederzeit alle zu dir gespeicherten Daten als JSON-Datei
-            exportieren. Kontolöschung findest du an derselben Stelle.
+            du jederzeit alle zu dir gespeicherten Daten als ZIP-Archiv
+            exportieren (JSON-Datei plus deine hochgeladenen Bilder). Kontolöschung findest du an derselben Stelle.
           </p>
         </section>
 

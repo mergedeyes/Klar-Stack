@@ -189,8 +189,8 @@ export default function DatenschutzPage() {
             die Verarbeitung deiner Daten. Für das Auskunftsrecht und die
             Datenübertragbarkeit steht dir in den Einstellungen unter{" "}
             <strong>„Download your data“</strong> ein direkter Selbstbedienungs-Export
-            zur Verfügung, der dir alle gespeicherten Daten als JSON-Datei
-            bereitstellt. Für alle anderen Anliegen wende dich an{" "}
+            zur Verfügung, der dir alle gespeicherten Daten als ZIP-Archiv
+            bereitstellt (Daten als JSON-Datei, dazu deine hochgeladenen Bilder). Für alle anderen Anliegen wende dich an{" "}
             <a href="mailto:kontakt@klarsocial.eu" className="underline">
               kontakt@klarsocial.eu
             </a>

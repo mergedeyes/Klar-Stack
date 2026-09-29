@@ -18,6 +18,7 @@ use crate::validation::{
     check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
 };
 use chrono::{DateTime, Duration, Utc};
+use std::io::{Seek, Write};
 
 /// Search query parameters
 #[derive(Debug, Deserialize)]
@@ -463,8 +464,12 @@ pub async fn delete_account(
 
 /// GET /users/me/export — self-service data export (Art. 15 + Art. 20 DSGVO:
 /// right of access + right to data portability). Returns everything we hold
-/// about the requesting user as a single, pretty-printed, downloadable JSON
-/// file — no admin/manual DB query needed on our end.
+/// about the requesting user as a ZIP: a pretty-printed data.json plus the
+/// uploaded images themselves — no admin/manual DB query needed on our end.
+///
+/// The images are included as files, not links: media URLs are signed and
+/// expire within hours (storage.rs), so a link in an export would stop
+/// working long before the person is done with their copy.
 ///
 /// Deliberately excludes: password_hash, refresh/email tokens (security
 /// artifacts, not meaningful personal data the person would want back).
@@ -499,8 +504,8 @@ pub async fn export_my_data(
     let media_rows = if post_ids.is_empty() {
         vec![]
     } else {
-        sqlx::query_as::<_, (Uuid, String, String, String, i32, i32)>(
-            "SELECT post_id, thumb_key, medium_key, full_key, width, height FROM media_assets WHERE post_id = ANY($1)"
+        sqlx::query_as::<_, (Uuid, String, i32, i32, i32)>(
+            "SELECT post_id, full_key, width, height, sort_order FROM media_assets WHERE post_id = ANY($1) ORDER BY sort_order"
         )
         .bind(&post_ids)
         .fetch_all(&state.db)
@@ -508,16 +513,22 @@ pub async fn export_my_data(
         .db_err_ctx("Data export query failed", "Database error")?
     };
 
+    // (path inside the ZIP, storage key) of every file to bundle. Only the
+    // full-size variant is exported; thumb/medium are derived from it.
+    let mut export_files: Vec<(String, String)> = Vec::new();
+
     let posts_json: Vec<serde_json::Value> = posts.into_iter().map(|(id, caption, like_count, comment_count, created_at, edited_at)| {
         let media: Vec<serde_json::Value> = media_rows.iter()
             .filter(|m| m.0 == id)
-            .map(|(_, thumb, medium, full, width, height)| serde_json::json!({
-                "thumbnail_url": state.storage.media_url(thumb),
-                "medium_url": state.storage.media_url(medium),
-                "full_url": state.storage.media_url(full),
-                "width": width,
-                "height": height,
-            }))
+            .map(|(_, full, width, height, sort_order)| {
+                let path = format!("media/{}/{}.{}", id, sort_order, file_extension(full));
+                export_files.push((path.clone(), full.clone()));
+                serde_json::json!({
+                    "file": path,
+                    "width": width,
+                    "height": height,
+                })
+            })
             .collect();
 
         serde_json::json!({
@@ -675,17 +686,61 @@ pub async fn export_my_data(
         }));
     }
 
+    let avatar_file = profile.4.as_deref().map(|url| {
+        let key = url.strip_prefix("/media/").unwrap_or(url);
+        let path = format!("avatar.{}", file_extension(key));
+        export_files.push((path.clone(), key.to_string()));
+        path
+    });
+
+    // Written to an anonymous temp file rather than memory, so an account
+    // with thousands of images can't exhaust the container's RAM; the OS
+    // removes the file once the response has been streamed and it's closed.
+    let tmp_err = |e: std::io::Error| {
+        tracing::error!("Data export temp file error: {}", e);
+        AppError::internal("Failed to build export")
+    };
+    let zip_err = |e: zip::result::ZipError| {
+        tracing::error!("Data export zip error: {}", e);
+        AppError::internal("Failed to build export")
+    };
+    let mut zip = zip::ZipWriter::new(tempfile::tempfile().map_err(tmp_err)?);
+    // Images are already compressed (WebP/JPEG), deflating them again only
+    // costs CPU.
+    let stored = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    // A file that can't be fetched shouldn't sink the whole export (the
+    // person is entitled to the rest); it's listed in data.json instead,
+    // which is why data.json is written last.
+    let mut missing_files = Vec::new();
+    for (path, key) in &export_files {
+        match state.storage.get(key).await {
+            Ok(bytes) => {
+                zip.start_file(path.as_str(), stored).map_err(zip_err)?;
+                zip.write_all(&bytes).map_err(tmp_err)?;
+            }
+            Err(_) => {
+                tracing::error!("Data export for {}: could not fetch {}", auth.user_id, key);
+                missing_files.push(path.clone());
+            }
+        }
+    }
+
     let export = serde_json::json!({
         "export_info": {
             "generated_at": Utc::now(),
-            "note": "Datenexport gemäß Art. 15/20 DSGVO — alle personenbezogenen Daten, die Klar über diesen Account gespeichert hat.",
+            "note": "Datenexport gemäß Art. 15/20 DSGVO — alle personenbezogenen Daten, die Klar über diesen Account gespeichert hat. Bilder liegen als Dateien in diesem Archiv; die \"file\"-Felder geben ihren Pfad an.",
+            "missing_files": missing_files,
         },
         "profile": {
             "username": profile.0,
             "email": profile.1,
             "display_name": profile.2,
             "bio": profile.3,
-            "avatar_url": profile.4.map(|k| state.storage.media_url(&k)),
+            "avatar_file": avatar_file,
             "email_verified": profile.5,
             "created_at": profile.6,
             "terms_accepted_at": profile.7,
@@ -714,19 +769,36 @@ pub async fn export_my_data(
     let pretty = serde_json::to_string_pretty(&export)
         .unwrap_or_else(|_| export.to_string());
 
-    let filename = format!("klar-datenexport-{}.json", Utc::now().format("%Y-%m-%d"));
+    zip.start_file("data.json", deflated).map_err(zip_err)?;
+    zip.write_all(pretty.as_bytes()).map_err(tmp_err)?;
 
-    tracing::info!("Data export generated for user: {}", auth.user_id);
+    let mut file = zip.finish().map_err(zip_err)?;
+    let size = file.seek(std::io::SeekFrom::End(0)).map_err(tmp_err)?;
+    file.seek(std::io::SeekFrom::Start(0)).map_err(tmp_err)?;
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(
+        tokio::fs::File::from_std(file),
+    ));
+
+    let filename = format!("klar-datenexport-{}.zip", Utc::now().format("%Y-%m-%d"));
+
+    tracing::info!("Data export generated for user: {} ({} bytes)", auth.user_id, size);
 
     let response = axum::response::Response::builder()
         .status(StatusCode::OK)
-        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .header(axum::http::header::CONTENT_TYPE, "application/zip")
+        .header(axum::http::header::CONTENT_LENGTH, size)
         .header(
             axum::http::header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", filename),
         )
-        .body(axum::body::Body::from(pretty))
+        .body(body)
         .map_err(|_| AppError::internal("Failed to build export response"))?;
 
     Ok(response)
+}
+
+/// Extension of a storage key ("full/<id>.webp" -> "webp"), so exported
+/// files open with the right program. Keys are always generated with one.
+fn file_extension(key: &str) -> &str {
+    key.rsplit_once('.').map(|(_, ext)| ext).unwrap_or("bin")
 }
