@@ -87,16 +87,26 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     const connect = async () => {
       if (cancelled) return;
 
-      // getAccessToken() refreshes first if the token is about to expire,
-      // through the same shared refresh as every other request -- this used
-      // to refresh on its own, racing request()'s refresh with the same
-      // single-use token and logging the user out when it lost.
-      const accessToken = await getAccessToken();
+      // A fresh single-use ticket per connection attempt. Fetched through
+      // request(), so an expiring access token is refreshed via the same
+      // shared refresh as every other call (refreshing separately here used
+      // to race it with the same single-use refresh token and log the user
+      // out when it lost).
+      if (!(await getAccessToken())) return; // session is gone; a new login remounts this
+      let ticket: string;
+      try {
+        ({ ticket } = await notificationsApi.streamTicket());
+      } catch (err) {
+        console.error("SSE ticket request failed:", err);
+        if (cancelled) return;
+        retryTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+        return;
+      }
       if (cancelled) return;
-      if (!accessToken) return; // session is gone; a new login remounts this
 
       eventSource = new EventSource(
-        `${API_URL}/notifications/stream?token=${encodeURIComponent(accessToken)}`,
+        `${API_URL}/notifications/stream?ticket=${encodeURIComponent(ticket)}`,
         { withCredentials: true }
       );
 
@@ -121,9 +131,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }
       };
 
-      // EventSource can't tell us *why* it failed (expired token, network
-      // blip, server restart), so always reconnect with backoff: connect()
-      // picks up a refreshed token if the old one was the problem.
+      // EventSource can't tell us *why* it failed (used/expired ticket,
+      // network blip, server restart), so always reconnect with backoff:
+      // connect() fetches a new ticket each time.
       eventSource.onerror = () => {
         eventSource?.close();
         if (cancelled) return;

@@ -595,6 +595,11 @@ export const posts = {
 export const notifications = {
   list: () => request<AppNotification[]>("/notifications", {}, true),
   markRead: () => request<{ message: string }>("/notifications/read", { method: "PATCH" }, true),
+  // Single-use, 30-second ticket for opening the SSE stream. EventSource
+  // can't send headers, and an access token in the URL would end up in
+  // CDN logs -- see the backend's create_stream_ticket.
+  streamTicket: () =>
+    request<{ ticket: string }>("/notifications/stream-ticket", { method: "POST" }, true),
 };
 
 export const blocks = {

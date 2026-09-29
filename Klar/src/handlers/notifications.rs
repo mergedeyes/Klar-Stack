@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     response::sse::{Event, Sse},
     Json,
 };
@@ -10,7 +10,7 @@ use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
-use crate::auth::AuthUser;
+use crate::auth::{generate_refresh_token, hash_refresh_token, AuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::NotificationActor;
@@ -167,7 +167,71 @@ pub async fn get_notifications(
     Ok(Json(responses.resolve_media(&state.storage)))
 }
 
-/// GET /notifications/stream — SSE Endpoint
+/// How long a stream ticket can be redeemed. Only has to cover the gap
+/// between the POST and the EventSource connecting.
+const STREAM_TICKET_TTL_SECS: u64 = 30;
+
+fn stream_ticket_key(ticket: &str) -> String {
+    format!("klar:sse_ticket:{}", hash_refresh_token(ticket))
+}
+
+#[derive(Serialize)]
+pub struct StreamTicketResponse {
+    pub ticket: String,
+}
+
+/// POST /notifications/stream-ticket — a single-use ticket for opening the
+/// SSE stream.
+///
+/// EventSource can't send an Authorization header, so the stream has to
+/// be authenticated through the URL. Putting the access token there meant
+/// it ended up in the CDN's request logs, still usable for up to 15
+/// minutes. A ticket is only valid for STREAM_TICKET_TTL_SECS and is
+/// deleted when redeemed, so a logged one is worthless. It lives in Redis
+/// (stored hashed, like refresh tokens) so any replica can redeem it.
+pub async fn create_stream_ticket(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<StreamTicketResponse>, AppError> {
+    let ticket = generate_refresh_token();
+    let mut conn = state.redis.clone();
+    conn.set_ex::<_, _, ()>(stream_ticket_key(&ticket), auth.user_id.to_string(), STREAM_TICKET_TTL_SECS)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store SSE ticket: {}", e);
+            AppError::internal("Could not create stream ticket")
+        })?;
+
+    Ok(Json(StreamTicketResponse { ticket }))
+}
+
+/// Redeems a stream ticket: GET and DEL in one transaction, so the same
+/// ticket can't open two streams even when both requests race.
+async fn redeem_stream_ticket(state: &AppState, ticket: &str) -> Result<Uuid, AppError> {
+    let key = stream_ticket_key(ticket);
+    let mut conn = state.redis.clone();
+    let (user_id, _): (Option<String>, i64) = redis::pipe()
+        .atomic()
+        .get(&key)
+        .del(&key)
+        .query_async(&mut conn)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to redeem SSE ticket: {}", e);
+            AppError::internal("Could not open stream")
+        })?;
+
+    user_id
+        .and_then(|id| id.parse().ok())
+        .ok_or_else(|| AppError::unauthorized("Invalid or expired stream ticket"))
+}
+
+#[derive(serde::Deserialize)]
+pub struct StreamQuery {
+    pub ticket: String,
+}
+
+/// GET /notifications/stream?ticket=… — SSE Endpoint
 ///
 /// Reads from the *local* in-process broadcast channel only. Cross-replica
 /// delivery happens upstream: publish_notification() PUBLISHes to Redis
@@ -178,10 +242,9 @@ pub async fn get_notifications(
 /// know or care about Redis, or about resolving any URLs, at all.
 pub async fn notification_stream(
     State(state): State<AppState>,
-    auth: AuthUser, 
+    Query(query): Query<StreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
-    
-    let user_id = auth.user_id;
+    let user_id = redeem_stream_ticket(&state, &query.ticket).await?;
     let mut rx = state.notification_tx.subscribe();
 
     let stream = async_stream::stream! {
