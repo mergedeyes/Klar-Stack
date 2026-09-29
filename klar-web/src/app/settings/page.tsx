@@ -123,7 +123,7 @@ export default function SettingsPage() {
                 {exporting ? "Preparing your data…" : "Download your data"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Get everything Klar has stored about your account as a JSON file
+                Get everything Klar has stored about your account, including your photos, as a ZIP file
               </p>
             </div>
           </button>

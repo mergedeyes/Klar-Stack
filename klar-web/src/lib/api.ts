@@ -437,7 +437,7 @@ export const users = {
 
     const disposition = res.headers.get("Content-Disposition");
     const match = disposition?.match(/filename="(.+)"/);
-    const filename = match?.[1] ?? "klar-datenexport.json";
+    const filename = match?.[1] ?? "klar-datenexport.zip";
 
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
