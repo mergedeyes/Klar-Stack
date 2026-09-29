@@ -168,9 +168,28 @@ pub async fn create_report(
     // for admin review at whatever priority its reason implies).
     if input.target_type == "post" {
         if is_critical(&input.reason) {
-            sqlx::query("UPDATE posts SET moderation_status = 'hidden' WHERE id = $1")
+            // Only the transition to hidden rotates the media keys, so a
+            // second CSAM report on an already-hidden post doesn't move
+            // the files again.
+            let newly_hidden = sqlx::query(
+                "UPDATE posts SET moderation_status = 'hidden' WHERE id = $1 AND moderation_status != 'hidden'"
+            )
                 .bind(input.target_id).execute(&state.db).await
-                .db_err_ctx("Failed to auto-hide post", "Database error")?;
+                .db_err_ctx("Failed to auto-hide post", "Database error")?
+                .rows_affected() > 0;
+
+            // Runs in the background: the reporter shouldn't wait on (or
+            // see errors from) storage round-trips, and every failure is
+            // logged with the post ID for manual follow-up.
+            if newly_hidden {
+                let state = state.clone();
+                let post_id = input.target_id;
+                tokio::spawn(async move {
+                    if let Err(e) = rotate_post_media_keys(&state, post_id).await {
+                        tracing::error!("Media key rotation for hidden post {} failed: {}", post_id, e.message);
+                    }
+                });
+            }
         } else if is_high_severity(&input.reason) {
             // Never downgrade an already-hidden (CSAM) post back to
             // merely "flagged".
@@ -196,6 +215,108 @@ pub async fn create_report(
     );
 
     Ok((StatusCode::CREATED, Json(report)))
+}
+
+/// Moves a hidden post's media to fresh storage keys and purges the old
+/// URLs from the CDN. Hiding only stops the API from handing out URLs;
+/// anyone who already had one could keep loading the files straight from
+/// the CDN. The files are moved rather than deleted because a hide can be
+/// dismissed, and because illegal content must be preserved as evidence
+/// until the report is resolved. Admin review and the owner's own view
+/// keep working, since they resolve whatever keys media_assets holds.
+async fn rotate_post_media_keys(state: &AppState, post_id: Uuid) -> Result<(), AppError> {
+    let assets = sqlx::query_as::<_, (Uuid, String, String, String)>(
+        "SELECT id, thumb_key, medium_key, full_key FROM media_assets WHERE post_id = $1"
+    )
+    .bind(post_id)
+    .fetch_all(&state.db)
+    .await
+    .db_err("Database error")?;
+
+    for (asset_id, thumb, medium, full) in assets {
+        let new_id = Uuid::new_v4();
+        let old_keys = [thumb, medium, full];
+        let new_keys = old_keys.clone().map(|k| rotated_key(&k, new_id));
+
+        // Copy first, so the files are never missing from storage.
+        let mut copied = Vec::new();
+        let mut copy_result = Ok(());
+        for (old, new) in old_keys.iter().zip(&new_keys) {
+            copy_result = copy_object(state, old, new).await;
+            if copy_result.is_err() {
+                break;
+            }
+            copied.push(new.clone());
+        }
+
+        // The full_key guard makes this a no-op if the post was deleted or
+        // the keys changed underneath us; in that case (or if a copy
+        // failed) the new copies are orphans and are removed again.
+        let updated = match copy_result {
+            Ok(()) => sqlx::query(
+                r#"
+                UPDATE media_assets
+                SET thumb_key = $2, medium_key = $3, full_key = $4, original_key = $4
+                WHERE id = $1 AND full_key = $5
+                "#
+            )
+            .bind(asset_id)
+            .bind(&new_keys[0])
+            .bind(&new_keys[1])
+            .bind(&new_keys[2])
+            .bind(&old_keys[2])
+            .execute(&state.db)
+            .await
+            .db_err("Database error")
+            .map(|r| r.rows_affected() > 0),
+            Err(e) => Err(e),
+        };
+
+        match updated {
+            Ok(true) => {}
+            Ok(false) => {
+                for key in &copied {
+                    let _ = state.storage.delete(key).await;
+                }
+                continue;
+            }
+            Err(e) => {
+                for key in &copied {
+                    let _ = state.storage.delete(key).await;
+                }
+                return Err(e);
+            }
+        }
+
+        // From here on a failure leaves the old file reachable, so each one
+        // is logged with its key for manual cleanup rather than aborting.
+        for old in &old_keys {
+            if let Err(e) = state.storage.delete(old).await {
+                tracing::error!("Hidden post {}: failed to delete old media {}: {}", post_id, old, e.message);
+            }
+            if let Err(e) = state.cdn.purge(&state.storage.public_url(old)).await {
+                tracing::error!("Hidden post {}: failed to purge {} from CDN: {}", post_id, old, e.message);
+            }
+        }
+    }
+
+    tracing::info!("Rotated media keys of hidden post {}", post_id);
+    Ok(())
+}
+
+/// Storage has no server-side copy across all backends, so this is a
+/// download + upload. Media files are small (processed WebP variants).
+async fn copy_object(state: &AppState, from: &str, to: &str) -> Result<(), AppError> {
+    let data = state.storage.get(from).await?;
+    state.storage.save(to, &data).await
+}
+
+/// "thumb/<old-id>.webp" -> "thumb/<new-id>.webp": same folder and
+/// extension (save() derives the Content-Type from it), new unguessable ID.
+fn rotated_key(old: &str, new_id: Uuid) -> String {
+    let folder = old.rsplit_once('/').map(|(dir, _)| format!("{}/", dir)).unwrap_or_default();
+    let ext = old.rsplit_once('.').map(|(_, ext)| format!(".{}", ext)).unwrap_or_default();
+    format!("{}{}{}", folder, new_id, ext)
 }
 
 /// GET /admin/reports (admin only) -- the review queue, critical
@@ -446,4 +567,17 @@ pub async fn remove_reported_content(
 
     tracing::info!("Report {} actioned (content removed) by admin {}", report_id, auth.user_id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotated_key_keeps_folder_and_extension() {
+        let id = Uuid::new_v4();
+        assert_eq!(rotated_key("thumb/0190-old.webp", id), format!("thumb/{}.webp", id));
+        assert_eq!(rotated_key("full/abc.jpg", id), format!("full/{}.jpg", id));
+        assert_eq!(rotated_key("plain", id), id.to_string());
+    }
 }

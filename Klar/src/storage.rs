@@ -49,6 +49,14 @@ impl Storage {
         }
     }
 
+    pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
+        match self {
+            Storage::S3(s) => s.get(key).await,
+            Storage::Bunny(b) => b.get(key).await,
+            Storage::Local(l) => l.get(key).await,
+        }
+    }
+
     pub async fn delete(&self, key: &str) -> Result<(), AppError> {
         match self {
             Storage::S3(s) => s.delete(key).await,
@@ -72,6 +80,66 @@ impl Storage {
     /// around public_url(). Used by the ResolveMedia impls in utils.rs.
     pub fn resolve(&self, key: Option<String>) -> Option<String> {
         key.map(|k| self.public_url(&k))
+    }
+}
+
+// ─── CDN CACHE PURGE ─────────────────────────────────────────────────────────
+// Deleting a file from the storage zone does not take it offline: the pull
+// zone's edge servers keep serving their cached copy until it expires. When
+// a file has to disappear *now* (media of a post hidden by moderation), its
+// URL must also be purged. That needs the account-wide Bunny API key --
+// the storage zone password can't purge -- so it's optional: without
+// BUNNY_API_KEY purges are skipped with a warning (local dev, S3 elsewhere).
+#[derive(Clone)]
+pub struct CdnPurger {
+    client: HttpClient,
+    api_key: Option<String>,
+}
+
+impl CdnPurger {
+    pub fn new() -> Self {
+        // Empty counts as unset, same as S3_STORAGE_ACCESS_KEY: the
+        // Dockerfile declares the variable empty so Bunny shows it.
+        let api_key = std::env::var("BUNNY_API_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
+        if api_key.is_none() {
+            tracing::warn!("BUNNY_API_KEY not set -- CDN cache purges are disabled");
+        }
+
+        Self { client: HttpClient::new(), api_key }
+    }
+
+    /// Purges one public URL from every edge cache of the pull zone.
+    pub async fn purge(&self, public_url: &str) -> Result<(), AppError> {
+        let Some(api_key) = &self.api_key else {
+            tracing::warn!("Skipping CDN purge of {} (BUNNY_API_KEY not set)", public_url);
+            return Ok(());
+        };
+
+        let url = reqwest::Url::parse_with_params("https://api.bunny.net/purge", &[("url", public_url)])
+            .map_err(|e| {
+                tracing::error!("Invalid purge URL {}: {}", public_url, e);
+                AppError::internal("CDN purge failed")
+            })?;
+
+        let response = self.client
+            .post(url)
+            .header("AccessKey", api_key)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Bunny purge request error: {}", e);
+                AppError::internal("CDN purge failed")
+            })?;
+
+        if !response.status().is_success() {
+            tracing::error!("Bunny purge of {} failed: {}", public_url, response.status());
+            return Err(AppError::internal("CDN purge failed"));
+        }
+
+        Ok(())
     }
 }
 
@@ -130,6 +198,32 @@ impl BunnyStorage {
         }
 
         Ok(())
+    }
+
+    pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
+        let url = format!("{}/{}/{}", self.endpoint, self.bucket, key);
+
+        let response = self.client
+            .get(&url)
+            .header("AccessKey", &self.api_key)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Bunny API download error: {}", e);
+                AppError::internal("Download from CDN failed")
+            })?;
+
+        if !response.status().is_success() {
+            tracing::error!("Bunny API download failed for {}: {}", key, response.status());
+            return Err(AppError::internal("CDN could not return file"));
+        }
+
+        let bytes = response.bytes().await.map_err(|e| {
+            tracing::error!("Bunny API download body error: {}", e);
+            AppError::internal("Download from CDN failed")
+        })?;
+
+        Ok(bytes.to_vec())
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), AppError> {
@@ -259,6 +353,26 @@ impl S3Storage {
         Ok(())
     }
 
+    pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
+        let object = self.client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("S3 download error for {}: {:?}", key, e);
+                AppError::internal("Failed to download via S3")
+            })?;
+
+        let body = object.body.collect().await.map_err(|e| {
+            tracing::error!("S3 download body error for {}: {:?}", key, e);
+            AppError::internal("Failed to download via S3")
+        })?;
+
+        Ok(body.into_bytes().to_vec())
+    }
+
     pub async fn delete(&self, key: &str) -> Result<(), AppError> {
         self.client
             .delete_object()
@@ -353,6 +467,15 @@ impl LocalStorage {
         })?;
 
         Ok(())
+    }
+
+    pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
+        let path = self.safe_path(key)?;
+
+        tokio::fs::read(&path).await.map_err(|e| {
+            tracing::error!("Konnte {} nicht lesen: {}", key, e);
+            AppError::internal("Failed to read file")
+        })
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), AppError> {

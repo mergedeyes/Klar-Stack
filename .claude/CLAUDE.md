@@ -29,6 +29,10 @@ Chronological, no-ranking social network. Solo project, pre-launch, running behi
 - Notifications: insert inside the tx, `publish_notification` to Redis only after commit.
 - Auth: short-lived JWT (15 min) via Bearer header (cross-site domains klarsocial.eu/.de → api.klarsocial.eu); refresh tokens stored hashed and rotated on use.
 
+## Compliance
+
+Klar is an EU service run from Germany, so always consider the GDPR (DSGVO) and German/EU law (DSA, TDDDG, StGB §184b for CSAM) when designing a change. Check data minimisation, retention and deletion, sub-processors (update the Datenschutz page when one is added), evidence preservation for illegal content, and whether the action leaves an audit trail (who, what, when, why). Flag legal questions for review instead of guessing.
+
 ## Style
 
 Comments explain *why* in full sentences; match the surrounding comment density. Some older comments are German — fine to leave.

@@ -31,7 +31,7 @@ mod validation;
 use email::{EmailProvider, EmailService};
 use futures::StreamExt;
 use handlers::auth::AppState;
-use crate::storage::Storage;
+use crate::storage::{CdnPurger, Storage};
 use tokio::sync::broadcast;
 
 #[tokio::main]
@@ -151,6 +151,7 @@ async fn main() {
         db: pool,
         jwt_secret: config.jwt_secret,
         storage,
+        cdn: CdnPurger::new(),
         email,
         notification_tx,
         redis: redis_conn_manager,
