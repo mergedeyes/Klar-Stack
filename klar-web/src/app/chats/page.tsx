@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { chatsApi, DELETED_USER_LABEL, type Conversation, type ChatMessage } from "@/lib/api";
@@ -222,10 +223,10 @@ return (
                   <Link
                     href={`/users/${conv.other_username}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="w-12 h-12 bg-background border rounded-full flex-shrink-0 mr-4 flex items-center justify-center overflow-hidden"
+                    className="relative w-12 h-12 bg-background border rounded-full flex-shrink-0 mr-4 flex items-center justify-center overflow-hidden"
                   >
                     {conv.other_avatar_url ? (
-                      <img src={getMediaUrl(conv.other_avatar_url)} alt={conv.other_username} className="w-full h-full object-cover" />
+                      <Image src={getMediaUrl(conv.other_avatar_url)} alt={conv.other_username} fill className="object-cover" unoptimized />
                     ) : (
                       <span className="font-bold">{conv.other_username.charAt(0).toUpperCase()}</span>
                     )}

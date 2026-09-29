@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { User, follows } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -96,9 +97,9 @@ export default function NewChatModal({ onClose }: NewChatModalProps) {
                 onClick={() => handleStartChat(m)}
                 className="w-full flex items-center p-3 hover:bg-muted/50 rounded-lg transition-colors text-left"
               >
-                <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center mr-3 overflow-hidden">
+                <div className="relative w-10 h-10 bg-muted rounded-full flex items-center justify-center mr-3 overflow-hidden">
                   {m.avatar_url ? (
-                    <img src={getMediaUrl(m.avatar_url)} alt={m.username} className="w-full h-full object-cover" />
+                    <Image src={getMediaUrl(m.avatar_url)} alt={m.username} fill className="object-cover" unoptimized />
                   ) : (
                     <span className="font-bold">{m.username.charAt(0).toUpperCase()}</span>
                   )}

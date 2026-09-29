@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { UserCheck } from "lucide-react";
 import Link from "next/link";
@@ -88,12 +89,14 @@ export default function FollowRequestsPage() {
           {requests.map((req) => (
             <div key={req.requester_id} className="flex items-center gap-3 rounded-xl p-3 hover:bg-muted/50">
               <Link href={`/users/${req.requester_username}`} className="flex flex-1 items-center gap-3 min-w-0">
-                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-muted flex items-center justify-center">
+                <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-muted flex items-center justify-center">
                   {req.requester_avatar_url ? (
-                    <img
+                    <Image
                       src={getMediaUrl(req.requester_avatar_url)}
                       alt={req.requester_username}
-                      className="h-full w-full object-cover"
+                      fill
+                      className="object-cover"
+                      unoptimized
                     />
                   ) : (
                     <span className="font-bold uppercase">{req.requester_username.charAt(0)}</span>

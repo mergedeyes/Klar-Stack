@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -63,12 +64,14 @@ function NotificationPreview({ n }: { n: AppNotification }) {
 
   if (noPostInvolved) {
     return (
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold uppercase">
+      <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold uppercase">
         {n.actor.avatar_url ? (
-          <img
+          <Image
             src={getMediaUrl(n.actor.avatar_url)}
             alt={n.actor.username}
-            className="h-full w-full object-cover"
+            fill
+            className="object-cover"
+            unoptimized
           />
         ) : (
           n.actor.username.charAt(0)
@@ -78,12 +81,14 @@ function NotificationPreview({ n }: { n: AppNotification }) {
   }
 
   return (
-    <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-muted">
+    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded bg-muted">
       {n.post_thumb_url && (
-        <img
+        <Image
           src={getMediaUrl(n.post_thumb_url)}
           alt=""
-          className="h-full w-full object-cover"
+          fill
+          className="object-cover"
+          unoptimized
         />
       )}
     </div>
@@ -327,14 +332,15 @@ function useOutsideClick(
   active: boolean,
   onOutside: () => void
 ) {
-  const savedRef = useRef(onOutside);
-  savedRef.current = onOutside;
+  // Always calls the latest onOutside without re-subscribing the listener
+  // every render.
+  const handleOutside = useEffectEvent(onOutside);
 
   useEffect(() => {
     if (!active) return;
     function handleClickOutside(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) {
-        savedRef.current();
+        handleOutside();
       }
     }
     document.addEventListener("mousedown", handleClickOutside);

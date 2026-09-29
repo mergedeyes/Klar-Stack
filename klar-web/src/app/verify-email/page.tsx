@@ -15,18 +15,18 @@ type State = "loading" | "success" | "expired" | "invalid";
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [state, setState] = useState<State>("loading");
+  const [requestState, setRequestState] = useState<State>("loading");
+  // Without a token there is nothing to verify; derived instead of set
+  // from the effect.
+  const state: State = token ? requestState : "invalid";
   const { refreshUser } = useAuth();
 
   useEffect(() => {
-    if (!token) {
-      setState("invalid");
-      return;
-    }
+    if (!token) return;
 
     auth.verifyEmail(token)
       .then(() => {
-        setState("success");
+        setRequestState("success");
         // Re-fetch the signed-in user (if any) so the verify-email banner
         // disappears right away instead of on the next reload.
         refreshUser();
@@ -34,9 +34,9 @@ function VerifyEmailContent() {
       .catch((err: Error) => {
         const msg = err.message.toLowerCase();
         if (msg.includes("expired") || msg.includes("used") || msg.includes("invalid")) {
-          setState("expired");
+          setRequestState("expired");
         } else {
-          setState("invalid");
+          setRequestState("invalid");
         }
       });
   }, [token, refreshUser]);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { chatsApi, DELETED_USER_LABEL, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -190,9 +191,9 @@ return (
       {(() => {
         const headerContent = (
           <>
-            <div className="w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
+            <div className="relative w-10 h-10 bg-muted rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
               {receiverAvatar ? (
-                <img src={getMediaUrl(receiverAvatar)} alt={displayName} className="w-full h-full object-cover" />
+                <Image src={getMediaUrl(receiverAvatar)} alt={displayName} fill className="object-cover" unoptimized />
               ) : (
                 <span className="font-bold text-muted-foreground">{receiverDeleted ? "?" : displayName.charAt(0).toUpperCase()}</span>
               )}

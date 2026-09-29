@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, Trash2, X } from "lucide-react";
@@ -141,10 +142,13 @@ export default function AdminReportsPage() {
               {(report.target_preview || report.target_thumb_url) && (
                 <div className="mb-2 flex items-start gap-2 rounded-md bg-muted/50 p-2">
                   {report.target_thumb_url && (
-                    <img
+                    <Image
                       src={getMediaUrl(report.target_thumb_url)}
                       alt=""
+                      width={56}
+                      height={56}
                       className="h-14 w-14 shrink-0 rounded object-cover"
+                      unoptimized
                     />
                   )}
                   {report.target_preview && (

@@ -39,12 +39,10 @@ export default function DiscoveryPage() {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
-  const refreshDiscovery = useCallback(() => {
-    cursorRef.current = undefined;
-    setLoading(true);
-    setError(null);
-    setHasMore(true);
-
+  // Fetches the first page and only sets state once the request settles,
+  // so the initial load can run from an effect; refreshDiscovery adds the
+  // resets for a manual refresh (e.g. after creating a post).
+  const loadFirstPage = useCallback(() => {
     postsApi.discoveryFeed(undefined, 15)
       .then((res) => {
         setPosts(res.data);
@@ -59,10 +57,18 @@ export default function DiscoveryPage() {
       });
   }, []);
 
+  const refreshDiscovery = useCallback(() => {
+    cursorRef.current = undefined;
+    setLoading(true);
+    setError(null);
+    setHasMore(true);
+    loadFirstPage();
+  }, [loadFirstPage]);
+
   useEffect(() => {
     if (authLoading || !user) return;
-    refreshDiscovery();
-  }, [authLoading, user, refreshDiscovery]);
+    loadFirstPage();
+  }, [authLoading, user, loadFirstPage]);
 
   const loadMore = useCallback(async () => {
     if (!cursorRef.current) return;

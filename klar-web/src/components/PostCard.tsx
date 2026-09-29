@@ -42,9 +42,19 @@ export default function PostCard({
   const [likeCount, setLikeCount] = useState(likeCountProp ?? 0);
   const [liking, setLiking] = useState(false);
 
-  // Sync like state from parent (e.g. after modal interaction)
-  useEffect(() => { if (likedProp !== undefined) setLiked(likedProp); }, [likedProp]);
-  useEffect(() => { if (likeCountProp !== undefined) setLikeCount(likeCountProp); }, [likeCountProp]);
+  // Sync like state from parent (e.g. after modal interaction). Adjusted
+  // during render when the props change, React's recommended alternative
+  // to an effect that copies props into state.
+  const [prevLikedProp, setPrevLikedProp] = useState(likedProp);
+  const [prevLikeCountProp, setPrevLikeCountProp] = useState(likeCountProp);
+  if (likedProp !== prevLikedProp) {
+    setPrevLikedProp(likedProp);
+    if (likedProp !== undefined) setLiked(likedProp);
+  }
+  if (likeCountProp !== prevLikeCountProp) {
+    setPrevLikeCountProp(likeCountProp);
+    if (likeCountProp !== undefined) setLikeCount(likeCountProp);
+  }
 
   useEffect(() => {
     postsApi.getLikes(post.id).then((res) => {
