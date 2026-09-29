@@ -19,12 +19,12 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::auth::{AuthUser, OptionalAuthUser};
-use crate::handlers::posts::require_visible_post;
+use crate::handlers::posts::{record_new_post, require_visible_post};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::media;
 use crate::models::{MediaAsset, NewPostResponse};
-use crate::utils::ResolveMedia;
+use crate::utils::{delete_media, DbResultExt, ResolveMedia};
 use crate::validation::{check_max_len, CAPTION_MAX};
 
 /// Combined response for a post with its media
@@ -118,37 +118,72 @@ pub async fn upload_post(
         media::process_image(&raw_bytes)
     })
     .await
-    .map_err(|e| AppError::internal(format!("Processing task failed: {}", e)))?
+    // A JoinError means the task panicked or was cancelled -- log the
+    // detail, but don't echo a panic message to the client.
+    .map_err(|e| {
+        tracing::error!("Image processing task failed: {}", e);
+        AppError::internal("Image processing failed")
+    })?
     .map_err(|e| AppError::bad_request(format!("Image processing failed: {}", e)))?;
 
     // Generate a unique ID for this media asset's files
     let media_id = Uuid::new_v4();
     let ext = "webp"; // We always re-encode to WebP
-
-    // Save variants to storage
     let thumb_key = format!("thumb/{}.{}", media_id, ext);
     let medium_key = format!("medium/{}.{}", media_id, ext);
     let full_key = format!("full/{}.{}", media_id, ext);
 
-    state.storage.save(&thumb_key, &processed.thumb).await
-        .map_err(|e| AppError::internal(format!("Failed to save thumbnail: {:?}", e)))?;
-    state.storage.save(&medium_key, &processed.medium).await
-        .map_err(|e| AppError::internal(format!("Failed to save medium: {:?}", e)))?;
-    state.storage.save(&full_key, &processed.full).await
-        .map_err(|e| AppError::internal(format!("Failed to save full image: {:?}", e)))?;
+    // If a later save or the DB transaction fails, the files already
+    // written are deleted again -- otherwise they'd sit in storage with no
+    // row pointing at them: a copy of someone's photo that no deletion
+    // path (post, account, moderation) could ever reach.
+    let mut saved: Vec<&str> = Vec::new();
+    let result = async {
+        for (key, data) in [
+            (&thumb_key, &processed.thumb),
+            (&medium_key, &processed.medium),
+            (&full_key, &processed.full),
+        ] {
+            state.storage.save(key, data).await?;
+            saved.push(key);
+        }
+        insert_post_with_media(&state, auth.user_id, caption.as_deref(), &processed, [&thumb_key, &medium_key, &full_key]).await
+    }
+    .await;
 
-    // Everything from here on is one transaction — post + media_asset +
-    // post_count + feed fan-out all succeed together or not at all.
-    // Previously these ran as separate un-transacted queries against
-    // state.db directly, and the fan-out/post_count steps were simply
-    // missing entirely — this is why photo posts (the only kind real
-    // users create) never showed up in followers' feeds.
-    let mut tx = state.db.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
+    let (post, media_asset) = match result {
+        Ok(created) => created,
+        Err(e) => {
+            for key in saved {
+                delete_media(&state, key).await;
+            }
+            return Err(e);
+        }
+    };
 
-    // Create post in database
+    tracing::info!("Post with media created: {} by user {}", post.id, auth.user_id);
+
+    Ok((
+        StatusCode::CREATED,
+        Json(PostWithMediaResponse {
+            post,
+            media: vec![media_asset.resolve_media(&state.storage)],
+        }),
+    ))
+}
+
+/// Insert the post and its media_asset row, plus the bookkeeping every new
+/// post needs (post_count, feed fan-out), in one transaction -- all of it
+/// succeeds together or not at all.
+async fn insert_post_with_media(
+    state: &AppState,
+    author_id: Uuid,
+    caption: Option<&str>,
+    processed: &media::ProcessedImage,
+    [thumb_key, medium_key, full_key]: [&str; 3],
+) -> Result<(NewPostResponse, MediaAsset), AppError> {
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let post = sqlx::query_as::<_, NewPostResponse>(
         r#"
         INSERT INTO posts (user_id, caption)
@@ -163,21 +198,15 @@ pub async fn upload_post(
             edited_at
         "#
     )
-    .bind(auth.user_id)
-    .bind(&caption)
+    .bind(author_id)
+    .bind(caption)
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create post: {}", e);
-        AppError::internal("Failed to create post")
-    })?;
+    .db_err("Failed to create post")?;
 
-    // Create media asset record. Returns thumb_key/medium_key/full_key
-    // straight from the row aliased as thumb_url/medium_url/full_url —
-    // still bare storage keys at this point, same as every other handler
-    // that reads media_assets. Resolved into real URLs in one place below
-    // via .resolve_media(), instead of pre-computing URLs before the
-    // insert like this used to.
+    // Returns the keys aliased as thumb_url/medium_url/full_url -- still
+    // bare storage keys here, resolved by the caller via .resolve_media(),
+    // same as every other handler that reads media_assets.
     let media_asset = sqlx::query_as::<_, MediaAsset>(
         r#"
         INSERT INTO media_assets (post_id, original_key, thumb_key, medium_key, full_key, width, height, size_bytes)
@@ -195,59 +224,22 @@ pub async fn upload_post(
         "#
     )
     .bind(post.id)
-    .bind(&full_key) // original_key — we use full as the "original" since we strip EXIF
-    .bind(&thumb_key)
-    .bind(&medium_key)
-    .bind(&full_key)
+    .bind(full_key) // original_key — we use full as the "original" since we strip EXIF
+    .bind(thumb_key)
+    .bind(medium_key)
+    .bind(full_key)
     .bind(processed.width as i32)
     .bind(processed.height as i32)
     .bind(processed.medium.len() as i64) // approximate size
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create media asset: {}", e);
-        AppError::internal("Failed to save media record")
-    })?;
+    .db_err_ctx("Failed to create media asset", "Failed to save media record")?;
 
-    // Keep the author's denormalized post_count in sync (create_post does
-    // this too; this handler was missing it entirely before)
-    sqlx::query("UPDATE users SET post_count = post_count + 1 WHERE id = $1")
-        .bind(auth.user_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| { tracing::error!("Failed to update post_count: {}", e); AppError::internal("Database error") })?;
+    record_new_post(&mut tx, author_id, post.id, post.created_at).await?;
 
-    // Fan-out: one feed_items row per current follower, same as
-    // handlers::posts::create_post — this was the missing piece that made
-    // photo posts never appear in followers' feeds.
-    sqlx::query(
-        r#"
-        INSERT INTO feed_items (user_id, post_id, created_at)
-        SELECT follower_id, $1, $2 FROM follows WHERE following_id = $3
-        ON CONFLICT DO NOTHING
-        "#
-    )
-    .bind(post.id)
-    .bind(post.created_at)
-    .bind(auth.user_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| { tracing::error!("Failed to fan out post: {}", e); AppError::internal("Database error") })?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        AppError::internal("Database error")
-    })?;
-
-    tracing::info!("Post with media created: {} by user {}", post.id, auth.user_id);
-
-    Ok((
-        StatusCode::CREATED,
-        Json(PostWithMediaResponse {
-            post,
-            media: vec![media_asset.resolve_media(&state.storage)],
-        }),
-    ))
+    Ok((post, media_asset))
 }
 
 /// GET /posts/:id/media — get media assets for a post
@@ -279,10 +271,7 @@ pub async fn get_post_media(
     .bind(post_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Database error: {}", e);
-        AppError::internal("Database error")
-    })?;
+    .db_err("Database error")?;
 
     Ok(Json(assets.resolve_media(&state.storage)))
 }
