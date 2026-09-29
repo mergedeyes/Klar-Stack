@@ -8,9 +8,16 @@ import { NextRequest, NextResponse } from "next/server";
 //   both for legal-compliance reasons (an Impressum has to be reachable)
 //   and because they're linked from the global Footer on every page,
 //   including /welcome itself
+// - the email-link landing pages (/verify-email, /reset-password): the
+//   links always point at BASE_URL (.eu), but the gate cookie is per-host,
+//   so someone who entered the passcode on .de would be bounced to
+//   /welcome and lose the token. These pages only forward the token to the
+//   API, which the gate doesn't cover anyway, so exposing them leaks nothing.
 const PUBLIC_PATHS = [
   "/welcome",
   "/api/site-access",
+  "/verify-email",
+  "/reset-password",
   "/impressum",
   "/datenschutz",
   "/nutzungsbedingungen",
