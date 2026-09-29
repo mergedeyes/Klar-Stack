@@ -33,15 +33,6 @@ pub async fn toggle_like(
         return Err(AppError::bad_request("Cannot like this post"));
     }
 
-    let already_liked = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND post_id = $2)"
-    )
-    .bind(auth.user_id)
-    .bind(post_id)
-    .fetch_one(&state.db)
-    .await
-    .db_err("Database error")?;
-
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
     let like_count: i64;
@@ -50,29 +41,40 @@ pub async fn toggle_like(
     // don't hold the DB transaction open across a network call.
     let mut pending_notification: Option<NotificationEvent> = None;
 
-    if already_liked {
-        sqlx::query("DELETE FROM likes WHERE user_id = $1 AND post_id = $2")
-            .bind(auth.user_id)
-            .bind(post_id)
-            .execute(&mut *tx)
-            .await
-            .db_err("Failed to unlike")?;
-
-        like_count = sqlx::query_scalar::<_, i64>(
-            "UPDATE posts SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1 RETURNING like_count"
-        )
+    // Toggle by attempting the insert first and branching on whether it
+    // actually added a row. A separate EXISTS check followed by an INSERT
+    // raced on double-clicks: both requests saw "not liked", and the second
+    // INSERT hit the primary key and returned a 500.
+    let liked = sqlx::query("INSERT INTO likes (user_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(auth.user_id)
         .bind(post_id)
-        .fetch_one(&mut *tx)
+        .execute(&mut *tx)
         .await
-        .db_err_ctx("Failed to update like_count", "Database error")?;
-    } else {
-        sqlx::query("INSERT INTO likes (user_id, post_id) VALUES ($1, $2)")
+        .db_err("Failed to like")?
+        .rows_affected() == 1;
+
+    if !liked {
+        let removed = sqlx::query("DELETE FROM likes WHERE user_id = $1 AND post_id = $2")
             .bind(auth.user_id)
             .bind(post_id)
             .execute(&mut *tx)
             .await
-            .db_err("Failed to like")?;
+            .db_err("Failed to unlike")?
+            .rows_affected() == 1;
 
+        // A concurrent request may already have deleted the row; only
+        // decrement for a like this request removed itself.
+        let sql = if removed {
+            "UPDATE posts SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1 RETURNING like_count"
+        } else {
+            "SELECT like_count FROM posts WHERE id = $1"
+        };
+        like_count = sqlx::query_scalar::<_, i64>(sql)
+            .bind(post_id)
+            .fetch_one(&mut *tx)
+            .await
+            .db_err_ctx("Failed to update like_count", "Database error")?;
+    } else {
         like_count = sqlx::query_scalar::<_, i64>(
             "UPDATE posts SET like_count = like_count + 1 WHERE id = $1 RETURNING like_count"
         )
@@ -130,11 +132,11 @@ pub async fn toggle_like(
         &state.db,
         Some(auth.user_id),
         post_id,
-        if already_liked { EventType::Unlike } else { EventType::Like },
+        if liked { EventType::Like } else { EventType::Unlike },
     ).await;
 
     Ok(Json(LikeResponse {
-        liked: !already_liked,
+        liked,
         like_count,
     }))
 }
