@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, LogOut, Trash2 } from "lucide-react";
+import { LogOut, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";

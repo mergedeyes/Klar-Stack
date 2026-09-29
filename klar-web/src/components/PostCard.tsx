@@ -4,13 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Heart, MessageCircle } from "lucide-react";
-import { posts as postsApi, comments as commentsApi, type Post, type MediaAsset } from "@/lib/api";
+import { posts as postsApi, type Post } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import EditedBadge from "@/components/EditedBadge";
 import { getMediaUrl } from "@/lib/utils/media";
-import { ENV } from '@/env';
 
-const API_URL = ENV.API_URL;
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();

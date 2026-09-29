@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
+import { ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 import { SmartBackButton } from '@/components/SmartBackButton';
 
 const sections = [

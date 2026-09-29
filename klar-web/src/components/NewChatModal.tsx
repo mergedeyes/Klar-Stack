@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, follows, type Conversation } from "@/lib/api";
+import { User, follows } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,9 @@ import { getMediaUrl } from "@/lib/utils/media";
 
 interface NewChatModalProps {
   onClose: () => void;
-  existingConversations: Conversation[];
 }
 
-export default function NewChatModal({ onClose, existingConversations }: NewChatModalProps) {
+export default function NewChatModal({ onClose }: NewChatModalProps) {
   const { user } = useAuth();
   const router = useRouter();
   const [mutuals, setMutuals] = useState<User[]>([]);

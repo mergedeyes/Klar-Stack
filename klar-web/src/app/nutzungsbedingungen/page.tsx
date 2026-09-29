@@ -22,7 +22,7 @@ export default function NutzungsbedingungenPage() {
           <h2 className="mb-2 font-semibold">1. Geltungsbereich</h2>
           <p>
             Diese Nutzungsbedingungen regeln die Nutzung von Klar
-            („Klar", „wir", „uns"), einem Dienst von Jan Motulla, Benzstr. 1,
+            („Klar&quot;, „wir&quot;, „uns&quot;), einem Dienst von Jan Motulla, Benzstr. 1,
             88250 Weingarten, Deutschland. Mit der Registrierung eines
             Kontos akzeptierst du diese Nutzungsbedingungen. Informationen zur
             Verarbeitung personenbezogener Daten findest du in der{" "}

@@ -136,8 +136,8 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
         onMessageSent?.(newMsg);
       }
       setInputText("");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 10);

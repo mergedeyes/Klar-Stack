@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { chatsApi, DELETED_USER_LABEL, type Conversation, type ChatMessage } from "@/lib/api";
 import { MessageSquarePlus, MessageCircle } from "lucide-react";
@@ -62,7 +62,6 @@ function markReadAndRefresh(conversationId: string, refresh: () => void) {
 }
 
 function UnifiedChatsPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { lastMessageEvent, refreshChatUnreadCount } = useNotifications();
@@ -275,7 +274,6 @@ return (
       {showNewChat && (
         <NewChatModal 
           onClose={() => setShowNewChat(false)} 
-          existingConversations={conversations} 
         />
       )}
     </div>
