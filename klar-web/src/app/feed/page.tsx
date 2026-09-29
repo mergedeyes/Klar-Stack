@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { posts as postsApi, type Post } from "@/lib/api";
+import { posts as postsApi, cursorAfter, type Post, type PostCursor } from "@/lib/api";
 import PostCard from "@/components/PostCard";
 import PostModal from "@/components/PostModal";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export default function FeedPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const cursorRef = useRef<string | undefined>(undefined);
+  const cursorRef = useRef<PostCursor | undefined>(undefined);
 
   const [activePost, setActivePost] = useState<Post | null>(null);
 
@@ -52,7 +52,7 @@ export default function FeedPage() {
         if (page.length < 20) {
           setHasMore(false);
         } else {
-          cursorRef.current = page[page.length - 1].created_at;
+          cursorRef.current = cursorAfter(page);
         }
       })
       .catch((err) => {
@@ -76,7 +76,7 @@ export default function FeedPage() {
       if (page.length < 20) {
         setHasMore(false);
       } else {
-        cursorRef.current = page[page.length - 1].created_at;
+        cursorRef.current = cursorAfter(page);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load more");

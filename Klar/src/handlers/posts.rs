@@ -364,73 +364,43 @@ pub async fn get_user_posts(
 
     let is_owner = auth.user_id == Some(owner_id);
 
-    let posts = match query.cursor {
-        Some(cursor) => {
-            sqlx::query_as::<_, PostResponse>(
-                r#"
-                SELECT 
-                    p.id,
-                    p.user_id,
-                    u.username,
-                    u.avatar_url,
-                    p.caption,
-                    p.created_at,
-                    p.edited_at,
-                    m.thumb_key AS thumb_url,
-                    m.medium_key AS medium_url,
-                    m.full_key AS full_url,
-                    p.comment_count,
-                    p.like_count,
-                    p.moderation_status::text
-                FROM posts p
-                JOIN users u ON p.user_id = u.id
-                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
-                WHERE LOWER(u.username) = LOWER($1) AND p.created_at < $2
-                    AND (p.moderation_status != 'hidden' OR $4)
-                ORDER BY p.created_at DESC
-                LIMIT $3
-                "#
-            )
-            .bind(&username)
-            .bind(cursor)
-            .bind(limit)
-            .bind(is_owner)
-            .fetch_all(&state.db)
-            .await
-        }
-        None => {
-            sqlx::query_as::<_, PostResponse>(
-                r#"
-                SELECT 
-                    p.id,
-                    p.user_id,
-                    u.username,
-                    u.avatar_url,
-                    p.caption,
-                    p.created_at,
-                    p.edited_at,
-                    m.thumb_key AS thumb_url,
-                    m.medium_key AS medium_url,
-                    m.full_key AS full_url,
-                    p.comment_count,
-                    p.like_count,
-                    p.moderation_status::text
-                FROM posts p
-                JOIN users u ON p.user_id = u.id
-                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
-                WHERE LOWER(u.username) = LOWER($1)
-                    AND (p.moderation_status != 'hidden' OR $3)
-                ORDER BY p.created_at DESC
-                LIMIT $2
-                "#
-            )
-            .bind(&username)
-            .bind(limit)
-            .bind(is_owner)
-            .fetch_all(&state.db)
-            .await
-        }
-    }
+    let (cursor_time, cursor_id) = query.keyset();
+
+    // Filters on the owner's id rather than the username so the
+    // (user_id, created_at DESC, id DESC) index serves the whole query.
+    let posts = sqlx::query_as::<_, PostResponse>(
+        r#"
+        SELECT
+            p.id,
+            p.user_id,
+            u.username,
+            u.avatar_url,
+            p.caption,
+            p.created_at,
+            p.edited_at,
+            m.thumb_key AS thumb_url,
+            m.medium_key AS medium_url,
+            m.full_key AS full_url,
+            p.comment_count,
+            p.like_count,
+            p.moderation_status::text
+        FROM posts p
+        JOIN users u ON p.user_id = u.id
+        LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+        WHERE p.user_id = $1
+            AND (p.created_at, p.id) < ($2, $3)
+            AND (p.moderation_status != 'hidden' OR $5)
+        ORDER BY p.created_at DESC, p.id DESC
+        LIMIT $4
+        "#
+    )
+    .bind(owner_id)
+    .bind(cursor_time)
+    .bind(cursor_id)
+    .bind(limit)
+    .bind(is_owner)
+    .fetch_all(&state.db)
+    .await
     .db_err("Database error")?;
 
     Ok(Json(posts.resolve_media(&state.storage)))
@@ -457,73 +427,41 @@ pub async fn get_feed(
 
     let limit = page_limit(query.limit, 20, 50);
 
-    let posts = match query.cursor {
-        Some(cursor) => {
-            sqlx::query_as::<_, PostResponse>(
-                r#"
-                SELECT 
-                    p.id,
-                    p.user_id,
-                    u.username,
-                    u.avatar_url,
-                    p.caption,
-                    p.created_at,
-                    p.edited_at,
-                    m.thumb_key AS thumb_url,
-                    m.medium_key AS medium_url,
-                    m.full_key AS full_url,
-                    p.comment_count,
-                    p.like_count,
-                    p.moderation_status::text
-                FROM feed_items fi
-                JOIN posts p ON p.id = fi.post_id
-                JOIN users u ON u.id = p.user_id
-                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
-                WHERE fi.user_id = $1 AND fi.created_at < $2
-                    AND p.moderation_status != 'hidden'
-                ORDER BY fi.created_at DESC, fi.post_id DESC
-                LIMIT $3
-                "#
-            )
-            .bind(auth.user_id)
-            .bind(cursor)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await
-        }
-        None => {
-            sqlx::query_as::<_, PostResponse>(
-                r#"
-                SELECT 
-                    p.id,
-                    p.user_id,
-                    u.username,
-                    u.avatar_url,
-                    p.caption,
-                    p.created_at,
-                    p.edited_at,
-                    m.thumb_key AS thumb_url,
-                    m.medium_key AS medium_url,
-                    m.full_key AS full_url,
-                    p.comment_count,
-                    p.like_count,
-                    p.moderation_status::text
-                FROM feed_items fi
-                JOIN posts p ON p.id = fi.post_id
-                JOIN users u ON u.id = p.user_id
-                LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
-                WHERE fi.user_id = $1
-                    AND p.moderation_status != 'hidden'
-                ORDER BY fi.created_at DESC, fi.post_id DESC
-                LIMIT $2
-                "#
-            )
-            .bind(auth.user_id)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await
-        }
-    }
+    let (cursor_time, cursor_id) = query.keyset();
+
+    let posts = sqlx::query_as::<_, PostResponse>(
+        r#"
+        SELECT
+            p.id,
+            p.user_id,
+            u.username,
+            u.avatar_url,
+            p.caption,
+            p.created_at,
+            p.edited_at,
+            m.thumb_key AS thumb_url,
+            m.medium_key AS medium_url,
+            m.full_key AS full_url,
+            p.comment_count,
+            p.like_count,
+            p.moderation_status::text
+        FROM feed_items fi
+        JOIN posts p ON p.id = fi.post_id
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+        WHERE fi.user_id = $1
+            AND (fi.created_at, fi.post_id) < ($2, $3)
+            AND p.moderation_status != 'hidden'
+        ORDER BY fi.created_at DESC, fi.post_id DESC
+        LIMIT $4
+        "#
+    )
+    .bind(auth.user_id)
+    .bind(cursor_time)
+    .bind(cursor_id)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
     .db_err("Database error")?;
 
     Ok(Json(posts.resolve_media(&state.storage)))

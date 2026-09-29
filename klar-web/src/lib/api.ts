@@ -95,14 +95,22 @@ export interface AppNotification {
   };
 }
 
-export interface DiscoveryCursor {
+/** Keyset cursor for post lists: the last post's created_at plus its id,
+ *  which breaks ties between posts with the same timestamp. */
+export interface PostCursor {
   time: string;
   id: string;
 }
 
+/** Cursor for the page after a non-empty `page` of posts. */
+export function cursorAfter(page: Post[]): PostCursor {
+  const last = page[page.length - 1];
+  return { time: last.created_at, id: last.id };
+}
+
 export interface DiscoveryFeedResponse {
   data: Post[];
-  next_cursor: DiscoveryCursor | null;
+  next_cursor: PostCursor | null;
 }
 
 export interface Comment {
@@ -547,13 +555,16 @@ export const adminReportsApi = {
 // ── Post endpoints ────────────────────────────────────────────────────────────
 
 export const posts = {
-  feed: (cursor?: string, limit = 20) => {
+  feed: (cursor?: PostCursor, limit = 20) => {
     const params = new URLSearchParams({ limit: String(limit) });
-    if (cursor) params.set("cursor", cursor);
+    if (cursor) {
+      params.set("cursor", cursor.time);
+      params.set("cursor_id", cursor.id);
+    }
     return request<Post[]>(`/feed?${params}`, {}, true);
   },
 
-  discoveryFeed: (cursor?: DiscoveryCursor, limit = 15) => {
+  discoveryFeed: (cursor?: PostCursor, limit = 15) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursor) {
       params.set("cursor_time", cursor.time);
@@ -564,9 +575,12 @@ export const posts = {
 
   get: (id: string) => request<Post>(`/posts/${id}`),
 
-  userPosts: (username: string, cursor?: string, limit = 20) => {
+  userPosts: (username: string, cursor?: PostCursor, limit = 20) => {
     const params = new URLSearchParams({ limit: String(limit) });
-    if (cursor) params.set("cursor", cursor);
+    if (cursor) {
+      params.set("cursor", cursor.time);
+      params.set("cursor_id", cursor.id);
+    }
     return request<Post[]>(`/users/${username}/posts?${params}`);
   },
 
