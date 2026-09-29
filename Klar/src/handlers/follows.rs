@@ -14,8 +14,8 @@ use crate::handlers::posts::can_view_posts;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
-use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
-use crate::models::{FollowRequestResponse, NotificationActor, UserPublicResponse};
+use crate::handlers::notifications::{insert_notification, publish_notification, NotificationEvent, NotificationKind};
+use crate::models::{FollowRequestResponse, UserPublicResponse};
 use crate::utils::{find_user_id_by_username, DbResultExt, ResolveMedia};
 
 /// Response for follow/unfollow actions
@@ -111,34 +111,9 @@ async fn establish_follow(
         .await
         .db_err_ctx("Failed to backfill feed_items on follow", "Database error")?;
 
-        let notif_id = sqlx::query_scalar::<_, Uuid>(
-            "INSERT INTO notifications (user_id, actor_id, type)
-             VALUES ($1, $2, 'follow'::notification_type)
-             ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
-             DO NOTHING RETURNING id"
-        )
-        .bind(target_id)
-        .bind(follower_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .unwrap_or_default();
-
-        if let Some(nid) = notif_id {
-            if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(follower_id).fetch_one(&mut *tx).await {
-                pending_notification = Some(NotificationEvent {
-                    target_user_id: target_id,
-                    notification: NotificationResponse {
-                        id: nid,
-                        type_name: "follow".to_string(),
-                        is_read: false,
-                        created_at: chrono::Utc::now(),
-                        post_id: None,
-                        post_thumb_url: None,
-                        actor: NotificationActor::from(actor_row),
-                    }
-                });
-            }
-        }
+        pending_notification = insert_notification(
+            &mut tx, target_id, follower_id, NotificationKind::Follow, None, None,
+        ).await;
     }
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
@@ -198,45 +173,30 @@ pub async fn follow_user(
 
     // Private account: create a pending request instead. ON CONFLICT DO
     // NOTHING makes re-requesting a no-op rather than erroring or
-    // duplicating the notification.
-    let notif_id = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        WITH inserted AS (
-            INSERT INTO follow_requests (requester_id, target_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-            RETURNING requester_id
-        )
-        INSERT INTO notifications (user_id, actor_id, type)
-        SELECT $2, $1, 'follow_request'::notification_type
-        FROM inserted
-        ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
-        DO NOTHING
-        RETURNING id
-        "#
+    // duplicating the notification; the request and its notification are
+    // written in one transaction so neither exists without the other.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
+    let requested = sqlx::query(
+        "INSERT INTO follow_requests (requester_id, target_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
     )
     .bind(auth.user_id)
     .bind(target_id)
-    .fetch_optional(&state.db)
+    .execute(&mut *tx)
     .await
-    .unwrap_or_default();
+    .db_err("Failed to create follow request")?
+    .rows_affected() == 1;
 
-    if let Some(nid) = notif_id {
-        if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&state.db).await {
-            let event = NotificationEvent {
-                target_user_id: target_id,
-                notification: NotificationResponse {
-                    id: nid,
-                    type_name: "follow_request".to_string(),
-                    is_read: false,
-                    created_at: chrono::Utc::now(),
-                    post_id: None,
-                    post_thumb_url: None,
-                    actor: NotificationActor::from(actor_row),
-                }
-            };
-            publish_notification(&state, &event).await;
-        }
+    let pending_notification = if requested {
+        insert_notification(&mut tx, target_id, auth.user_id, NotificationKind::FollowRequest, None, None).await
+    } else {
+        None
+    };
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    if let Some(event) = pending_notification {
+        publish_notification(&state, &event).await;
     }
 
     Ok((
@@ -365,33 +325,13 @@ pub async fn accept_follow_request(
 
     establish_follow(&state, requester_id, auth.user_id).await?;
 
-    // Let the requester know their request was accepted.
-    if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&state.db).await {
-        let notif_id = sqlx::query_scalar::<_, Uuid>(
-            "INSERT INTO notifications (user_id, actor_id, type)
-             VALUES ($1, $2, 'follow_accepted'::notification_type)
-             ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
-             DO NOTHING RETURNING id"
-        )
-        .bind(requester_id)
-        .bind(auth.user_id)
-        .fetch_optional(&state.db)
-        .await
-        .unwrap_or_default();
-
-        if let Some(nid) = notif_id {
-            let event = NotificationEvent {
-                target_user_id: requester_id,
-                notification: NotificationResponse {
-                    id: nid,
-                    type_name: "follow_accepted".to_string(),
-                    is_read: false,
-                    created_at: chrono::Utc::now(),
-                    post_id: None,
-                    post_thumb_url: None,
-                    actor: NotificationActor::from(actor_row),
-                }
-            };
+    // Let the requester know their request was accepted. Best-effort and
+    // outside establish_follow's transaction: the follow already stands,
+    // and a missing notification shouldn't undo it.
+    if let Ok(mut conn) = state.db.acquire().await {
+        if let Some(event) = insert_notification(
+            &mut conn, requester_id, auth.user_id, NotificationKind::FollowAccepted, None, None,
+        ).await {
             publish_notification(&state, &event).await;
         }
     }

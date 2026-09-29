@@ -13,7 +13,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
 use crate::handlers::posts::require_visible_post;
-use crate::handlers::notifications::{fetch_post_thumb_in_tx, publish_notification, NotificationEvent, NotificationResponse};
+use crate::handlers::notifications::{insert_notification, publish_notification, NotificationKind};
 use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{required_text, COMMENT_MAX};
@@ -84,41 +84,9 @@ pub async fn create_comment(
     // Built inside the transaction (needs the notification id + actor
     // row + post thumbnail), published to Redis only after commit -- same
     // reasoning as likes.rs/follows.rs.
-    let mut pending_notification: Option<NotificationEvent> = None;
-
-    if auth.user_id != post_owner {
-        let notif_id = sqlx::query_scalar::<_, Uuid>(
-            "INSERT INTO notifications (user_id, actor_id, type, post_id, comment_id)
-             VALUES ($1, $2, 'comment'::notification_type, $3, $4)
-             ON CONFLICT (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'), COALESCE(comment_id, '00000000-0000-0000-0000-000000000000'))
-             DO NOTHING RETURNING id"
-        )
-        .bind(post_owner)
-        .bind(auth.user_id)
-        .bind(post_id)
-        .bind(comment.id)
-        .fetch_optional(&mut *tx)
-        .await
-        .unwrap_or_default();
-
-        if let Some(nid) = notif_id {
-            if let Ok(actor_row) = sqlx::query_as::<_, crate::models::UserRow>("SELECT * FROM users WHERE id = $1").bind(auth.user_id).fetch_one(&mut *tx).await {
-                let thumb = fetch_post_thumb_in_tx(&mut tx, post_id).await;
-                pending_notification = Some(NotificationEvent {
-                    target_user_id: post_owner,
-                    notification: NotificationResponse {
-                        id: nid,
-                        type_name: "comment".to_string(),
-                        is_read: false,
-                        created_at: chrono::Utc::now(),
-                        post_id: Some(post_id),
-                        post_thumb_url: thumb,
-                        actor: crate::models::NotificationActor::from(actor_row),
-                    }
-                });
-            }
-        }
-    }
+    let pending_notification = insert_notification(
+        &mut tx, post_owner, auth.user_id, NotificationKind::Comment, Some(post_id), Some(comment.id),
+    ).await;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
