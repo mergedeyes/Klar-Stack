@@ -245,6 +245,48 @@ pub async fn edit_post(
     Ok(Json(post.resolve_media(&state.storage)))
 }
 
+/// Delete a post and everything hanging off it inside the caller's
+/// transaction, shared by the owner's delete and moderation removal.
+/// CASCADE removes likes, comments, media_assets and feed_items rows;
+/// post_count is decremented here since it's denormalized.
+///
+/// Returns the post's storage keys, which the caller must pass to
+/// delete_media() after commit -- storage can't take part in the
+/// transaction. None if the post no longer exists.
+pub async fn delete_post_with_media(
+    tx: &mut sqlx::PgConnection,
+    post_id: Uuid,
+) -> Result<Option<Vec<String>>, AppError> {
+    // Read the keys before the delete, whose CASCADE removes their rows.
+    // original_key isn't fetched: it's always the same file as full_key.
+    let media_rows = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT thumb_key, medium_key, full_key FROM media_assets WHERE post_id = $1"
+    )
+    .bind(post_id)
+    .fetch_all(&mut *tx)
+    .await
+    .db_err("Database error")?;
+
+    let Some(owner_id) = sqlx::query_scalar::<_, Uuid>("DELETE FROM posts WHERE id = $1 RETURNING user_id")
+        .bind(post_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .db_err("Failed to delete post")?
+    else {
+        return Ok(None);
+    };
+
+    sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
+        .bind(owner_id)
+        .execute(&mut *tx)
+        .await
+        .db_err_ctx("Failed to update post_count", "Database error")?;
+
+    Ok(Some(
+        media_rows.into_iter().flat_map(|(thumb, medium, full)| [thumb, medium, full]).collect(),
+    ))
+}
+
 /// DELETE /posts/:id — delete a post (auth required, owner only)
 ///
 /// feed_items rows for this post are cleaned up automatically via the
@@ -269,39 +311,19 @@ pub async fn delete_post(
         return Err(AppError::forbidden("You can only delete your own posts"));
     }
 
-    // Fetch media asset keys BEFORE deleting (CASCADE will remove the rows)
-    let media_keys = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
-        "SELECT thumb_key, medium_key, full_key FROM media_assets WHERE post_id = $1"
-    )
-    .bind(post_id)
-    .fetch_all(&state.db)
-    .await
-    .db_err("Database error")?;
-
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
-    // CASCADE handles likes, comments, media_assets, and feed_items rows
-    sqlx::query("DELETE FROM posts WHERE id = $1")
-        .bind(post_id)
-        .execute(&mut *tx)
-        .await
-        .db_err("Failed to delete post")?;
-
-    sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
-        .bind(owner_id)
-        .execute(&mut *tx)
-        .await
-        .db_err_ctx("Failed to update post_count", "Database error")?;
+    let media_keys = delete_post_with_media(&mut tx, post_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
-    // Delete actual files from disk
-    // We do this after the DB delete so if it fails, we have orphaned files
-    // (cleanable) rather than DB records pointing to missing files (broken)
-    for (thumb, medium, full) in media_keys {
-        for key in [thumb, medium, full].into_iter().flatten() {
-            delete_media(&state, &key).await;
-        }
+    // Delete the files only after the DB delete, so a failure leaves
+    // orphaned files (cleanable) rather than DB records pointing to
+    // missing files (broken).
+    for key in &media_keys {
+        delete_media(&state, key).await;
     }
 
     tracing::info!("Post deleted: {}", post_id);

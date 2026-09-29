@@ -36,6 +36,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::handlers::posts::delete_post_with_media;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
 use crate::utils::{delete_media, is_admin_email, DbResultExt, ResolveMedia};
 
@@ -478,27 +479,9 @@ pub async fn remove_reported_content(
 
     match target_type.as_str() {
         "post" => {
-            // Mirror posts::delete_post's cleanup: fetch media keys
-            // before the row (and its CASCADE) removes them.
-            media_keys = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
-                "SELECT thumb_key, medium_key, full_key FROM media_assets WHERE post_id = $1"
-            )
-            .bind(target_id)
-            .fetch_all(&mut *tx)
-            .await
-            .db_err("Database error")?;
-
-            let owner_id = sqlx::query_scalar::<_, Uuid>("DELETE FROM posts WHERE id = $1 RETURNING user_id")
-                .bind(target_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .db_err("Failed to remove content")?;
-
-            if let Some(owner_id) = owner_id {
-                sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
-                    .bind(owner_id).execute(&mut *tx).await
-                    .db_err_ctx("Failed to update post_count", "Database error")?;
-            }
+            // None: the post is already gone (deleted by its author),
+            // so there's nothing to remove.
+            media_keys = delete_post_with_media(&mut tx, target_id).await?.unwrap_or_default();
         }
         "comment" => {
             // Replies cascade-delete with their parent, so comment_count
@@ -554,10 +537,8 @@ pub async fn remove_reported_content(
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
-    for (thumb, medium, full) in media_keys {
-        for key in [thumb, medium, full].into_iter().flatten() {
-            delete_media(&state, &key).await;
-        }
+    for key in &media_keys {
+        delete_media(&state, key).await;
     }
 
     tracing::info!("Report {} actioned (content removed) by admin {}", report_id, auth.user_id);
