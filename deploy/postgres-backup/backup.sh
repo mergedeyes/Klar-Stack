@@ -20,6 +20,16 @@ set -euo pipefail
 : "${RETENTION_DAYS:=14}"
 : "${BACKUP_INTERVAL_SECONDS:=86400}"          # 24h
 
+# --- Alerting (optional, aber dringend empfohlen) ---
+# Dead-Man's-Switch im Healthchecks.io-Format: nach jedem erfolgreichen
+# Backup wird HEALTHCHECK_URL angepingt, bei einem Fehler HEALTHCHECK_URL/fail.
+# Der Dienst alarmiert, wenn ein Ping ausbleibt -- das deckt auch den Fall ab,
+# dass dieser Container gar nicht mehr läuft oder schon beim Start scheitert,
+# den das Skript selbst nie melden könnte. (Genau so ist der Ausfall vom
+# 24.08.-29.09.2026 fünf Wochen lang unbemerkt geblieben.)
+# Es werden keine Daten übertragen, nur der Ping selbst.
+: "${HEALTHCHECK_URL:=}"
+
 export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
@@ -27,6 +37,14 @@ export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 aws configure set default.s3.addressing_style path
 
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
+
+# $1: "" für Erfolg, "/fail" für Fehler. Ein fehlgeschlagener Ping bricht
+# nichts ab -- bleibt er aus, schlägt der Dienst ohnehin Alarm.
+ping_healthcheck() {
+  [ -z "${HEALTHCHECK_URL}" ] && return 0
+  curl -fsS -m 10 --retry 3 -o /dev/null "${HEALTHCHECK_URL%/}$1" \
+    || log "Healthcheck-Ping fehlgeschlagen" >&2
+}
 
 run_backup() {
   local ts file key
@@ -97,11 +115,14 @@ prune_old() {
 }
 
 log "Backup-Sidecar gestartet (Intervall ${BACKUP_INTERVAL_SECONDS}s, Retention ${RETENTION_DAYS}d)"
+[ -n "${HEALTHCHECK_URL}" ] || log "WARNUNG: HEALTHCHECK_URL nicht gesetzt -- fehlschlagende Backups bleiben unbemerkt" >&2
 while true; do
   if run_backup; then
     log "Backup ok"
+    ping_healthcheck ""
   else
     log "Backup FEHLGESCHLAGEN" >&2
+    ping_healthcheck "/fail"
   fi
   sleep "${BACKUP_INTERVAL_SECONDS}"
 done

@@ -4,7 +4,7 @@ on:
     branches: ["main"]
     paths:
       - "deploy/postgres-backup/**"
-      - ".github/workflows/backup-sidecar.yaml"
+      - ".github/workflows/backup-sidecar.yml"
 
 permissions:
   contents: read

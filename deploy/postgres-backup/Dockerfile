@@ -5,7 +5,7 @@ FROM postgres:18.6-trixie
 
 # awscli für den Upload zum Bunny Object Storage (S3-kompatibel, ausschließlich path-style).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends awscli ca-certificates \
+ && apt-get install -y --no-install-recommends awscli ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 
 # Von Bunny automatisch erkannte Env-Variablen. Nicht-geheime Defaults sind
@@ -22,7 +22,8 @@ ENV PGHOST=localhost \
     AWS_ACCESS_KEY_ID="" \
     AWS_SECRET_ACCESS_KEY="" \
     RETENTION_DAYS=14 \
-    BACKUP_INTERVAL_SECONDS=86400
+    BACKUP_INTERVAL_SECONDS=86400 \
+    HEALTHCHECK_URL=""
 
 COPY backup.sh /usr/local/bin/backup.sh
 RUN chmod +x /usr/local/bin/backup.sh
