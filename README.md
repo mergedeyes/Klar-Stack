@@ -14,7 +14,7 @@
 ## Profile
 - Username (case preserved as entered, case-insensitive uniqueness, 14-day change cooldown)
 - Display name, bio, avatar (upload, resized/processed server-side)
-- Public profile page: avatar, stats (posts/followers/following), bio
+- Public profile page: avatar, stats (posts/followers/following), bio, and a post grid that loads more as you scroll
 - **Private accounts**: toggle in Settings; when on, posts are hidden from non-followers
 - Follow requests for private accounts: request → pending → accept/reject (not instant-follow)
   - Accept/decline available in the notification dropdown *and* directly on the requester's profile page
