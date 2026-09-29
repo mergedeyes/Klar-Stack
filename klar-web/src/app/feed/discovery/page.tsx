@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { posts as postsApi, type Post, type DiscoveryCursor } from "@/lib/api";
+import { posts as postsApi, type Post, type PostCursor } from "@/lib/api";
 import PostCard from "@/components/PostCard";
 import PostModal from "@/components/PostModal";
 import TopNav from "@/components/TopNav";
@@ -31,7 +31,7 @@ export default function DiscoveryPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const cursorRef = useRef<DiscoveryCursor | undefined>(undefined);
+  const cursorRef = useRef<PostCursor | undefined>(undefined);
 
   const [activePost, setActivePost] = useState<Post | null>(null);
 
