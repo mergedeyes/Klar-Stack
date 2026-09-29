@@ -83,6 +83,7 @@ ENV HOST=0.0.0.0 \
     S3_STORAGE_SECRET_ACCESS_KEY="" \
     S3_PUBLIC_STORAGE_URL=https://cdn.klarsocial.eu \
     BUNNY_API_KEY="" \
+    BUNNY_TOKEN_KEY="" \
     TRUSTED_PROXY_HOPS=1 \
     DEBUG_CLIENT_IP=false
 

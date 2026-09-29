@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::follows::is_following;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
-use crate::utils::{DbResultExt, ResolveMedia};
+use crate::utils::{delete_media, DbResultExt, ResolveMedia};
 use crate::validation::{page_limit, required_text, CAPTION_MAX};
 
 /// Shared gate for both get_post and get_user_posts: can `viewer` see
@@ -299,22 +299,8 @@ pub async fn delete_post(
     // We do this after the DB delete so if it fails, we have orphaned files
     // (cleanable) rather than DB records pointing to missing files (broken)
     for (thumb, medium, full) in media_keys {
-        if let Some(t) = thumb {
-            if let Err(e) = state.storage.delete(&t).await {
-                tracing::warn!("Failed to delete orphaned thumb file {}: {:?}", t, e);
-            }
-        }
-
-        if let Some(m) = medium {
-            if let Err(e) = state.storage.delete(&m).await {
-                tracing::warn!("Failed to delete orphaned medium file {}: {:?}", m, e);
-            }
-        }
-
-        if let Some(f) = full {
-            if let Err(e) = state.storage.delete(&f).await {
-                tracing::warn!("Failed to delete orphaned full file {}: {:?}", f, e);
-            }
+        for key in [thumb, medium, full].into_iter().flatten() {
+            delete_media(&state, &key).await;
         }
     }
 
