@@ -95,7 +95,7 @@ export default function DatenschutzPage() {
             <li>
               <strong>Scaleway</strong> (Versand von Transaktions-E-Mails, z.B.
               Registrierungsbestätigung und Passwort-Reset, über den Dienst
-              „Transactional Email"). Scaleway ist ein französisches
+              „Transactional Email“). Scaleway ist ein französisches
               Unternehmen mit Sitz in der EU; der Versand erfolgt über die
               Region Paris (fr-par). Da es sich um einen EU-Anbieter handelt,
               ist keine Drittlandübermittlung im Sinne von Art. 44 ff. DSGVO
@@ -108,16 +108,24 @@ export default function DatenschutzPage() {
               Server hinweg zugestellt werden können — siehe auch unsere{" "}
               <a href="/transparenz" className="underline">Transparenzseite</a>
               {" "}für eine ausführlichere Erklärung). Dabei werden
-              Benutzername, Profilbild-URL und E-Mail-Adresse der jeweils
-              auslösenden Person übertragen, jedoch nicht dauerhaft bei
-              Upstash gespeichert. Upstash ist ein US-amerikanisches
-              Unternehmen; die Übermittlung erfolgt auf Grundlage von
-              EU-Standardvertragsklauseln (Art. 46 DSGVO) bzw. des
-              EU-U.S. Data Privacy Framework. 
-              <strong> Wir arbeiten im Moment daran, dass keine E-Mail-Adressen mehr
-              übertragen werden müssen.</strong>
+              ausschließlich die interne Nutzer-ID, der Benutzername, der
+              Anzeigename und die Profilbild-URL der jeweils auslösenden
+              Person übertragen, jedoch nicht dauerhaft bei Upstash
+              gespeichert. E-Mail-Adressen werden nicht übertragen. Upstash
+              ist ein US-amerikanisches Unternehmen; die Übermittlung erfolgt
+              auf Grundlage von EU-Standardvertragsklauseln (Art. 46 DSGVO)
+              bzw. des EU-U.S. Data Privacy Framework.
             </li>
           </ul>
+          <p className="mt-2">
+            Zur Überwachung unserer nächtlichen Datenbank-Sicherungen nutzen
+            wir außerdem <strong>Healthchecks.io</strong> (Anbieter mit Sitz
+            in Lettland, EU). Nach jeder Sicherung sendet unser Server dorthin
+            lediglich eine inhaltsleere Erfolgs- oder Fehlermeldung, damit wir
+            bei einem Ausfall sofort benachrichtigt werden. Dabei wird nur die
+            IP-Adresse unseres Servers übermittelt — Daten von Nutzer:innen
+            werden nicht übertragen.
+          </p>
         </section>
 
         <section className="mb-6">
@@ -180,7 +188,7 @@ export default function DatenschutzPage() {
             Datenübertragbarkeit (Art. 20) sowie Widerspruch (Art. 21) gegen
             die Verarbeitung deiner Daten. Für das Auskunftsrecht und die
             Datenübertragbarkeit steht dir in den Einstellungen unter{" "}
-            <strong>„Download your data"</strong> ein direkter Selbstbedienungs-Export
+            <strong>„Download your data“</strong> ein direkter Selbstbedienungs-Export
             zur Verfügung, der dir alle gespeicherten Daten als JSON-Datei
             bereitstellt. Für alle anderen Anliegen wende dich an{" "}
             <a href="mailto:kontakt@klarsocial.eu" className="underline">
@@ -194,12 +202,30 @@ export default function DatenschutzPage() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">9. Löschung deines Kontos</h2>
           <p>
-            Du kannst dein Konto jederzeit in den Einstellungen löschen. Dabei
-            werden dein Profil, deine Beiträge, Kommentare und Nachrichten
-            gemäß unserer Datenbankstruktur entfernt. Die Löschung deiner Daten 
-            erfolgt unmittelbar mit dem Klick auf den dazugehörigen Button. Deine 
-            Daten werden <strong>nicht</strong>, wie bei anderen Plattformen üblich, 
-            noch einige Tage aufbewahrt.
+            Du kannst dein Konto jederzeit in den Einstellungen löschen. Dein
+            Profil, deine Beiträge, Kommentare und Likes werden dabei
+            unmittelbar mit dem Klick auf den dazugehörigen Button aus unserer
+            Datenbank entfernt — <strong>nicht</strong>, wie bei anderen
+            Plattformen üblich, erst nach einer Wartefrist.
+          </p>
+          <p className="mt-2">
+            <strong>Direktnachrichten</strong>, die du anderen geschickt hast,
+            sind auch Teil der Unterhaltung deiner Gesprächspartner:innen. Sie
+            bleiben deshalb in deren Chatverlauf erhalten; dein Name wird dort
+            durch „Deleted user“ ersetzt und dein Profil ist nicht mehr
+            verlinkt (berechtigtes Interesse deiner Gesprächspartner:innen am
+            Erhalt ihres Verlaufs, Art. 6 Abs. 1 lit. f DSGVO). Haben beide
+            Seiten ihr Konto gelöscht, wird die Unterhaltung vollständig
+            entfernt.
+          </p>
+          <p className="mt-2">
+            <strong>Sicherungskopien:</strong> Um Datenverlust bei technischen
+            Ausfällen zu verhindern, erstellen wir jede Nacht eine
+            Sicherungskopie der Datenbank, gespeichert bei Bunny.net in einem
+            deutschen Rechenzentrum. Jede Sicherung wird nach 14 Tagen
+            automatisch gelöscht. Gelöschte Daten können daher noch bis zu 14
+            Tage in diesen Sicherungen enthalten sein; sie werden
+            ausschließlich zur Wiederherstellung nach einem Ausfall verwendet.
           </p>
         </section>
 
