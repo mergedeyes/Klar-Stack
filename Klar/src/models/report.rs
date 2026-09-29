@@ -22,7 +22,9 @@ pub struct CreateReportRequest {
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct ReportRow {
     pub id: Uuid,
-    pub reporter_id: Uuid,
+    /// None once the reporter has deleted their account -- the report
+    /// itself is kept (see migration 20260929000200).
+    pub reporter_id: Option<Uuid>,
     pub target_type: String,
     pub target_id: Uuid,
     pub reason: String,
@@ -37,8 +39,8 @@ pub struct ReportRow {
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct AdminReportRow {
     pub id: Uuid,
-    pub reporter_id: Uuid,
-    pub reporter_username: String,
+    pub reporter_id: Option<Uuid>,
+    pub reporter_username: Option<String>,
     pub target_type: String,
     pub target_id: Uuid,
     pub reason: String,

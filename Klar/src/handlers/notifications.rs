@@ -7,6 +7,7 @@ use futures::stream::Stream;
 use redis::AsyncCommands;
 use serde::Serialize;
 use std::convert::Infallible;
+use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
 use crate::auth::AuthUser;
@@ -184,7 +185,20 @@ pub async fn notification_stream(
     let mut rx = state.notification_tx.subscribe();
 
     let stream = async_stream::stream! {
-        while let Ok(event) = rx.recv().await {
+        loop {
+            let event = match rx.recv().await {
+                Ok(event) => event,
+                // The channel is shared by every connected client, so a
+                // burst of other users' notifications can push this
+                // receiver behind. Skipping ahead drops a few events
+                // (they are still stored and show up in GET /notifications),
+                // whereas ending the loop would silently close the stream.
+                Err(RecvError::Lagged(skipped)) => {
+                    tracing::warn!("SSE stream for {} lagged, skipped {} events", user_id, skipped);
+                    continue;
+                }
+                Err(RecvError::Closed) => break,
+            };
             if event.target_user_id == user_id {
                 if let Ok(json) = serde_json::to_string(&event.notification) {
                     yield Ok(Event::default().data(json));

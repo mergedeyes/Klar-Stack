@@ -502,8 +502,9 @@ export type ReportTargetType = 'post' | 'comment' | 'user';
 
 export interface AdminReport {
   id: string;
-  reporter_id: string;
-  reporter_username: string;
+  // Both null once the reporter has deleted their account.
+  reporter_id: string | null;
+  reporter_username: string | null;
   target_type: ReportTargetType;
   target_id: string;
   reason: ReportReason;
