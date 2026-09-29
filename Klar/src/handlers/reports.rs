@@ -37,7 +37,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
-use crate::utils::{is_admin_email, DbResultExt, ResolveMedia};
+use crate::utils::{delete_media, is_admin_email, DbResultExt, ResolveMedia};
 
 const VALID_REASONS: &[&str] = &[
     "spam", "harassment", "hate_speech", "violence",
@@ -288,15 +288,10 @@ async fn rotate_post_media_keys(state: &AppState, post_id: Uuid) -> Result<(), A
             }
         }
 
-        // From here on a failure leaves the old file reachable, so each one
-        // is logged with its key for manual cleanup rather than aborting.
+        // From here on a failure leaves the old file reachable; delete_media
+        // logs each one with its key for manual cleanup.
         for old in &old_keys {
-            if let Err(e) = state.storage.delete(old).await {
-                tracing::error!("Hidden post {}: failed to delete old media {}: {}", post_id, old, e.message);
-            }
-            if let Err(e) = state.cdn.purge(&state.storage.public_url(old)).await {
-                tracing::error!("Hidden post {}: failed to purge {} from CDN: {}", post_id, old, e.message);
-            }
+            delete_media(state, old).await;
         }
     }
 
@@ -561,7 +556,7 @@ pub async fn remove_reported_content(
 
     for (thumb, medium, full) in media_keys {
         for key in [thumb, medium, full].into_iter().flatten() {
-            let _ = state.storage.delete(&key).await;
+            delete_media(&state, &key).await;
         }
     }
 

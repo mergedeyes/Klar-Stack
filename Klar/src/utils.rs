@@ -3,6 +3,7 @@
 /// lookups, media URL resolution) in every handler file.
 
 use crate::errors::AppError;
+use crate::handlers::auth::AppState;
 use crate::storage::Storage;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -80,6 +81,20 @@ pub async fn find_user_id_by_username(db: &PgPool, username: &str) -> Result<Uui
         .await
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found(format!("User '{}' not found", username)))
+}
+
+/// Deletes a media file from storage and purges it from the CDN cache.
+/// Deleting alone leaves the file servable from edge caches until they
+/// expire, which isn't erasure (GDPR Art. 17). Callers run this after
+/// their DB commit, when there is nothing left to roll back, so failures
+/// are logged with the key for manual cleanup instead of returned.
+pub async fn delete_media(state: &AppState, key: &str) {
+    if let Err(e) = state.storage.delete(key).await {
+        tracing::error!("Failed to delete media {}: {}", key, e.message);
+    }
+    if let Err(e) = state.cdn.purge(&state.storage.public_url(key)).await {
+        tracing::error!("Failed to purge media {} from CDN: {}", key, e.message);
+    }
 }
 
 /// Implemented by every API response struct that carries storage keys
@@ -170,11 +185,11 @@ impl ResolveMedia for crate::models::MediaAsset {
     fn resolve_media(mut self, storage: &Storage) -> Self {
         // thumb_url/medium_url/full_url are plain String here, not
         // Option<String> (a media_assets row always has all three), so
-        // this calls public_url() directly rather than going through
+        // this calls media_url() directly rather than going through
         // Storage::resolve()'s Option handling.
-        self.thumb_url = storage.public_url(&self.thumb_url);
-        self.medium_url = storage.public_url(&self.medium_url);
-        self.full_url = storage.public_url(&self.full_url);
+        self.thumb_url = storage.media_url(&self.thumb_url);
+        self.medium_url = storage.media_url(&self.medium_url);
+        self.full_url = storage.media_url(&self.full_url);
         self
     }
 }

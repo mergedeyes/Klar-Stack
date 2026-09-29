@@ -7,7 +7,13 @@ use crate::errors::AppError;
 // Diese Struktur wird im AppState gespeichert. Sie leitet jeden Aufruf
 // einfach an den aktiven Provider weiter.
 #[derive(Clone)]
-pub enum Storage {
+pub struct Storage {
+    backend: Backend,
+    signer: Option<UrlSigner>,
+}
+
+#[derive(Clone)]
+enum Backend {
     S3(S3Storage),
     Bunny(BunnyStorage),
     Local(LocalStorage),
@@ -25,61 +31,139 @@ impl Storage {
             .unwrap_or_else(|_| "bunny".to_string())
             .to_lowercase();
 
-        match provider.as_str() {
+        let backend = match provider.as_str() {
             "s3" => {
                 tracing::info!("Storage Backend: S3 Compatible");
-                Storage::S3(S3Storage::new().await)
+                Backend::S3(S3Storage::new().await)
             }
             "local" => {
                 tracing::info!("Storage Backend: Lokale Festplatte (nur Dev)");
-                Storage::Local(LocalStorage::new())
+                Backend::Local(LocalStorage::new())
             }
             _ => {
                 tracing::info!("Storage Backend: Bunny.net REST API");
-                Storage::Bunny(BunnyStorage::new())
+                Backend::Bunny(BunnyStorage::new())
             }
-        }
+        };
+
+        // Local files are served by our own /media route, which doesn't
+        // check tokens, so signing only applies to the CDN-backed providers.
+        let signer = match backend {
+            Backend::Local(_) => None,
+            _ => UrlSigner::from_env(),
+        };
+
+        Self { backend, signer }
     }
 
     pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), AppError> {
-        match self {
-            Storage::S3(s) => s.save(key, data).await,
-            Storage::Bunny(b) => b.save(key, data).await,
-            Storage::Local(l) => l.save(key, data).await,
+        match &self.backend {
+            Backend::S3(s) => s.save(key, data).await,
+            Backend::Bunny(b) => b.save(key, data).await,
+            Backend::Local(l) => l.save(key, data).await,
         }
     }
 
     pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
-        match self {
-            Storage::S3(s) => s.get(key).await,
-            Storage::Bunny(b) => b.get(key).await,
-            Storage::Local(l) => l.get(key).await,
+        match &self.backend {
+            Backend::S3(s) => s.get(key).await,
+            Backend::Bunny(b) => b.get(key).await,
+            Backend::Local(l) => l.get(key).await,
         }
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), AppError> {
-        match self {
-            Storage::S3(s) => s.delete(key).await,
-            Storage::Bunny(b) => b.delete(key).await,
-            Storage::Local(l) => l.delete(key).await,
+        match &self.backend {
+            Backend::S3(s) => s.delete(key).await,
+            Backend::Bunny(b) => b.delete(key).await,
+            Backend::Local(l) => l.delete(key).await,
         }
     }
 
+    /// The bare, unsigned URL of a file. Only for identifying the file to
+    /// the CDN (cache purges); anything sent to a client goes through
+    /// media_url(), since unsigned URLs are rejected once token
+    /// authentication is on.
     pub fn public_url(&self, key: &str) -> String {
-        match self {
-            Storage::S3(s) => s.public_url(key),
-            Storage::Bunny(b) => b.public_url(key),
-            Storage::Local(l) => l.public_url(key),
+        match &self.backend {
+            Backend::S3(s) => s.public_url(key),
+            Backend::Bunny(b) => b.public_url(key),
+            Backend::Local(l) => l.public_url(key),
         }
     }
 
-    /// Resolves an optional storage key into a full public URL, passing
+    /// The URL a client may load the file from: signed and expiring when
+    /// BUNNY_TOKEN_KEY is set, the plain public URL otherwise.
+    pub fn media_url(&self, key: &str) -> String {
+        let url = self.public_url(key);
+        match &self.signer {
+            Some(signer) => signer.sign(&url, chrono::Utc::now().timestamp()),
+            None => url,
+        }
+    }
+
+    /// Resolves an optional storage key into a client-facing URL, passing
     /// None through unchanged. Most media/avatar fields are optional (not
     /// every post has media yet, not every user has an avatar), so this
     /// saves every call site from repeating the same Option handling
-    /// around public_url(). Used by the ResolveMedia impls in utils.rs.
+    /// around media_url(). Used by the ResolveMedia impls in utils.rs.
     pub fn resolve(&self, key: Option<String>) -> Option<String> {
-        key.map(|k| self.public_url(&k))
+        key.map(|k| self.media_url(&k))
+    }
+}
+
+// ─── SIGNED MEDIA URLS ───────────────────────────────────────────────────────
+// With Bunny's token authentication enabled on the pull zone, the CDN only
+// serves a file for a URL carrying a valid, unexpired token. The API only
+// hands media URLs to people allowed to see the post, so this bounds how
+// long a URL keeps working once it has been copied elsewhere, or after an
+// unfollow, a block or a switch to a private account.
+//
+// Expiry is rounded to fixed buckets instead of "now + TTL": within one
+// bucket every request gets the same URL, so browser, next/image and CDN
+// caching keep working. A URL is valid until the end of the bucket after
+// the one it was issued in, i.e. between one and two buckets.
+const URL_BUCKET_SECS: i64 = 6 * 60 * 60;
+
+#[derive(Clone)]
+struct UrlSigner {
+    key: String,
+}
+
+impl UrlSigner {
+    /// BUNNY_TOKEN_KEY is the pull zone's token authentication key. Empty
+    /// counts as unset (declared empty in the Dockerfile so Bunny lists it).
+    fn from_env() -> Option<Self> {
+        let key = std::env::var("BUNNY_TOKEN_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
+        if key.is_none() {
+            tracing::warn!("BUNNY_TOKEN_KEY not set -- media URLs are not signed");
+        }
+
+        key.map(|key| Self { key })
+    }
+
+    /// Bunny's token scheme: token = base64url(sha256(key + path + expires)),
+    /// unpadded, appended as ?token=…&expires=….
+    fn sign(&self, url: &str, now: i64) -> String {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+
+        let expires = (now.div_euclid(URL_BUCKET_SECS) + 2) * URL_BUCKET_SECS;
+        let path = url
+            .split_once("://")
+            .and_then(|(_, rest)| rest.find('/').map(|i| &rest[i..]))
+            .unwrap_or("/");
+
+        let mut hasher = Sha256::new();
+        hasher.update(self.key.as_bytes());
+        hasher.update(path.as_bytes());
+        hasher.update(expires.to_string().as_bytes());
+        let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+
+        format!("{}?token={}&expires={}", url, token, expires)
     }
 }
 
@@ -513,5 +597,32 @@ impl LocalStorage {
         }
 
         Ok(self.root.join(trimmed))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signs_like_bunny() {
+        // Reference computed independently in Python from Bunny's documented
+        // scheme: base64url(sha256(key + path + expires)), unpadded.
+        let signer = UrlSigner { key: "test-key".into() };
+        assert_eq!(
+            signer.sign("https://cdn.example/thumb/abc.webp", 1_790_000_000),
+            "https://cdn.example/thumb/abc.webp?token=L2gbmmUhmb2F0tkhX7kJ0uHX-CDwu5MiAq5dMt-6tms&expires=1790035200"
+        );
+    }
+
+    #[test]
+    fn url_is_stable_within_a_bucket() {
+        let signer = UrlSigner { key: "k".into() };
+        let url = "https://cdn.example/full/x.webp";
+        let start = 1_790_035_200; // a bucket boundary
+        assert_eq!(signer.sign(url, start), signer.sign(url, start + URL_BUCKET_SECS - 1));
+        assert_ne!(signer.sign(url, start), signer.sign(url, start + URL_BUCKET_SECS));
+        // Valid for one to two buckets after issue.
+        assert!(signer.sign(url, start).ends_with(&format!("expires={}", start + 2 * URL_BUCKET_SECS)));
     }
 }

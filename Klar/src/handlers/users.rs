@@ -13,7 +13,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
-use crate::utils::{DbResultExt, ResolveMedia};
+use crate::utils::{delete_media, DbResultExt, ResolveMedia};
 use crate::validation::{
     check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
 };
@@ -302,7 +302,7 @@ pub async fn upload_avatar(
 
     if let Some(old_url) = old_avatar {
         let old_key = old_url.strip_prefix("/media/").unwrap_or(&old_url);
-        let _ = state.storage.delete(old_key).await;
+        delete_media(&state, old_key).await;
     }
 
     let user = sqlx::query_as::<_, UserRow>(
@@ -442,16 +442,17 @@ pub async fn delete_account(
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Failed to delete account")?;
 
-    // Clean up files from disk (best-effort — orphaned files are acceptable)
+    // Clean up the files and their CDN copies (best-effort, failures are
+    // logged by delete_media)
     for (thumb, medium, full) in &media_keys {
-        let _ = state.storage.delete(thumb).await;
-        let _ = state.storage.delete(medium).await;
-        let _ = state.storage.delete(full).await;
+        for key in [thumb, medium, full] {
+            delete_media(&state, key).await;
+        }
     }
 
     if let Some(url) = avatar_url {
         let key = url.strip_prefix("/media/").unwrap_or(&url);
-        let _ = state.storage.delete(key).await;
+        delete_media(&state, key).await;
     }
 
     tracing::info!("Account deleted: {}", auth.user_id);
@@ -509,9 +510,9 @@ pub async fn export_my_data(
         let media: Vec<serde_json::Value> = media_rows.iter()
             .filter(|m| m.0 == id)
             .map(|(_, thumb, medium, full, width, height)| serde_json::json!({
-                "thumbnail_url": state.storage.public_url(thumb),
-                "medium_url": state.storage.public_url(medium),
-                "full_url": state.storage.public_url(full),
+                "thumbnail_url": state.storage.media_url(thumb),
+                "medium_url": state.storage.media_url(medium),
+                "full_url": state.storage.media_url(full),
                 "width": width,
                 "height": height,
             }))
@@ -682,7 +683,7 @@ pub async fn export_my_data(
             "email": profile.1,
             "display_name": profile.2,
             "bio": profile.3,
-            "avatar_url": profile.4.map(|k| state.storage.public_url(&k)),
+            "avatar_url": profile.4.map(|k| state.storage.media_url(&k)),
             "email_verified": profile.5,
             "created_at": profile.6,
             "terms_accepted_at": profile.7,
