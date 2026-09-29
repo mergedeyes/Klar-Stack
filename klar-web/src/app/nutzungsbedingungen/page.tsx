@@ -160,7 +160,7 @@ export default function NutzungsbedingungenPage() {
         </section>
 
         <p className="text-xs text-muted-foreground">
-          Stand: 25.08.2026
+          Stand: 29.09.2026
         </p>
       </div>
     </div>
