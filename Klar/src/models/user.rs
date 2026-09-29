@@ -74,6 +74,15 @@ pub struct UserPublicResponse {
     /// the admin menu entry -- the backend enforces the real check
     /// itself on every /admin/* route regardless of what this says.
     pub is_admin: bool,
+    /// The account's own email and its verification state. Only get_me
+    /// sets these (it's the owner looking at themselves) -- everywhere
+    /// else they stay None and are left out of the JSON entirely, so
+    /// other users' emails are never serialized. The frontend needs
+    /// them to show the "verify your email" banner and resend the link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email_verified: Option<bool>,
 }
 
 /// Public API response
@@ -149,6 +158,8 @@ impl From<UserRow> for UserPublicResponse {
             viewer_relationship: None,
             incoming_follow_request: false,
             is_admin: false,
+            email: None,
+            email_verified: None,
         }
     }
 }

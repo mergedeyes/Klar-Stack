@@ -142,9 +142,12 @@ pub async fn get_me(
             // (this is the same rule, applied here so the displayed menu
             // item and the real server-side check never disagree).
             let is_admin = user.email_verified && crate::utils::is_admin_email(&user.email);
+            let (email, email_verified) = (user.email.clone(), user.email_verified);
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
             response.is_admin = is_admin;
+            response.email = Some(email);
+            response.email_verified = Some(email_verified);
             Ok(Json(response.resolve_media(&state.storage)))
         }
         None => Err(AppError::not_found("User not found")),
