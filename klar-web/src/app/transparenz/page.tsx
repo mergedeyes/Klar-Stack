@@ -205,7 +205,7 @@ export default function TransparenzPage() {
           und die{" "}
           <Link href="/nutzungsbedingungen" className="underline">Nutzungsbedingungen</Link>.
           <br />
-          Stand: 29.09.2026
+          Stand: 25.08.2026
         </p>
       </div>
     </div>
