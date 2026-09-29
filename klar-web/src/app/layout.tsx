@@ -20,6 +20,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { NotificationsProvider } from "@/hooks/use-notifications";
 import Footer from "@/components/Footer";
+import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 
 const geist = Geist({ subsets: ["latin"] });
 
@@ -46,6 +47,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={geist.className}>
         <AuthProvider>
+          <VerifyEmailBanner />
           <NotificationsProvider>{children}</NotificationsProvider>
         </AuthProvider>
         <Footer />

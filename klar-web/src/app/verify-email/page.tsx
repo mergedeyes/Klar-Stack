@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { auth } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +16,7 @@ function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const [state, setState] = useState<State>("loading");
+  const { refreshUser } = useAuth();
 
   useEffect(() => {
     if (!token) {
@@ -23,7 +25,12 @@ function VerifyEmailContent() {
     }
 
     auth.verifyEmail(token)
-      .then(() => setState("success"))
+      .then(() => {
+        setState("success");
+        // Re-fetch the signed-in user (if any) so the verify-email banner
+        // disappears right away instead of on the next reload.
+        refreshUser();
+      })
       .catch((err: Error) => {
         const msg = err.message.toLowerCase();
         if (msg.includes("expired") || msg.includes("used") || msg.includes("invalid")) {
@@ -32,7 +39,7 @@ function VerifyEmailContent() {
           setState("invalid");
         }
       });
-  }, [token]);
+  }, [token, refreshUser]);
 
   if (state === "loading") {
     return (
