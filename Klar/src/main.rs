@@ -37,7 +37,11 @@ use tokio::sync::broadcast;
 #[tokio::main]
 async fn main() {
     eprintln!("=== KLAR BACKEND: main() started ===");
-    tracing_subscriber::fmt::init();
+    // Colors only on a real terminal: in the Bunny log viewer the ANSI
+    // escape codes show up as literal "[2m…[0m" noise around every field.
+    tracing_subscriber::fmt()
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
+        .init();
     dotenvy::dotenv().ok();
 
     let config = config::Config::from_env();
