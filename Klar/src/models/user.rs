@@ -1,4 +1,4 @@
-/// User models.
+//! User models.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

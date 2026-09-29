@@ -1,4 +1,4 @@
-/// Comment handlers — create, list, edit, and delete comments on posts.
+//! Comment handlers — create, list, edit, and delete comments on posts.
 
 use axum::{
     extract::{Path, State},

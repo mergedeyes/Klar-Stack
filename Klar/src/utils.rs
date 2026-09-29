@@ -1,6 +1,6 @@
-/// Shared helper functions used across multiple handlers, to avoid
-/// repeating the same boilerplate (database error handling, common
-/// lookups, media URL resolution) in every handler file.
+//! Shared helper functions used across multiple handlers, to avoid
+//! repeating the same boilerplate (database error handling, common
+//! lookups, media URL resolution) in every handler file.
 
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;

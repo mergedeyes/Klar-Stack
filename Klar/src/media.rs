@@ -1,16 +1,16 @@
-/// Image processing — resize, generate variants, strip EXIF.
-///
-/// EXIF stripping happens automatically: when we decode the image and
-/// re-encode it as WebP, all metadata (GPS, device info, timestamps)
-/// is dropped. The image crate doesn't copy EXIF on re-encode.
-/// This is a core privacy feature of Klar.
-///
-/// One piece of EXIF *is* read before it's discarded, though: the
-/// orientation tag. Phone cameras commonly store photos using the
-/// sensor's native (often landscape) orientation and rely on this tag
-/// to say "rotate/flip this for display" — image decoders don't apply
-/// that automatically, so without reading it first, a portrait photo
-/// silently comes out sideways once EXIF is stripped on re-encode.
+//! Image processing — resize, generate variants, strip EXIF.
+//!
+//! EXIF stripping happens automatically: when we decode the image and
+//! re-encode it as WebP, all metadata (GPS, device info, timestamps)
+//! is dropped. The image crate doesn't copy EXIF on re-encode.
+//! This is a core privacy feature of Klar.
+//!
+//! One piece of EXIF *is* read before it's discarded, though: the
+//! orientation tag. Phone cameras commonly store photos using the
+//! sensor's native (often landscape) orientation and rely on this tag
+//! to say "rotate/flip this for display" — image decoders don't apply
+//! that automatically, so without reading it first, a portrait photo
+//! silently comes out sideways once EXIF is stripped on re-encode.
 
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use std::io::Cursor;

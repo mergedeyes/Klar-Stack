@@ -1,8 +1,8 @@
-/// Block handlers — block, unblock, and list blocked users.
-///
-/// Blocking is directional (A blocks B), but the *effect* is bidirectional:
-/// neither party can follow, like, or comment on the other's content,
-/// and blocked users are hidden from the feed.
+//! Block handlers — block, unblock, and list blocked users.
+//!
+//! Blocking is directional (A blocks B), but the *effect* is bidirectional:
+//! neither party can follow, like, or comment on the other's content,
+//! and blocked users are hidden from the feed.
 
 use axum::{
     extract::{Path, State},

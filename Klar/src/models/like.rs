@@ -1,4 +1,4 @@
-/// Like models.
+//! Like models.
 
 use serde::Serialize;
 

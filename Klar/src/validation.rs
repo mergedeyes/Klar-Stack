@@ -1,5 +1,5 @@
-/// Input validation shared by the handlers, so each rule lives in one
-/// place and the limits match what the frontend forms enforce.
+//! Input validation shared by the handlers, so each rule lives in one
+//! place and the limits match what the frontend forms enforce.
 
 use crate::errors::AppError;
 

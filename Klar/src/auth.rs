@@ -1,4 +1,4 @@
-/// JWT authentication: access tokens, refresh tokens, and the AuthUser extractor.
+//! JWT authentication: access tokens, refresh tokens, and the AuthUser extractor.
 
 use axum::{
     extract::FromRequestParts, // trait that lets a type be built directly from request parts (headers, uri, etc.)

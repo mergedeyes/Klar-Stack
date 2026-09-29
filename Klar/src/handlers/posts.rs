@@ -1,4 +1,4 @@
-/// Post handlers — create, read, edit, delete posts, and the feed.
+//! Post handlers — create, read, edit, delete posts, and the feed.
 
 use axum::{
     extract::{Path, Query, State},

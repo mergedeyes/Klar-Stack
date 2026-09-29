@@ -1,5 +1,5 @@
-/// Follow/unfollow handlers, follower/following lists, and the private-
-/// account follow-request flow (request -> accept/reject -> actual follow).
+//! Follow/unfollow handlers, follower/following lists, and the private-
+//! account follow-request flow (request -> accept/reject -> actual follow).
 
 use axum::{
     extract::{Path, State},

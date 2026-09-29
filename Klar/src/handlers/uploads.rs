@@ -1,14 +1,14 @@
-/// Upload handler — multipart image upload, processing, and post creation.
-///
-/// Flow:
-/// 1. Client sends multipart form: caption (text) + image (file)
-/// 2. Server validates the image (type, size)
-/// 3. Server processes: strip EXIF by re-encoding, generate 3 variants
-/// 4. Server saves variants to local storage
-/// 5. Server creates post + media_asset records in DB, fans out to
-///    followers' feed_items, and bumps the author's post_count — all in
-///    one transaction, matching handlers::posts::create_post
-/// 6. Server returns the post with media URLs
+//! Upload handler — multipart image upload, processing, and post creation.
+//!
+//! Flow:
+//! 1. Client sends multipart form: caption (text) + image (file)
+//! 2. Server validates the image (type, size)
+//! 3. Server processes: strip EXIF by re-encoding, generate 3 variants
+//! 4. Server saves variants to local storage
+//! 5. Server creates post + media_asset records in DB, fans out to
+//!    followers' feed_items, and bumps the author's post_count — all in
+//!    one transaction, matching handlers::posts::create_post
+//! 6. Server returns the post with media URLs
 
 use axum::{
     extract::{Multipart, Path, State},

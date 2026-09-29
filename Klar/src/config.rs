@@ -1,4 +1,4 @@
-/// Application configuration, loaded from environment variables.
+//! Application configuration, loaded from environment variables.
 
 pub struct Config {
     pub database_url: String, // Postgres connection string, e.g. postgres://user:pass@host:5432/db
