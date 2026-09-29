@@ -16,6 +16,7 @@ Chronological, no-ranking social network. Solo project, pre-launch, running behi
 
 - Backend: `cd Klar && SQLX_OFFLINE=true cargo clippy` (after changing a `query!` macro, regenerate `.sqlx/` with `cargo sqlx prepare`).
 - Frontend: `cd klar-web && npx tsc --noEmit && npx eslint src`.
+- Manual: for behaviour changes, copy the matching sections of `docs/manual-checks.md` into the PR test plan (unticked — the user checks them in a browser). Add a check there when a change introduces behaviour worth re-testing.
 
 ## Backend conventions
 
