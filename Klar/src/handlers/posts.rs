@@ -81,6 +81,44 @@ pub async fn require_visible_post(
     Ok(owner_id)
 }
 
+/// Bookkeeping every new post needs, inside the transaction that inserts
+/// it: bump the author's denormalized post_count and fan the post out to
+/// the current followers' feed_items. Shared with uploads::upload_post --
+/// photo posts once never reached followers' feeds because the upload path
+/// had its own copy of this that lacked the fan-out.
+///
+/// The fan-out is a single set-based INSERT..SELECT, not a loop, so it's
+/// cheap even for accounts with many followers. (At celebrity-account
+/// scale this would move to an async job instead of running inline.)
+pub async fn record_new_post(
+    tx: &mut sqlx::PgConnection,
+    author_id: Uuid,
+    post_id: Uuid,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    sqlx::query("UPDATE users SET post_count = post_count + 1 WHERE id = $1")
+        .bind(author_id)
+        .execute(&mut *tx)
+        .await
+        .db_err_ctx("Failed to update post_count", "Database error")?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO feed_items (user_id, post_id, created_at)
+        SELECT follower_id, $1, $2 FROM follows WHERE following_id = $3
+        ON CONFLICT DO NOTHING
+        "#
+    )
+    .bind(post_id)
+    .bind(created_at)
+    .bind(author_id)
+    .execute(&mut *tx)
+    .await
+    .db_err_ctx("Failed to fan out post", "Database error")?;
+
+    Ok(())
+}
+
 /// POST /posts — create a new post (auth required)
 ///
 /// On success: increments the author's post_count, and fans the post out
@@ -123,30 +161,7 @@ pub async fn create_post(
     .await
     .db_err("Failed to create post")?;
 
-    sqlx::query("UPDATE users SET post_count = post_count + 1 WHERE id = $1")
-        .bind(auth.user_id)
-        .execute(&mut *tx)
-        .await
-        .db_err_ctx("Failed to update post_count", "Database error")?;
-
-    // Fan-out: one row per current follower. A single INSERT..SELECT is a
-    // set-based operation, not a loop -- efficient even for accounts with
-    // many followers. (At true celebrity-account scale, this would move
-    // to an async job instead of running inline on the request; noted in
-    // the summary, not needed yet.)
-    sqlx::query(
-        r#"
-        INSERT INTO feed_items (user_id, post_id, created_at)
-        SELECT follower_id, $1, $2 FROM follows WHERE following_id = $3
-        ON CONFLICT DO NOTHING
-        "#
-    )
-    .bind(post.id)
-    .bind(post.created_at)
-    .bind(auth.user_id)
-    .execute(&mut *tx)
-    .await
-    .db_err_ctx("Failed to fan out post", "Database error")?;
+    record_new_post(&mut tx, auth.user_id, post.id, post.created_at).await?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
