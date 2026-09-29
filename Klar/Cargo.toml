@@ -51,7 +51,7 @@ lettre = { version = "0.11", features = ["tokio1-native-tls", "builder", "smtp-t
 # IONOS) time out in production; Resend's API runs over plain HTTPS (443).
 resend-rs = "0.24"
 # Rate limiting
-governor = { version = "0.8", features = ["dashmap"] }
+governor = { version = "0.10", features = ["dashmap"] }
 futures = "0.3.32"
 tokio-stream = "0.1.18"
 async-stream = "0.3.6"
