@@ -286,7 +286,9 @@ pub async fn upload_avatar(
         .map_err(|e| AppError::bad_request(format!("Image processing failed: {:?}", e)))?;
 
     let avatar_id = Uuid::new_v4();
-    let avatar_key = format!("avatars/{}.jpg", avatar_id);
+    // process_image always re-encodes to WebP (same as post uploads); the
+    // extension also sets the Content-Type storage.save() uploads with.
+    let avatar_key = format!("avatars/{}.webp", avatar_id);
 
     state.storage.save(&avatar_key, &processed.thumb).await
         .map_err(|e| AppError::internal(format!("Failed to save avatar: {:?}", e)))?;
