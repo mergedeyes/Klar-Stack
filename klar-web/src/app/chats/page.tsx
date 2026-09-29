@@ -28,7 +28,9 @@ function sortByRecency(convos: Conversation[]): Conversation[] {
  * the two actually happened more recently (last_activity_kind already
  * reflects that; see get_conversations). */
 function previewText(conv: Conversation, currentUserId: string | undefined): string {
-  if (!conv.last_activity_kind) return "Neuer Chat";
+  // A deleted partner's messages are erased with their account, so their
+  // side can leave the conversation empty.
+  if (!conv.last_activity_kind) return conv.other_user_id ? "Neuer Chat" : "This User Account was deleted.";
 
   const actorIsMe = conv.last_activity_actor_id === currentUserId;
   const otherName = conv.other_username ?? DELETED_USER_LABEL;

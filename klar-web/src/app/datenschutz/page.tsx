@@ -210,13 +210,12 @@ export default function DatenschutzPage() {
           </p>
           <p className="mt-2">
             <strong>Direktnachrichten</strong>, die du anderen geschickt hast,
-            sind auch Teil der Unterhaltung deiner Gesprächspartner:innen. Sie
-            bleiben deshalb in deren Chatverlauf erhalten; dein Name wird dort
-            durch „Deleted user“ ersetzt und dein Profil ist nicht mehr
-            verlinkt (berechtigtes Interesse deiner Gesprächspartner:innen am
-            Erhalt ihres Verlaufs, Art. 6 Abs. 1 lit. f DSGVO). Haben beide
-            Seiten ihr Konto gelöscht, wird die Unterhaltung vollständig
-            entfernt.
+            werden ebenfalls sofort gelöscht — auch aus dem Chatverlauf deiner
+            Gesprächspartner:innen. Dort bleiben nur deren eigene Nachrichten
+            stehen; dein Name wird durch „Deleted User“ ersetzt, dein Profil
+            ist nicht mehr verlinkt und ein Hinweis zeigt an, dass das Konto
+            gelöscht wurde. Haben beide Seiten ihr Konto gelöscht, wird die
+            Unterhaltung vollständig entfernt.
           </p>
           <p className="mt-2">
             <strong>Sicherungskopien:</strong> Um Datenverlust bei technischen

@@ -295,13 +295,22 @@ return (
             </div>
           );
         })}
+        {/* The deleted account's messages were erased with it, so this
+            notice is all that's left of their side of the conversation. */}
+        {receiverDeleted && (
+          <div className="flex justify-center">
+            <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+              This User Account was deleted.
+            </span>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area (replaced by a notice when the other account is gone) */}
       {receiverDeleted ? (
         <div className="flex-none p-4 border-t bg-muted/10 text-center text-sm text-muted-foreground">
-          This account has been deleted. You can still read this conversation, but you can&apos;t reply.
+          You can&apos;t reply to a deleted account.
         </div>
       ) : (
       <div className="flex-none p-3 border-t bg-muted/10">

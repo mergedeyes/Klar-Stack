@@ -25,7 +25,7 @@ pub async fn get_conversations(
         SELECT 
             c.id,
             -- NULL (and so no user row) when the other participant
-            -- deleted their account; the frontend shows "Deleted user".
+            -- deleted their account; the frontend shows "Deleted User".
             CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END as other_user_id,
             u.username as other_username,
             u.avatar_url as other_avatar_url,
@@ -447,8 +447,8 @@ pub async fn get_unread_count(
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         WHERE (c.user1_id = $1 OR c.user2_id = $1)
-          -- IS DISTINCT FROM, not !=: a deleted user's messages have a
-          -- NULL sender_id, and NULL != $1 is never true.
+          -- IS DISTINCT FROM, not !=: sender_id is a nullable column (see
+          -- migration 20260930000000), and NULL != $1 is never true.
           AND m.sender_id IS DISTINCT FROM $1
           AND m.is_read = FALSE
         "#

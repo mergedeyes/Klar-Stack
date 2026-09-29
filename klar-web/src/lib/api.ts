@@ -660,7 +660,7 @@ export interface ReactionEntry {
 
 // Shown in place of a chat participant who deleted their account (the
 // conversation stays for the other person; see migration 20260929000100).
-export const DELETED_USER_LABEL = "Deleted user";
+export const DELETED_USER_LABEL = "Deleted User";
 
 export interface Conversation {
   id: string;
