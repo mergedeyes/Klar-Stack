@@ -181,8 +181,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/events", post(handlers::events::create_event))
 
         // In-app feedback (bug reports, ideas)
-        .route("/feedback", post(handlers::feedback::create_feedback))
+        .route("/feedback", post(handlers::feedback::create_feedback)
+            // Up to three screenshots of 10 MB each, plus the text fields.
+            .layer(DefaultBodyLimit::max(
+                handlers::feedback::MAX_SCREENSHOTS * handlers::feedback::MAX_SCREENSHOT_BYTES + 1024 * 1024,
+            )))
         .route("/admin/feedback", get(handlers::feedback::list_feedback))
+        .route("/admin/feedback/screenshots/{screenshot_id}", get(handlers::feedback::get_screenshot))
         .route("/admin/feedback/{feedback_id}", patch(handlers::feedback::update_feedback))
 
         // ── Reporting & moderation ───────────────────────────────

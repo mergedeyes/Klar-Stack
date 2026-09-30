@@ -141,7 +141,7 @@ Pushing to `main` builds Docker images for the backend and the frontend and depl
 - Handling people who repeatedly file unfounded reports (DSA Art. 23); account suspension from the report queue.
 - Age verification at sign-up.
 - End-to-end encryption for direct messages.
-- Screenshots in feedback; a written guide for testers.
+- A written guide for testers in the repo.
 
 ## License
 

@@ -71,7 +71,13 @@ export default function DatenschutzPage() {
             wenn du die Option „Include technical details“ aktiviert lässt, speichern
             wir außerdem die Seite, von der du gekommen bist, deine
             Bildschirmgröße und die Kennung deines Browsers — das Formular
-            zeigt dir diese Angaben vor dem Absenden an. Wir nutzen das
+            zeigt dir diese Angaben vor dem Absenden an. Hängst du
+            Screenshots an (höchstens drei), speichern wir sie ohne
+            Metadaten wie Standort oder Gerät; nur Administrator:innen können
+            sie ansehen. Da Screenshots auch Beiträge oder Nachrichten anderer
+            Personen zeigen können, löschen wir sie 30 Tage nachdem wir dein
+            Feedback bearbeitet haben, spätestens nach 90 Tagen und sofort,
+            wenn du dein Konto löschst. Wir nutzen das
             Feedback nur, um Klar zu verbessern (Art. 6 Abs. 1 lit. f DSGVO),
             und löschen es nach einem Jahr; löschst du dein Konto vorher,
             entfällt die Verknüpfung mit dir.

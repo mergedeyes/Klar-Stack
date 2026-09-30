@@ -221,6 +221,14 @@ impl TestApp {
         self.send(req, &user.ip).await.ok();
     }
 
+    /// POST /feedback as the form sends it: text fields plus screenshots.
+    pub async fn feedback(&self, user: &User, fields: &[(&str, &str)], screenshots: Vec<Vec<u8>>) -> Resp {
+        let mut parts: Vec<(&str, Option<&str>, Vec<u8>)> =
+            fields.iter().map(|(name, value)| (*name, None, value.as_bytes().to_vec())).collect();
+        parts.extend(screenshots.into_iter().map(|png| ("screenshot", Some("shot.png"), png)));
+        self.send(multipart("/feedback", user, &parts), &user.ip).await
+    }
+
     pub async fn report(&self, user: &User, target_type: &str, target_id: Uuid, reason: &str) -> Uuid {
         let res = self
             .post(user, "/reports", json!({ "target_type": target_type, "target_id": target_id, "reason": reason }))

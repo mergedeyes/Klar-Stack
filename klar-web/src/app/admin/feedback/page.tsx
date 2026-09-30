@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { feedbackApi, type FeedbackEntry } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
+import FeedbackScreenshots from "@/components/feedback/FeedbackScreenshots";
 
 const CATEGORY = {
   bug: { label: "Bug", icon: Bug },
@@ -102,6 +103,7 @@ export default function AdminFeedbackPage() {
                     </span>
                   </div>
                   <p className="mb-2 whitespace-pre-wrap break-words text-sm">{entry.message}</p>
+                  <FeedbackScreenshots shots={entry.screenshots} />
                   {(entry.page_path || entry.viewport || entry.user_agent) && (
                     <p className="mb-2 break-words text-xs text-muted-foreground">
                       {[entry.page_path && `Page ${entry.page_path}`, entry.viewport && `Screen ${entry.viewport}`, entry.user_agent]

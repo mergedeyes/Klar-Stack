@@ -1047,19 +1047,35 @@ export interface FeedbackEntry {
   status: "new" | "seen" | "done";
   admin_note: string | null;
   created_at: string;
+  screenshots: { id: string; width: number; height: number }[];
 }
+
+/** Matches the backend's limits (handlers/feedback.rs). */
+export const FEEDBACK_MAX_SCREENSHOTS = 3;
+export const FEEDBACK_MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 
 export const feedbackApi = {
   send: (
     category: FeedbackCategory,
     message: string,
-    context: { page_path: string; user_agent: string; viewport: string } | null
-  ) =>
-    request<void>(
-      "/feedback",
-      { method: "POST", body: JSON.stringify({ category, message, ...(context ?? {}) }) },
-      true
-    ),
+    context: { page_path: string; user_agent: string; viewport: string } | null,
+    screenshots: File[] = []
+  ) => {
+    const form = new FormData();
+    form.append("category", category);
+    form.append("message", message);
+    for (const [key, value] of Object.entries(context ?? {})) form.append(key, value);
+    for (const file of screenshots) form.append("screenshot", file);
+    return request<void>("/feedback", { method: "POST", body: form }, true);
+  },
+  // Screenshots are only served to admins through the API, so they're
+  // fetched with the session and shown from an object URL; the caller
+  // revokes it.
+  screenshotUrl: async (id: string): Promise<string> => {
+    const res = await apiFetch(`/admin/feedback/screenshots/${id}`, {}, true);
+    if (!res.ok) throw new Error(errorMessage(await parseBody(res), res.status));
+    return URL.createObjectURL(await res.blob());
+  },
   list: (all = false) => request<FeedbackEntry[]>(`/admin/feedback?filter=${all ? "all" : "open"}`, {}, true),
   update: (id: string, status: FeedbackEntry["status"], adminNote: string | null) =>
     request<void>(
