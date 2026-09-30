@@ -69,16 +69,14 @@ fn ground_for(reason: &str) -> (&'static str, &'static str, &'static str) {
             "Nutzungsbedingungen Abschnitt 4 (Belästigung, Mobbing, Bedrohung oder Stalking)",
             "Der Inhalt wurde als Belästigung oder Mobbing gemeldet.",
         ),
-        // ⚖️ Abschnitt 4 doesn't list these two explicitly yet; Abschnitt 5
-        // covers restricting reported content.
         "self_harm" => (
             "terms",
-            "Nutzungsbedingungen Abschnitt 5 (Maßnahmen nach Meldungen)",
+            "Nutzungsbedingungen Abschnitt 4 (Ermutigung oder Anleitung zu Selbstverletzung oder Suizid)",
             "Der Inhalt wurde als Darstellung von Selbstverletzung oder Suizid gemeldet.",
         ),
         "sexual_content" => (
             "terms",
-            "Nutzungsbedingungen Abschnitt 5 (Maßnahmen nach Meldungen)",
+            "Nutzungsbedingungen Abschnitt 4 (pornografische Inhalte, sexuelle Belästigung)",
             "Der Inhalt wurde als sexueller Inhalt gemeldet.",
         ),
         "spam" => (

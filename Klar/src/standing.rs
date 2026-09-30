@@ -186,9 +186,10 @@ pub const VIOLATIONS: &[Violation] = &[
        Gleichsetzung mit Tieren oder Ungeziefer, oder es wird zu Hass, Gewalt oder Ausgrenzung gegen sie aufgerufen.")
       .report(AuthorityReport::Recommended),
     v("extremism_glorifying", "extremism", Severity::Grave,
-      "Glorifying Nazism/fascism, extremist symbols", "Verherrlichung von NS/Faschismus, extremistische Symbole",
+      "Glorifying Nazism/fascism, illegal symbols", "Verherrlichung von NS/Faschismus, verbotene Symbole",
       "Verherrlichung, Verharmlosung oder Rechtfertigung des Nationalsozialismus, des Faschismus oder ihrer \
-       Verbrechen, oder Verwenden extremistischer Symbole oder Parolen, ohne Werbung für eine Organisation."),
+       Verbrechen, oder Verwenden von Kennzeichen verbotener oder verfassungswidriger Organisationen \
+       (§ 86a StGB) oder extremistischer Parolen, ohne Werbung für eine Organisation."),
     // Severe: recruiting for an extremist organisation and Holocaust denial
     // (§ 130(3) StGB) suggest a permanent suspension on the first case.
     v("extremism_promotion", "extremism", Severity::Severe,
@@ -196,10 +197,10 @@ pub const VIOLATIONS: &[Violation] = &[
       "Werbung für eine extremistische Organisation, Holocaustleugnung",
       "Werbung für, Unterstützung von oder Anwerbung für eine extremistische Organisation im Sinne von \
        Abschnitt 4, oder Leugnung des Holocaust.").report(AuthorityReport::Recommended),
-    v("violence_graphic", "violence", Severity::Minor, "Graphic violence without context",
+    v("violence_graphic", "violence", Severity::Moderate, "Graphic violence without context",
       "Drastische Gewaltdarstellung ohne Einordnung",
       "Verstörende Darstellung von Gewalt oder Verletzungen ohne dokumentarischen oder aufklärenden Zusammenhang."),
-    v("violence_glorifying", "violence", Severity::Moderate, "Glorifying violence", "Verherrlichung von Gewalt",
+    v("violence_glorifying", "violence", Severity::Serious, "Glorifying violence", "Verherrlichung von Gewalt",
       "Gewalt gegen Menschen oder Tiere wird gefeiert, verherrlicht oder als nachahmenswert dargestellt."),
     // Severe, like a concrete threat: terrorist content is a crime (§§ 89a,
     // 91, 129a StGB) and has to go within an hour of a removal order (EU
@@ -217,9 +218,13 @@ pub const VIOLATIONS: &[Violation] = &[
     v("self_harm_encouraging", "self_harm", Severity::Serious, "Encouraging or instructing self-harm",
       "Aufforderung oder Anleitung zu Selbstverletzung",
       "Andere werden zu Selbstverletzung oder Suizid ermutigt oder dazu angeleitet."),
-    v("sexual_explicit", "sexual_content", Severity::Minor, "Sexually explicit content",
-      "Sexuell expliziter Inhalt", "Pornografische oder sexuell explizite Darstellung."),
-    v("sexual_harassment", "sexual_content", Severity::Moderate, "Sexual harassment", "Sexuelle Belästigung",
+    v("sexual_explicit", "sexual_content", Severity::Moderate, "Sexually explicit content",
+      "Sexuell expliziter Inhalt",
+      "Pornografische oder sexuell explizite Darstellung. Nicht gemeint ist Nacktheit in Kunst, Aufklärung \
+       oder beim Stillen."),
+    // Grave: targeted sexual harassment drives exactly the people Klar wants
+    // to protect off the platform. A warning first, a ban on the second case.
+    v("sexual_harassment", "sexual_content", Severity::Grave, "Sexual harassment", "Sexuelle Belästigung",
       "Unerwünschte sexuelle Äußerungen oder Inhalte, die sich gegen eine bestimmte Person richten."),
     v("ncii_shared", "ncii", Severity::Serious, "Intimate images without consent",
       "Intime Aufnahmen ohne Einwilligung",
@@ -771,6 +776,9 @@ mod tests {
         let glorifying = violation("extremism_glorifying").unwrap().severity.points();
         assert_eq!(suggest(glorifying, true, false), Some(Measure::Warning), "hard, but not an instant ban");
         assert_eq!(suggest((2 * glorifying).min(MAX_SCORE), true, true), Some(Measure::Ban));
+        let harassment = violation("sexual_harassment").unwrap().severity.points();
+        assert_eq!(suggest(harassment, true, false), Some(Measure::Warning));
+        assert_eq!(suggest((2 * harassment).min(MAX_SCORE), true, true), Some(Measure::Ban));
         for id in ["bot_account", "terror_propaganda", "terror_threat", "extremism_promotion"] {
             assert_eq!(suggest(violation(id).unwrap().severity.points(), true, false), Some(Measure::Ban), "{id}");
         }

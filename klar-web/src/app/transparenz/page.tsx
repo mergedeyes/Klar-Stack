@@ -175,6 +175,85 @@ export default function TransparenzPage() {
         </section>
 
         <section className="mb-8">
+          <h2 className="mb-2 text-lg font-semibold">Moderation und Sicherheit</h2>
+          <p className="mb-2">
+            Klar soll ein sicherer Ort für alle sein. Was verboten ist, steht
+            in Abschnitt 4 der{" "}
+            <Link href="/nutzungsbedingungen" className="underline">Nutzungsbedingungen</Link>;
+            hier steht, wie wir damit umgehen.
+          </p>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Meldungen</h3>
+            <p>
+              Jeder kann Beiträge, Kommentare und Profile melden. Eine
+              einzelne Meldung entfernt nichts, mit zwei Ausnahmen: Bei
+              Darstellungen sexuellen Missbrauchs von Minderjährigen und
+              intimen Aufnahmen ohne Einwilligung wird der Inhalt sofort
+              ausgeblendet, weil jeder weitere Aufruf der gezeigten Person
+              schadet. Bei Gewalt, Selbstverletzung, sexuellen Inhalten und
+              Terrorismus erscheint er bis zur Prüfung hinter einem
+              Warnhinweis. Alles andere bleibt sichtbar, bis ein Mensch aus
+              unserem Team entschieden hat.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Entscheidungen und Punkte</h3>
+            <p>
+              Entfernen wir einen Inhalt, ordnen wir ihn einer festen Art von
+              Verstoß zu, jede mit einem schriftlichen Kriterium und einer
+              festen Punktzahl (Liste in Abschnitt 8 der
+              Nutzungsbedingungen). Weichen wir dabei vom Meldegrund ab oder
+              vergeben keine Punkte, müssen wir das intern begründen. Die
+              Punkte verfallen je nach Schwere nach 90 Tagen bis einem Jahr;
+              ab dem dritten Verstoß aus demselben Grund innerhalb von 30
+              Tagen zählen sie eineinhalbfach. Der Punktestand schlägt eine
+              Verwarnung oder Sperrung vor, entscheiden tut immer ein Mensch,
+              nie ein Automatismus. Zu jeder Entscheidung bekommst du eine
+              Begründung in der App und per E-Mail und kannst sechs Monate
+              lang widersprechen; deinen Punktestand siehst du unter
+              Einstellungen → Moderation.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Sperrungen</h3>
+            <p>
+              Ein gesperrtes Konto kann Klar nur noch lesen; Profil und Inhalte
+              sind für andere nicht sichtbar. Exportieren, Konto löschen und
+              widersprechen geht weiterhin. Ein dauerhaft gesperrtes Konto
+              löschen wir nach Ablauf der sechsmonatigen Widerspruchsfrist,
+              nach einer Erinnerung zwei Wochen vorher.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Übernommene Konten und Bots</h3>
+            <p>
+              Um übernommene Konten und Bots zu erkennen, achten wir auf
+              auffällige Muster in Daten, die ohnehin gespeichert sind, etwa
+              sehr viele Beiträge in wenigen Minuten oder immer denselben
+              Text. IP-Adressen oder Geräte erfassen wir dafür nicht. Ein
+              Mensch prüft dann die jüngste Aktivität des Kontos; von
+              Direktnachrichten sieht er nur die Anzahl, nie den Inhalt. Jede
+              solche Prüfung wird mit Grund protokolliert. Sieht ein Konto
+              übernommen aus, sperren wir es vorsorglich und schicken dir einen
+              Link, mit dem ein neues Passwort es wieder freigibt.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Behörden</h3>
+            <p>
+              Deutet ein Inhalt auf eine Straftat hin, die Leben oder
+              Sicherheit von Menschen gefährdet, etwa eine Anschlagsdrohung
+              oder Missbrauchsdarstellungen, müssen wir das den Behörden
+              melden (Art. 18 Digital Services Act). Andere möglicherweise
+              strafbare Inhalte, etwa Holocaustleugnung, können wir ebenfalls
+              zur Anzeige bringen. In beiden Fällen sichern wir den Inhalt als
+              Beweis. Darüber hinaus geben wir Daten nur heraus, wenn eine
+              Behörde sie rechtmäßig anfordert.
+            </p>
+          </div>
+        </section>
+
+        <section className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">Löschung</h2>
           <p>
             Löschst du dein Konto in den Einstellungen, werden dein Profil,
@@ -191,6 +270,8 @@ export default function TransparenzPage() {
             dein Konto löschst. War die Meldung unbegründet, löschen wir die
             Kopie sofort, sonst nach sechs Monaten, außer eine Behörde
             braucht sie länger.
+            Punkte aus Verstößen und die dazu gespeicherte Kopie des
+            entfernten Inhalts löschen wir, sobald die Punkte verfallen.
             In den nächtlichen Sicherungen können deine Daten noch bis zu 14
             Tage liegen, bevor diese automatisch gelöscht werden.
             Serverseitige Zugriffsprotokolle laufen unabhängig davon ohnehin

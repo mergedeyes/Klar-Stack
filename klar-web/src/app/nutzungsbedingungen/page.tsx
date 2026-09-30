@@ -63,6 +63,13 @@ export default function NutzungsbedingungenPage() {
 
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">4. Verbotene Inhalte und Verhalten</h2>
+          <p className="mb-2">
+            Klar soll ein sicherer Ort für alle sein, unabhängig von Herkunft,
+            Hautfarbe, Religion, Geschlecht, sexueller Orientierung,
+            geschlechtlicher Identität, Behinderung oder Alter. Deshalb gehen
+            wir gegen Hass, Gewalt, Sexualisierung und Belästigung
+            konsequenter vor als das Strafrecht allein verlangt.
+          </p>
           <p className="mb-2">Bei der Nutzung von Klar ist insbesondere untersagt:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>
@@ -72,6 +79,19 @@ export default function NutzungsbedingungenPage() {
               Politik und wir behalten uns vor, Behörden zu informieren)
             </li>
             <li>Belästigung, Mobbing, Bedrohung oder Stalking anderer Nutzer</li>
+            <li>
+              Sexuelle Belästigung, also unerwünschte sexuelle Äußerungen oder
+              Inhalte, die sich gegen eine bestimmte Person richten
+            </li>
+            <li>
+              Pornografische oder sexuell explizite Inhalte; nicht gemeint ist
+              Nacktheit in Kunst, Aufklärung oder beim Stillen
+            </li>
+            <li>
+              Drastische Gewaltdarstellungen ohne dokumentarischen oder
+              aufklärenden Zusammenhang und jede Verherrlichung von Gewalt
+            </li>
+            <li>Inhalte, die zu Selbstverletzung oder Suizid ermutigen oder dazu anleiten</li>
             <li>
               Hassrede und Entmenschlichung: Inhalte, die Menschen wegen ihrer
               Herkunft, Hautfarbe, Religion, Nationalität, ihres Geschlechts,
@@ -84,7 +104,9 @@ export default function NutzungsbedingungenPage() {
             <li>
               Verherrlichung, Verharmlosung oder Rechtfertigung des
               Nationalsozialismus, des Faschismus oder ihrer Verbrechen,
-              einschließlich der Leugnung oder Verharmlosung des Holocaust
+              einschließlich der Leugnung oder Verharmlosung des Holocaust,
+              sowie das Verwenden von Kennzeichen verbotener oder
+              verfassungswidriger Organisationen
             </li>
             <li>
               Werbung für, Unterstützung von oder Anwerbung für extremistische
@@ -194,10 +216,10 @@ export default function NutzungsbedingungenPage() {
                 <strong>Hassrede:</strong> Abwertende Verallgemeinerung über eine Gruppe (20); Entmenschlichung oder Hetze gegen eine Gruppe (40)
               </li>
               <li>
-                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, extremistische Symbole (60); Werbung für eine extremistische Organisation, Holocaustleugnung (100)
+                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, verbotene Symbole (60); Werbung für eine extremistische Organisation, Holocaustleugnung (100)
               </li>
               <li>
-                <strong>Gewalt:</strong> Drastische Gewaltdarstellung ohne Einordnung (5); Verherrlichung von Gewalt (20)
+                <strong>Gewalt:</strong> Drastische Gewaltdarstellung ohne Einordnung (20); Verherrlichung von Gewalt (40)
               </li>
               <li>
                 <strong>Terrorismus:</strong> Terroristische Propaganda (100); Konkrete Androhung eines Anschlags oder schwerer Gewalt (100)
@@ -206,7 +228,7 @@ export default function NutzungsbedingungenPage() {
                 <strong>Selbstverletzung:</strong> Eigene Krise (0); Aufforderung oder Anleitung zu Selbstverletzung (40)
               </li>
               <li>
-                <strong>Sexuelle Inhalte:</strong> Sexuell expliziter Inhalt (5); Sexuelle Belästigung (20)
+                <strong>Sexuelle Inhalte:</strong> Sexuell expliziter Inhalt (20); Sexuelle Belästigung (60)
               </li>
               <li>
                 <strong>Intime Aufnahmen:</strong> Intime Aufnahmen ohne Einwilligung (40); Erpressung mit intimen Aufnahmen (100)
