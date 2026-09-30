@@ -53,6 +53,8 @@ TODO.md
 
 # Testing
 scripts
+# ...but not the scripts CI runs.
+!.github/scripts/
 # Playwright output (klar-web/e2e)
 /klar-web/test-results
 /klar-web/playwright-report
