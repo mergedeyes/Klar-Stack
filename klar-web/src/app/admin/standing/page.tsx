@@ -335,9 +335,9 @@ export default function AdminStandingPage() {
         </form>
 
         {looked && (
-          <div className="mb-6">
+          <section aria-label="Looked-up account" className="mb-6">
             <StandingCard key={looked.user_id} initial={looked} onError={setError} />
-          </div>
+          </section>
         )}
 
         <h2 className="mb-2 text-sm font-semibold">Needs attention</h2>
