@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
 
   if (submitted) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CardTitle className="text-2xl">Check your email</CardTitle>
@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Forgot password?</CardTitle>

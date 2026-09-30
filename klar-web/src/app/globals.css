@@ -124,6 +124,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Pages that must fit the screen exactly instead of scrolling as a whole
+     (chats: its message list scrolls inside) mark their root with
+     data-fill-viewport; the body then stops growing past the screen. */
+  body:has([data-fill-viewport]) {
+    height: 100dvh;
+  }
   html {
     @apply font-sans;
   }

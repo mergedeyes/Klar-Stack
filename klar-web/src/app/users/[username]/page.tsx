@@ -295,7 +295,7 @@ export default function ProfilePage() {
 
   if (loading || authLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="flex-1 bg-background">
         <div className="mx-auto max-w-3xl animate-pulse px-4 pt-6">
           <div className="mb-6 flex items-center gap-5">
             <div className="h-24 w-24 md:h-32 md:w-32 rounded-full bg-muted" />
@@ -317,7 +317,7 @@ export default function ProfilePage() {
   if (!profile) return null;
 
   return (
-    <div className="min-h-screen bg-background pb-12">
+    <div className="flex-1 bg-background pb-12">
       {/* Own profile uses the shared primary nav; viewing someone else uses a back-button header */}
       {isMe ? (
         <TopNav active="profile" onPostCreated={refreshPosts} />

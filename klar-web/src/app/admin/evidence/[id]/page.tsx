@@ -175,7 +175,7 @@ export default function EvidenceDetailPage() {
   const isCsam = detail?.reasons.includes("csam") ?? false;
 
   return (
-    <div className="min-h-screen bg-background pb-12">
+    <div className="flex-1 bg-background pb-12">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton aria-label="Back" />
         <span className="flex-1 font-semibold">Evidence record</span>

@@ -76,7 +76,7 @@ export default function RightsClaimPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex-1 bg-background">
       <main className="mx-auto max-w-xl px-4 py-8">
         <h1 className="mb-2 text-2xl font-bold">Rechteverletzung melden</h1>
 

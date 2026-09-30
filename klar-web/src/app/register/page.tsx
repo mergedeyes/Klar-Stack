@@ -91,7 +91,7 @@ export default function RegisterPage() {
   // After registration — show email verification prompt
   if (registered) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CardTitle className="text-2xl">Check your email</CardTitle>
@@ -118,7 +118,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Create your account</CardTitle>

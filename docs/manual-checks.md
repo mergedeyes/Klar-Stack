@@ -15,6 +15,7 @@ realistic data volumes for the paging checks.
 
 - [ ] Works at phone width (about 375 px): no horizontal scroll, nothing hidden behind the top nav or the browser's address bar
 - [ ] Works in light and dark mode
+- [ ] A short page doesn't scroll and the footer sits on the bottom edge; on a long page the footer stays pinned while scrolling and nothing ends up hidden behind it
 - [ ] Loading state appears (skeleton or spinner) and is replaced by content, an empty state or an error, never left spinning
 - [ ] Browser console shows no new errors or React warnings
 
