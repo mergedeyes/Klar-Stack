@@ -2,6 +2,7 @@ use aws_sdk_s3::{config::Credentials, Client as S3Client};
 use aws_sdk_s3::primitives::ByteStream;
 use reqwest::Client as HttpClient;
 use crate::errors::AppError;
+use crate::evidence_crypto::EvidenceCipher;
 
 // ─── DER WRAPPER ─────────────────────────────────────────────────────────────
 // Diese Struktur wird im AppState gespeichert. Sie leitet jeden Aufruf
@@ -119,19 +120,28 @@ impl Storage {
 // endpoint, which logs every access. It gets its own credentials so a
 // leaked media key can't reach it either.
 //
+// Every file is encrypted before upload (evidence_crypto.rs).
+//
 // Variables (production, S3):
 //   EVIDENCE_S3_STORAGE_BUCKET=<evidence storage zone>
 //   EVIDENCE_S3_STORAGE_SECRET_ACCESS_KEY=<its password>
+//   EVIDENCE_ENCRYPTION_KEY=<random secret, 32+ characters>
 //   EVIDENCE_S3_STORAGE_ENDPOINT   (optional, defaults to S3_STORAGE_ENDPOINT)
 // Local development (STORAGE_PROVIDER=local) writes to
-// EVIDENCE_LOCAL_STORAGE_DIR, default "./evidence".
+// EVIDENCE_LOCAL_STORAGE_DIR, default "./evidence", and falls back to a
+// fixed development key when EVIDENCE_ENCRYPTION_KEY isn't set.
 //
-// When it isn't configured, nothing breaks: preserved files stay at their
-// original key and the evidence sweeper copies them once it is.
+// When it isn't configured (including a missing or invalid key), nothing
+// breaks: preserved files stay at their original key and the evidence
+// sweeper copies them once it is.
 #[derive(Clone)]
 pub struct EvidenceStorage {
-    backend: Option<Backend>,
+    backend: Option<(Backend, EvidenceCipher)>,
 }
+
+/// Only for STORAGE_PROVIDER=local, so development works without setup.
+/// Never used with a real storage zone.
+const DEV_EVIDENCE_KEY: &str = "klar-local-development-evidence-key-not-secret";
 
 impl EvidenceStorage {
     pub async fn new() -> Self {
@@ -139,6 +149,8 @@ impl EvidenceStorage {
             .unwrap_or_else(|_| "bunny".to_string())
             .to_lowercase();
         let non_empty = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+
+        let secret = non_empty("EVIDENCE_ENCRYPTION_KEY");
 
         let backend = if provider == "local" {
             let root = non_empty("EVIDENCE_LOCAL_STORAGE_DIR").unwrap_or_else(|| "./evidence".to_string());
@@ -171,6 +183,36 @@ impl EvidenceStorage {
             }
         };
 
+        let cipher = match (&backend, secret) {
+            (None, _) => None,
+            (Some(_), Some(secret)) => match EvidenceCipher::from_secret(&secret) {
+                Ok(cipher) => Some(cipher),
+                Err(e) => {
+                    tracing::error!("{}; evidence storage disabled", e);
+                    None
+                }
+            },
+            (Some(Backend::Local(_)), None) => {
+                tracing::warn!("EVIDENCE_ENCRYPTION_KEY not set; using the fixed local development key");
+                EvidenceCipher::from_secret(DEV_EVIDENCE_KEY).ok()
+            }
+            (Some(_), None) => {
+                tracing::error!(
+                    "EVIDENCE_ENCRYPTION_KEY is not set: evidence storage disabled until it is \
+                     (reported content keeps its original files meanwhile)"
+                );
+                None
+            }
+        };
+
+        let backend = match (backend, cipher) {
+            (Some(backend), Some(cipher)) => {
+                tracing::info!("Evidence storage ready (encryption key {})", cipher.fingerprint_hex());
+                Some((backend, cipher))
+            }
+            _ => None,
+        };
+
         Self { backend }
     }
 
@@ -178,28 +220,35 @@ impl EvidenceStorage {
         self.backend.is_some()
     }
 
-    fn backend(&self) -> Result<&Backend, AppError> {
+    fn backend(&self) -> Result<&(Backend, EvidenceCipher), AppError> {
         self.backend.as_ref().ok_or_else(|| AppError::internal("Evidence storage is not configured"))
     }
 
+    /// Encrypts, then uploads. The storage key is bound into the
+    /// ciphertext, so the file only decrypts under this key.
     pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), AppError> {
-        match self.backend()? {
-            Backend::S3(s) => s.save(key, data).await,
-            Backend::Bunny(b) => b.save(key, data).await,
-            Backend::Local(l) => l.save(key, data).await,
+        let (backend, cipher) = self.backend()?;
+        let sealed = cipher.encrypt(key, data)?;
+        match backend {
+            Backend::S3(s) => s.save(key, &sealed).await,
+            Backend::Bunny(b) => b.save(key, &sealed).await,
+            Backend::Local(l) => l.save(key, &sealed).await,
         }
     }
 
+    /// Downloads, then decrypts and verifies.
     pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
-        match self.backend()? {
-            Backend::S3(s) => s.get(key).await,
-            Backend::Bunny(b) => b.get(key).await,
-            Backend::Local(l) => l.get(key).await,
-        }
+        let (backend, cipher) = self.backend()?;
+        let sealed = match backend {
+            Backend::S3(s) => s.get(key).await?,
+            Backend::Bunny(b) => b.get(key).await?,
+            Backend::Local(l) => l.get(key).await?,
+        };
+        cipher.decrypt(key, &sealed)
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), AppError> {
-        match self.backend()? {
+        match &self.backend()?.0 {
             Backend::S3(s) => s.delete(key).await,
             Backend::Bunny(b) => b.delete(key).await,
             Backend::Local(l) => l.delete(key).await,

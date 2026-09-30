@@ -39,6 +39,9 @@ axum-extra = { version = "0.10", features = ["typed-header"] }
 image = "0.25"
 # Secure random token generation for email verification & password reset
 rand = "0.9"
+# AES-256-GCM + HKDF for evidence files (evidence_crypto.rs); already in the
+# tree through rustls.
+ring = "0.17"
 # Hex encoding for tokens
 hex = "0.4"
 # SHA-256 for refresh token hashing (fast lookup, not password-level security needed)
