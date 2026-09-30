@@ -78,7 +78,7 @@
 - Statements of reasons (DSA Art. 17): every removal, automatic hide or warning of someone's content is recorded with its ground (law or Terms section), explanation and whether it was automated, and delivered in the app and by email (`/moderation/decisions/:id`). Statements for CSAM are held back until an admin releases them. Affected users can object once within six months; admins answer at `/admin/moderation`, and an accepted objection lifts a hide or warning
 - Reporters are told the outcome of their reports (Art. 16) and see them at `/moderation`
 - Reports and evidence still undecided after 30 days are marked overdue and listed first
-- *Not yet built:* UrhDaG rights-holder copyright takedown portal
+- Rights claims (copyright, trademark, other rights): a public form at `/rights` (footer link "Rechteverletzung melden"), usable without an account, with a private status link for the claimant (token hashed at rest). Admins triage, ask for evidence, accept or decline at `/admin/rights`. Accepting hides the post (restorable) and sends the uploader a statement of reasons without the claimant's identity; a successful objection restores it and tells the claimant. Claims are deleted three years after the decision
 
 ## Privacy & Compliance
 - Impressum, Datenschutzerklärung (privacy policy), Nutzungsbedingungen (ToS), and a plain-language **Transparenz** page explaining data handling in everyday terms
@@ -116,4 +116,4 @@
 - Before merging a change to how the app behaves, go through the matching sections of [docs/manual-checks.md](docs/manual-checks.md) — the PR template asks for them in the test plan
 
 ---
-*Not yet built / explicitly deferred:* UrhDaG rights-holder copyright portal, birth-date/16+ age verification enforcement, uptime monitoring/alerting for the app itself (only backups are monitored), notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).
+*Not yet built / explicitly deferred:* claims against comments or profiles (posts only for now), UrhDaG-specific pre-upload obligations rights-holder copyright portal, birth-date/16+ age verification enforcement, uptime monitoring/alerting for the app itself (only backups are monitored), notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).

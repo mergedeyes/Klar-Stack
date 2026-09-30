@@ -279,13 +279,13 @@ pub async fn resolve_objection(
 
     let mut tx = state.db.begin().await.db_err("Database error")?;
 
-    let decision = sqlx::query_as::<_, (String, Uuid, String, Option<Uuid>, bool)>(
+    let decision = sqlx::query_as::<_, (String, Uuid, String, Option<Uuid>, bool, Option<Uuid>)>(
         r#"
         UPDATE moderation_decisions
         SET objection_status = $2, objection_response = $3, objection_resolved_at = NOW(), objection_resolved_by = $4,
             lifted_at = CASE WHEN $5 AND restriction != 'removed' THEN COALESCE(lifted_at, NOW()) ELSE lifted_at END
         WHERE id = $1 AND objection_status = 'pending'
-        RETURNING target_type::text, target_id, restriction, affected_user_id, superseded_by IS NULL
+        RETURNING target_type::text, target_id, restriction, affected_user_id, superseded_by IS NULL, rights_claim_id
         "#,
     )
     .bind(decision_id)
@@ -298,7 +298,7 @@ pub async fn resolve_objection(
     .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("No pending objection for this decision"))?;
 
-    let (target_type, target_id, restriction, affected_user_id, current) = decision;
+    let (target_type, target_id, restriction, affected_user_id, current, rights_claim_id) = decision;
 
     // An accepted objection against a hide or warning makes the content
     // visible again, unless a later decision (a removal) replaced it.
@@ -310,6 +310,11 @@ pub async fn resolve_objection(
             .execute(&mut *tx)
             .await
             .db_err("Database error")?;
+
+        // A post hidden because of a rights claim is back: tell the claimant.
+        if let Some(claim_id) = rights_claim_id {
+            crate::handlers::rights::mark_restored(&mut tx, &state, claim_id, auth.user_id).await?;
+        }
     }
 
     let notices = match affected_user_id {

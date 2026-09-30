@@ -230,7 +230,9 @@ pub async fn create_report(
             automated: true,
             reason: &input.reason,
             decided_by: None,
-            report_id: report.id,
+            report_id: Some(report.id),
+            rights_claim_id: None,
+            detail: None,
         }).await?,
         None => PendingNotices::default(),
     };
@@ -278,7 +280,7 @@ pub async fn create_report(
 /// dismissed, and because illegal content must be preserved as evidence
 /// until the report is resolved. Admin review and the owner's own view
 /// keep working, since they resolve whatever keys media_assets holds.
-async fn rotate_post_media_keys(state: &AppState, post_id: Uuid) -> Result<(), AppError> {
+pub async fn rotate_post_media_keys(state: &AppState, post_id: Uuid) -> Result<(), AppError> {
     let assets = sqlx::query_as::<_, (Uuid, String, String, String)>(
         "SELECT id, thumb_key, medium_key, full_key FROM media_assets WHERE post_id = $1"
     )
@@ -569,7 +571,9 @@ pub async fn remove_reported_content(
         automated: false,
         reason: &reason,
         decided_by: Some(auth.user_id),
-        report_id,
+        report_id: Some(report_id),
+        rights_claim_id: None,
+        detail: None,
     }).await?;
 
     // Storage objects can't take part in the transaction, so their keys

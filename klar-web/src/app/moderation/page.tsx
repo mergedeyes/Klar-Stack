@@ -11,7 +11,7 @@ import { REASON_LABELS } from "@/lib/moderation";
 
 const RESTRICTION_LABELS: Record<ModerationDecision["restriction"], string> = {
   removed: "Removed",
-  hidden: "Temporarily hidden",
+  hidden: "Hidden",
   flagged: "Shown with a warning",
 };
 

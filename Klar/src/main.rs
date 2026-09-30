@@ -170,6 +170,7 @@ async fn main() {
         redis: redis_conn_manager,
     };
 
+    handlers::rights::spawn_cleanup(state.db.clone());
     evidence::spawn_sweeper(state.clone());
     handlers::feedback::spawn_cleanup(state.db.clone());
 

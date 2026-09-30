@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Archive, Clock, Scale, ShieldAlert, Trash2, X } from "lucide-react";
+import { Archive, Clock, FileWarning, Scale, ShieldAlert, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { adminReportsApi, type AdminReport } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,9 @@ export default function AdminReportsPage() {
       <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton aria-label="Back" />
         <span className="flex-1 font-semibold">Reports</span>
+        <Link href="/admin/rights" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <FileWarning size={16} /> Claims
+        </Link>
         <Link href="/admin/moderation" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <Scale size={16} /> Objections
         </Link>

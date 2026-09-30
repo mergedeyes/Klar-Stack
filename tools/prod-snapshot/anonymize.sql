@@ -43,6 +43,21 @@ UPDATE moderation_decisions SET
     content_excerpt    = CASE WHEN content_excerpt    IS NULL THEN NULL ELSE 'Content excerpt' END,
     objection          = CASE WHEN objection          IS NULL THEN NULL ELSE 'Objection text' END,
     objection_response = CASE WHEN objection_response IS NULL THEN NULL ELSE 'Objection response' END;
+-- Rights claims: claimant details and everything they typed.
+UPDATE rights_claims SET
+    claimant_name         = 'Claimant',
+    claimant_email        = 'claimant_' || left(id::text, 8) || '@example.invalid',
+    claimant_organization = CASE WHEN claimant_organization IS NULL THEN NULL ELSE 'Organization' END,
+    represented_party     = CASE WHEN represented_party     IS NULL THEN NULL ELSE 'Rightsholder' END,
+    work_description      = 'Work description',
+    ownership_basis       = 'Ownership basis',
+    original_url          = CASE WHEN original_url      IS NULL THEN NULL ELSE 'https://example.invalid/original' END,
+    evidence_request      = CASE WHEN evidence_request  IS NULL THEN NULL ELSE 'Evidence request' END,
+    claimant_response     = CASE WHEN claimant_response IS NULL THEN NULL ELSE 'Claimant response' END,
+    decision_reason       = CASE WHEN decision_reason   IS NULL THEN NULL ELSE 'Decision reason' END,
+    -- Real status links must not open anything in a copy.
+    status_token_hash     = md5(random()::text);
+UPDATE rights_claim_events SET note = CASE WHEN note IS NULL THEN NULL ELSE 'Note' END;
 
 -- Uploaded images are personal data; point every asset at one placeholder
 -- key (files aren't downloaded anyway, this just avoids real CDN URLs).
@@ -88,6 +103,14 @@ DECLARE
         -- emptied above
         'refresh_tokens.token_hash', 'refresh_tokens.device_info',
         'email_tokens.token', 'email_tokens.token_type',
+        'rights_claims.claimant_name', 'rights_claims.claimant_email',
+        'rights_claims.claimant_organization', 'rights_claims.represented_party',
+        'rights_claims.work_description', 'rights_claims.ownership_basis', 'rights_claims.original_url',
+        'rights_claims.evidence_request', 'rights_claims.claimant_response', 'rights_claims.decision_reason',
+        'rights_claim_events.note',
+        -- content_url points at our own posts; the rest are vocabularies / hashes
+        'rights_claims.content_url', 'rights_claims.claim_type', 'rights_claims.target_type',
+        'rights_claims.status', 'rights_claims.status_token_hash', 'rights_claim_events.action',
         'evidence_records.target_type', 'evidence_records.deletion_trigger',
         'evidence_records.decision', 'evidence_records.decision_note',
         'evidence_versions.cause', 'evidence_versions.content',

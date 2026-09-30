@@ -16,3 +16,4 @@ pub mod chats;
 pub mod feed;
 pub mod feedback;
 pub mod reports;
+pub mod rights;

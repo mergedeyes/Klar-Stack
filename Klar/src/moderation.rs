@@ -85,6 +85,11 @@ fn ground_for(reason: &str) -> (&'static str, &'static str, &'static str) {
             "Nutzungsbedingungen Abschnitt 4 (Spam)",
             "Der Inhalt wurde als Spam gemeldet.",
         ),
+        "copyright" => (
+            "illegal",
+            "§ 97 UrhG (Verletzung von Urheber- oder verwandten Schutzrechten); Nutzungsbedingungen Abschnitt 3",
+            "Eine Person, die Rechte an einem Werk geltend macht, hat gemeldet, dass der Inhalt dieses Werk ohne Erlaubnis verwendet.",
+        ),
         "impersonation" => (
             "terms",
             "Nutzungsbedingungen Abschnitt 4 (Vortäuschen falscher Identitäten)",
@@ -98,9 +103,13 @@ fn ground_for(reason: &str) -> (&'static str, &'static str, &'static str) {
     }
 }
 
-fn restriction_text(restriction: Restriction) -> &'static str {
+fn restriction_text(restriction: Restriction, automated: bool) -> &'static str {
     match restriction {
         Restriction::Removed => "Unser Team hat den Inhalt geprüft und entfernt.",
+        Restriction::Hidden if !automated => {
+            "Unser Team hat die Meldung geprüft und den Inhalt ausgeblendet. Er wird wiederhergestellt, \
+             wenn dein Widerspruch Erfolg hat."
+        }
         Restriction::Hidden => {
             "Der Inhalt wurde nach der Meldung automatisch ausgeblendet, bis unser Team ihn geprüft hat."
         }
@@ -198,7 +207,11 @@ pub struct NewDecision<'a> {
     pub automated: bool,
     pub reason: &'a str,
     pub decided_by: Option<Uuid>,
-    pub report_id: Uuid,
+    /// The report behind it, or the rights claim (rights.rs).
+    pub report_id: Option<Uuid>,
+    pub rights_claim_id: Option<Uuid>,
+    /// Appended to the explanation, e.g. which work a rights claim is about.
+    pub detail: Option<String>,
 }
 
 /// Records a restriction of a post or comment, inside the transaction that
@@ -228,9 +241,9 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
 
     let repeat = sqlx::query_scalar::<_, Uuid>(
         r#"
-        UPDATE moderation_decisions SET report_ids = array_append(report_ids, $4)
+        UPDATE moderation_decisions SET report_ids = CASE WHEN $4::uuid IS NULL THEN report_ids ELSE array_append(report_ids, $4) END
         WHERE target_type = $1::report_target_type AND target_id = $2 AND restriction = $3
-          AND lifted_at IS NULL AND superseded_by IS NULL
+          AND lifted_at IS NULL AND superseded_by IS NULL AND $5::uuid IS NULL
         RETURNING id
         "#,
     )
@@ -238,6 +251,7 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
     .bind(d.target_id)
     .bind(d.restriction.as_str())
     .bind(d.report_id)
+    .bind(d.rights_claim_id)
     .fetch_optional(&mut *tx)
     .await
     .db_err("Database error")?;
@@ -246,16 +260,20 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
     }
 
     let (ground_type, ground, reason_text) = ground_for(d.reason);
-    let explanation = format!("{} {}", reason_text, restriction_text(d.restriction));
+    let mut explanation = format!("{} {}", reason_text, restriction_text(d.restriction, d.automated));
+    if let Some(detail) = &d.detail {
+        explanation = format!("{} {}", explanation, detail);
+    }
     let deliver = !held_back(d.reason);
 
     let decision_id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO moderation_decisions
             (target_type, target_id, affected_user_id, restriction, automated, reason,
-             ground_type, ground, explanation, content_excerpt, decided_by, report_ids, delivered_at)
-        VALUES ($1::report_target_type, $2, $3, $4, $5, $6::report_reason, $7, $8, $9, $10, $11, ARRAY[$12]::uuid[],
-                CASE WHEN $13 THEN NOW() END)
+             ground_type, ground, explanation, content_excerpt, decided_by, report_ids, delivered_at, rights_claim_id)
+        VALUES ($1::report_target_type, $2, $3, $4, $5, $6::report_reason, $7, $8, $9, $10, $11,
+                CASE WHEN $12::uuid IS NULL THEN '{}'::uuid[] ELSE ARRAY[$12]::uuid[] END,
+                CASE WHEN $13 THEN NOW() END, $14)
         RETURNING id
         "#,
     )
@@ -272,6 +290,7 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
     .bind(d.decided_by)
     .bind(d.report_id)
     .bind(deliver)
+    .bind(d.rights_claim_id)
     .fetch_one(&mut *tx)
     .await
     .db_err_ctx("Failed to record moderation decision", "Database error")?;
@@ -427,7 +446,22 @@ pub async fn export_for(conn: &mut PgConnection, user_id: Uuid) -> Result<serde_
     .await
     .db_err_ctx("Data export query failed", "Database error")?;
 
-    Ok(json!({ "moderation_decisions": decisions, "reports_filed": reports }))
+    // Rights claims filed while signed in (the form also works without an
+    // account; those aren't linked to anyone).
+    let rights_claims = sqlx::query_scalar::<_, serde_json::Value>(
+        r#"
+        SELECT jsonb_build_object('id', id, 'claim_type', claim_type, 'claimant_name', claimant_name,
+            'claimant_email', claimant_email, 'content_url', content_url, 'work_description', work_description,
+            'ownership_basis', ownership_basis, 'status', status, 'created_at', created_at, 'decided_at', decided_at)
+        FROM rights_claims WHERE claimant_user_id = $1 ORDER BY created_at
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&mut *conn)
+    .await
+    .db_err_ctx("Data export query failed", "Database error")?;
+
+    Ok(json!({ "moderation_decisions": decisions, "reports_filed": reports, "rights_claims_filed": rights_claims }))
 }
 
 #[cfg(test)]
@@ -448,7 +482,7 @@ mod tests {
     #[test]
     fn every_reason_has_a_ground() {
         for reason in ["spam", "harassment", "hate_speech", "violence", "self_harm",
-                       "sexual_content", "csam", "impersonation", "other"] {
+                       "sexual_content", "csam", "impersonation", "other", "copyright"] {
             let (ground_type, ground, text) = ground_for(reason);
             assert!(ground_type == "illegal" || ground_type == "terms");
             assert!(!ground.is_empty() && !text.is_empty());

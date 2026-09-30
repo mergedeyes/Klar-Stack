@@ -14,7 +14,7 @@ import { SmartBackButton } from "@/components/SmartBackButton";
 
 const RESTRICTION_DE: Record<ModerationDecision["restriction"], string> = {
   removed: "Entfernt",
-  hidden: "Vorübergehend ausgeblendet",
+  hidden: "Ausgeblendet",
   flagged: "Nur mit Warnhinweis angezeigt",
 };
 

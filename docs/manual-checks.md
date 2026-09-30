@@ -80,3 +80,9 @@ loads more as you scroll.
 
 - [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
 - [ ] If the change adds a sub-processor or changes what data is kept, the Datenschutz and Transparenz pages say so
+
+## Rights claims
+
+- [ ] Signed out, "Rechteverletzung melden" in the footer opens the form (not the passcode gate) and a claim can be submitted; the confirmation email arrives with a working status link
+- [ ] An evidence request reaches the claimant by email and can be answered on the status page
+- [ ] Accepting hides the post; its author gets a statement naming the work, not the claimant; a successful objection makes the post visible again and emails the claimant
