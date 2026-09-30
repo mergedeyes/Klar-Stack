@@ -71,7 +71,10 @@ test("a locked account is signed out, the login explains the lock, and a new pas
   const entry = adminPage.locator("div.rounded-xl").filter({ hasText: `@${victim.username}` }).filter({ hasText: "Posted 40 crypto links" });
   await expect(entry.getByText("Unlocked by new password")).toBeVisible();
   await entry.getByLabel(/Assessment/).fill("Only public posts affected; low risk, not reported.");
+  // Wait for the save itself: the button is disabled while saving too.
+  const saved = adminPage.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/admin/locks/"));
   await entry.getByRole("button", { name: "Save assessment" }).click();
+  expect((await saved).ok()).toBeTruthy();
   await adminPage.reload();
   await expect(entry.getByLabel(/Assessment/)).toHaveValue("Only public posts affected; low risk, not reported.");
 });
