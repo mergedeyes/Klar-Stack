@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, request as playwrightRequest, type APIRequestContext, type Page } from "@playwright/test";
 
 // Test data is created through the API directly; the browser only sees
 // the result. Every test makes its own users and posts, so tests don't
@@ -29,15 +29,23 @@ function clientIp(): string {
   return `10.${n()}.${n()}.${n()}`;
 }
 
-export async function signUp(request: APIRequestContext, prefix = "user"): Promise<Session> {
+/** Registers through a context of its own: sign-up sets auth cookies, and
+ * the backend reads the cookie before the Authorization header, so a
+ * shared context would make every later call act as the newest user. */
+export async function signUp(prefix = "user"): Promise<Session> {
   const username = uniqueName(prefix);
-  const res = await request.post(`${API}/auth/register`, {
-    headers: { "X-Forwarded-For": clientIp() },
-    data: { username, email: `${username}@example.test`, password: "test-password-123", accept_terms: true },
-  });
-  expect(res.ok(), await res.text()).toBeTruthy();
-  const body = await res.json();
-  return { id: body.user.id, username, access_token: body.access_token, refresh_token: body.refresh_token };
+  const context = await playwrightRequest.newContext();
+  try {
+    const res = await context.post(`${API}/auth/register`, {
+      headers: { "X-Forwarded-For": clientIp() },
+      data: { username, email: `${username}@example.test`, password: "test-password-123", accept_terms: true },
+    });
+    expect(res.ok(), await res.text()).toBeTruthy();
+    const body = await res.json();
+    return { id: body.user.id, username, access_token: body.access_token, refresh_token: body.refresh_token };
+  } finally {
+    await context.dispose();
+  }
 }
 
 function auth(session: Session) {
