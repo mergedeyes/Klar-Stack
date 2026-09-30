@@ -5,6 +5,8 @@ on:
     paths:
       - "klar-web/**"
       - ".github/workflows/frontend.yml"
+      # The deploy publishes legal notices with it.
+      - ".github/scripts/legal_notices.py"
 
 permissions:
   contents: read
