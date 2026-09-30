@@ -53,6 +53,12 @@ UPDATE post_events SET metadata = NULL WHERE metadata IS NOT NULL;
 -- ── Secrets ──────────────────────────────────────────────────────────────────
 TRUNCATE refresh_tokens, email_tokens;
 
+-- ── Evidence ─────────────────────────────────────────────────────────────────
+-- Preserved evidence of possibly illegal content (evidence.rs) never leaves
+-- production: not anonymized, dropped entirely. Its files live in their own
+-- storage zone, which the snapshot doesn't touch.
+TRUNCATE evidence_files, evidence_versions, evidence_events, evidence_records;
+
 -- ── Guard: every text-like column must be reviewed ───────────────────────────
 DO $$
 DECLARE
@@ -68,6 +74,12 @@ DECLARE
         -- emptied above
         'refresh_tokens.token_hash', 'refresh_tokens.device_info',
         'email_tokens.token', 'email_tokens.token_type',
+        'evidence_records.target_type', 'evidence_records.deletion_trigger',
+        'evidence_records.decision', 'evidence_records.decision_note',
+        'evidence_versions.cause', 'evidence_versions.content',
+        'evidence_files.kind', 'evidence_files.source_key', 'evidence_files.storage_key',
+        'evidence_files.content_type', 'evidence_files.sha256',
+        'evidence_events.action', 'evidence_events.reason', 'evidence_events.details',
         -- not personal data (fixed vocabularies / bookkeeping)
         'comments.moderation_status', 'posts.moderation_status',
         'notifications.type', 'post_events.event_type',
