@@ -112,7 +112,7 @@ export default function DiscoveryPage() {
   const showSkeletons = authLoading || loading;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex-1 bg-background">
       <TopNav active="discovery" onPostCreated={refreshDiscovery} />
 
       <main className="mx-auto max-w-3xl px-4">

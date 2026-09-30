@@ -43,7 +43,7 @@ export default function WelcomePage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100dvh-3rem)] flex-col items-center justify-center bg-background px-4 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center bg-background px-4 text-center">
       <div className="w-full max-w-sm">
         <h1 className="mb-3 text-3xl font-bold tracking-tight">Klar</h1>
         <p className="mb-8 text-sm leading-relaxed text-muted-foreground">

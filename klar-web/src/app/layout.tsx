@@ -45,10 +45,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={geist.className}>
+      {/* A full-height column: the page fills whatever the banner and the
+          footer leave, so a short page ends exactly at the screen's bottom
+          edge and a long one scrolls with the footer pinned below it. */}
+      <body className={`${geist.className} flex min-h-dvh flex-col`}>
         <AuthProvider>
           <VerifyEmailBanner />
-          <NotificationsProvider>{children}</NotificationsProvider>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <NotificationsProvider>{children}</NotificationsProvider>
+          </div>
           {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
           <Footer />
         </AuthProvider>

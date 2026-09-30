@@ -43,7 +43,7 @@ function VerifyEmailContent() {
 
   if (state === "loading") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardContent className="pt-8 pb-6">
             <Loader2 size={40} className="mx-auto mb-4 animate-spin text-muted-foreground" />
@@ -56,7 +56,7 @@ function VerifyEmailContent() {
 
   if (state === "success") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CheckCircle size={40} className="mx-auto mb-2 text-green-500" />
@@ -77,7 +77,7 @@ function VerifyEmailContent() {
 
   if (state === "expired") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <XCircle size={40} className="mx-auto mb-2 text-destructive" />
@@ -102,7 +102,7 @@ function VerifyEmailContent() {
 
   // invalid / no token
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm text-center">
         <CardHeader>
           <XCircle size={40} className="mx-auto mb-2 text-destructive" />
@@ -131,7 +131,7 @@ export default function VerifyEmailPage() {
     // Als Fallback nutzen wir genau das gleiche Loading-UI wie oben!
     <Suspense 
       fallback={
-        <main className="flex min-h-screen items-center justify-center bg-background p-4">
+        <main className="flex flex-1 items-center justify-center bg-background p-4">
           <Card className="w-full max-w-sm text-center">
             <CardContent className="pt-8 pb-6">
               <Loader2 size={40} className="mx-auto mb-4 animate-spin text-muted-foreground" />

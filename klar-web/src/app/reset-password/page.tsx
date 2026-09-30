@@ -53,7 +53,7 @@ function ResetPasswordForm() {
 
   if (success) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CardTitle className="text-2xl">Password reset!</CardTitle>
@@ -67,7 +67,7 @@ function ResetPasswordForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Reset your password</CardTitle>
@@ -150,7 +150,7 @@ export default function ResetPasswordPage() {
     // Der Fallback hält das Layout stabil, während die URL ausgelesen wird
     <Suspense 
       fallback={
-        <main className="flex min-h-screen items-center justify-center bg-background p-4">
+        <main className="flex flex-1 items-center justify-center bg-background p-4">
           <div className="text-muted-foreground">Loading...</div>
         </main>
       }

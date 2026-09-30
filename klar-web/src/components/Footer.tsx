@@ -9,8 +9,14 @@ export default function Footer() {
   const pathname = usePathname();
 
   return (
-    <footer className="border-t border-border py-4 px-4 text-center text-xs text-muted-foreground">
-      <nav className="flex items-center justify-center gap-4 flex-wrap">
+    // Sticky: pinned to the screen's bottom edge while a long page scrolls
+    // behind it, and resting below the last item at the end, so it never
+    // covers content for good. One line of fixed height; on narrow screens
+    // the links scroll sideways instead of wrapping into a taller bar; the
+    // faded right edge hints at that, and the extra right padding lets the
+    // last link scroll clear of the fade.
+    <footer className="sticky bottom-0 z-20 h-10 shrink-0 overflow-x-auto border-t border-border bg-background/80 text-xs text-muted-foreground backdrop-blur max-sm:[mask-image:linear-gradient(to_right,black_80%,transparent)]">
+      <nav className="mx-auto flex h-full w-max items-center gap-3 whitespace-nowrap px-4 max-sm:pr-16">
         {/* Signed-in only (sending needs an account). Passes the current
             page along, so a bug report says where it happened. */}
         {user && pathname !== "/feedback" && (

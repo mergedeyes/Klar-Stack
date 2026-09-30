@@ -165,12 +165,11 @@ function UnifiedChatsPageContent() {
   };
 
 return (
-    // 1. Root: h-dvh (dynamic viewport height) instead of h-screen (100vh)
-    // -- 100vh doesn't account for mobile browser chrome (address bar
-    // etc.), so the page thought it had more room than was actually
-    // visible, pushing content (including TopNav) below the fold and
-    // forcing a scroll to see it. h-dvh tracks the real visible viewport.
-    <div className="h-dvh w-full flex flex-col bg-background overflow-hidden">
+    // 1. Root: fills the space between banner and footer exactly
+    // (data-fill-viewport caps the body at the screen height, see
+    // globals.css), so TopNav and the message input are always on screen
+    // and only the message list scrolls.
+    <div data-fill-viewport className="min-h-0 flex-1 w-full flex flex-col bg-background overflow-hidden">
 
       {/* 2. Shared top nav, wrapped in flex-none so it can never be
          compressed by flex-shrink if content below overflows -- without
@@ -285,7 +284,7 @@ export default function UnifiedChatsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-dvh w-full items-center justify-center bg-background text-muted-foreground">
+        <div data-fill-viewport className="flex min-h-0 flex-1 w-full items-center justify-center bg-background text-muted-foreground">
           Loading chats…
         </div>
       }

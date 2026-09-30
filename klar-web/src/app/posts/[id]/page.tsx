@@ -24,7 +24,7 @@ export default function PostPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-background text-sm text-muted-foreground">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-background text-sm text-muted-foreground">
         <p>{error}</p>
         <button onClick={() => router.push("/feed")} className="underline">
           Back to feed
@@ -35,7 +35,7 @@ export default function PostPage() {
 
   if (!post) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-1 items-center justify-center bg-background">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-foreground" />
       </div>
     );
