@@ -276,7 +276,7 @@ pub async fn open_evidence(
         r#"
         SELECT ev.id, ev.actor_id, u.username AS actor_username, ev.action, ev.reason, ev.details, ev.created_at
         FROM evidence_events ev LEFT JOIN users u ON u.id = ev.actor_id
-        WHERE ev.evidence_id = $1 ORDER BY ev.created_at
+        WHERE ev.evidence_id = $1 ORDER BY ev.created_at, ev.id
         "#,
     )
     .bind(evidence_id)
