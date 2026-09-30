@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 // Browser tests for behaviour only a real page shows: layout, the post
 // modal's address and history, sharing, the post page, link-preview tags.
 // They run against a running backend and frontend (see e2e/README.md);
-// CI starts both in .github/workflows/e2e.yml.
+// CI starts both in the e2e job of .github/workflows/ci.yml.
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,

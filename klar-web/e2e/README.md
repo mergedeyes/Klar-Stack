@@ -5,7 +5,7 @@ modal's address and back button, sharing, the post page on phone and desktop,
 and the link-preview tags. Each test creates its own users and posts through
 the API, so they can run in parallel against any database.
 
-CI runs them on every pull request (`.github/workflows/e2e.yml`) against a
+CI runs them on every pull request (the e2e job in `.github/workflows/ci.yml`) against a
 fresh stack. Locally, with the backend and frontend running:
 
 ```sh

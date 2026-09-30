@@ -1,0 +1,247 @@
+name: CI
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same PR makes the running checks obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# One workflow so the jobs can hand work to each other: the Rust backend is
+# compiled once (backend job) and its binary reused by the browser tests.
+#
+# Each job only runs when its part of the repo changed. The filter is a
+# job-level `if` instead of a workflow `paths` filter on purpose: a skipped
+# job reports success, so all three can be required checks without a
+# docs-only PR waiting forever on checks that never start.
+jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+      frontend: ${{ steps.diff.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Manual runs (no PR) check everything. A change to this workflow
+          # counts as both, so CI edits are tested by CI.
+          if [ -z "$BASE" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE"...HEAD)
+          echo "$files"
+          backend=false; frontend=false
+          grep -qE '^(Klar/|\.github/workflows/ci\.yml$)' <<< "$files" && backend=true
+          grep -qE '^(klar-web/|\.github/workflows/ci\.yml$)' <<< "$files" && frontend=true
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+
+  # Clippy, unit and integration tests (Klar/src/integration_tests/, against
+  # the Postgres and Redis services), then the server binary for the browser
+  # tests. Runs for frontend changes too, but then only builds the binary.
+  backend:
+    name: Backend (clippy + tests)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Klar
+    services:
+      postgres:
+        # Same major as deploy/postgres.
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Query macros are checked against the committed .sqlx cache; the
+      # database is only for the integration tests, which make one per test.
+      SQLX_OFFLINE: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      REDIS_URL: redis://localhost:6379
+      CARGO_TERM_COLOR: always
+      # No debug info: faster builds, a smaller cache and binary; CI only
+      # needs pass or fail.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to the Dockerfile's toolchain so a new Rust release can't
+      # fail CI with freshly added clippy lints; bump both together.
+      - name: Install Rust 1.97
+        run: |
+          rustup toolchain install 1.97 --profile minimal --component clippy
+          rustup default 1.97
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            Klar/target
+          key: cargo-ci-${{ runner.os }}-1.97-${{ hashFiles('Klar/Cargo.lock') }}
+          restore-keys: cargo-ci-${{ runner.os }}-1.97-
+
+      - name: clippy
+        if: needs.changes.outputs.backend == 'true'
+        run: cargo clippy --locked --all-targets --features integration-tests -- -D warnings
+
+      - name: unit and integration tests
+        if: needs.changes.outputs.backend == 'true'
+        run: cargo test --locked --features integration-tests
+
+      # Reuses the dependencies the tests just compiled, so only the crate
+      # itself is built again.
+      - name: build server for the browser tests
+        run: cargo build --locked
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: klar-server
+          path: Klar/target/debug/Klar
+          retention-days: 1
+
+  frontend:
+    name: Frontend (tsc + eslint)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: klar-web
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same major as the Docker image (node:20-slim).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: klar-web/package-lock.json
+
+      - run: npm ci
+
+      - name: tsc
+        run: npx tsc --noEmit
+
+      - name: eslint
+        run: npx eslint src e2e playwright.config.ts --max-warnings 0
+
+  # Playwright (klar-web/e2e) against the whole stack: the backend binary
+  # from the backend job, the production build of the frontend.
+  e2e:
+    name: Browser tests (Playwright)
+    needs: [changes, backend]
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: klar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      E2E_BASE_URL: http://localhost:3001
+      E2E_API_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: klar-server
+          path: Klar/bin
+
+      # Local file storage, email to a closed port (sends fail and are only
+      # logged), no passcode gate, and a high sign-up limit for the many
+      # test accounts. Migrations run on startup.
+      - name: Start backend
+        working-directory: Klar
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/klar
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: e2e-test-jwt-secret
+          HOST: 127.0.0.1
+          PORT: "3000"
+          BASE_URL: http://localhost:3001
+          CORS_ORIGINS: http://localhost:3001
+          STORAGE_PROVIDER: local
+          LOCAL_STORAGE_PUBLIC_URL: http://127.0.0.1:3000
+          EMAIL_PROVIDER: local
+          SMTP_HOST: 127.0.0.1
+          SMTP_PORT: "9"
+          AUTH_RATE_LIMIT_PER_MIN: "1000"
+        run: |
+          chmod +x bin/Klar
+          nohup ./bin/Klar > backend.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/health > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3000/health
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: klar-web/package-lock.json
+
+      - name: Install frontend
+        working-directory: klar-web
+        run: npm ci
+
+      - name: Build and start frontend
+        working-directory: klar-web
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_STORAGE_URL: http://127.0.0.1:3000
+        run: |
+          npx next build
+          nohup npx next start -p 3001 > frontend.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3001/login && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:3001/login
+
+      - name: Install Chromium
+        working-directory: klar-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright
+        working-directory: klar-web
+        run: npx playwright test
+
+      - name: Upload report and logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: |
+            klar-web/playwright-report
+            klar-web/test-results
+            klar-web/frontend.log
+            Klar/backend.log
+          retention-days: 7
