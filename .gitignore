@@ -55,6 +55,10 @@ TODO.md
 scripts
 # ...but not the scripts CI runs.
 !.github/scripts/
+
+# Python bytecode (e.g. from running .github/scripts locally)
+__pycache__/
+*.pyc
 # Playwright output (klar-web/e2e)
 /klar-web/test-results
 /klar-web/playwright-report
