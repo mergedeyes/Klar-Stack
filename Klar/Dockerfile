@@ -66,6 +66,7 @@ USER appuser
 # An empty declared value is NOT the same as unset: config.rs guards the
 # ones where empty would be unsafe.
 ENV HOST=0.0.0.0 \
+    NO_COLOR=1 \
     PORT=8080 \
     DATABASE_URL="" \
     JWT_SECRET="" \
