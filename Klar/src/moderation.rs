@@ -406,15 +406,16 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
 
 /// Why an account measure was taken, in the statement. Built from the
 /// score rather than the report reason, since a measure answers the
-/// account's history, not one post.
-fn measure_text(measure: Measure, score: i32) -> String {
-    let history = format!(
+/// account's history, not one post -- unless `basis` says why instead
+/// (e.g. an account review found a bot).
+fn measure_text(measure: Measure, score: i32, basis: Option<&str>) -> String {
+    let history = basis.map(str::to_string).unwrap_or_else(|| format!(
         "Nach Prüfung wurden wiederholt oder schwerwiegend Inhalte von dir entfernt, weil sie gegen \
          unsere Nutzungsbedingungen verstoßen. Jeder bestätigte Verstoß ergibt je nach Schwere \
          Punkte, die nach einer gewissen Zeit wieder verfallen; dein Konto hat derzeit {} von {} \
          Punkten. Die einzelnen Entscheidungen findest du unter „Kontostatus“.",
         score, standing::MAX_SCORE
-    );
+    ));
     let effect = match measure {
         Measure::Warning => "Wir verwarnen dein Konto. Weitere Verstöße können zu einer vorübergehenden \
              oder dauerhaften Sperrung führen."
@@ -448,6 +449,7 @@ pub async fn record_account_measure(
     reason: &str,
     decided_by: Uuid,
     score: i32,
+    basis: Option<&str>,
 ) -> Result<(Uuid, PendingNotices), AppError> {
     let (ground_type, ground, _) = ground_for(reason);
     let ground = format!("{}; Nutzungsbedingungen Abschnitt 8 (Sperrung von Konten)", ground);
@@ -470,7 +472,7 @@ pub async fn record_account_measure(
     .bind(reason)
     .bind(ground_type)
     .bind(&ground)
-    .bind(measure_text(measure, score))
+    .bind(measure_text(measure, score, basis))
     .bind(decided_by)
     .bind(deliver)
     .bind(measure.suspension_days())

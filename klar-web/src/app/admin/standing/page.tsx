@@ -172,9 +172,14 @@ function StandingCard({ initial, onError }: { initial: AdminStanding; onError: (
   return (
     <div className="rounded-xl border border-border p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <Link href={`/users/${s.username}`} className="font-medium hover:underline">
-          @{s.username}
-        </Link>
+        <span>
+          <Link href={`/users/${s.username}`} className="font-medium hover:underline">
+            @{s.username}
+          </Link>{" "}
+          <Link href={`/admin/review/${s.username}`} className="text-xs text-muted-foreground underline">
+            Review
+          </Link>
+        </span>
         {s.suggestion && (
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
             Suggested: {MEASURE_LABELS[s.suggestion]}

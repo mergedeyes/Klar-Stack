@@ -280,7 +280,7 @@ pub async fn apply_measure(
     let score = score_of(&active_strikes(&mut tx, user_id, false).await?);
 
     let (_, notices) =
-        moderation::record_account_measure(&mut tx, user_id, measure, &input.reason, auth.user_id, score).await?;
+        moderation::record_account_measure(&mut tx, user_id, measure, &input.reason, auth.user_id, score, None).await?;
     tx.commit().await.db_err("Database error")?;
     notices.send(&state).await;
 

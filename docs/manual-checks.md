@@ -58,6 +58,9 @@ loads more as you scroll.
 - [ ] Locking an account in `/admin/security` signs it out within seconds on every device (next request goes to the login page) and sends an email whose link sets a new password; replying to that email goes to kontakt@klarsocial.eu
 - [ ] Logging in to a locked account with the right password shows "Your account is locked" (a wrong password shows the usual error); "Send the link again" works once, then asks to wait 15 minutes
 - [ ] Setting a new password through the link unlocks the account; the incident log shows "Unlocked by new password" and keeps the assessment
+- [ ] An account that posts 10+ comments within a few minutes (or the same text 3+ times) shows up under "Needs review" in `/admin/security`, as does one with a pending spam report; a single post doesn't
+- [ ] "Review account" in the report queue opens `/admin/review/<name>` with the reason filled in; the review needs a reason, then shows signals, message counts (no message text), posts, comments, likes, follows, reports and history as expandable sections
+- [ ] Deciding "Lock as possibly hacked" locks the account (it lands in the incident log with the note); "Bot or spam-only account" suspends it permanently with a statement that says why; "No action" just closes the review
 - [ ] The verification email after sign-up has no Reply-To; other emails (password reset, moderation notice) reply to kontakt@klarsocial.eu
 
 ## Posts and media
@@ -80,6 +83,7 @@ loads more as you scroll.
 - [ ] Dismissing the last report on preserved content purges the record at the next sweep; a legal hold stops the purge
 - [ ] A removal, automatic hide or warning gives the author a "Klar" notice in the bell and an email linking to the statement; a CSAM statement only arrives after an admin sends it from `/admin/moderation`
 - [ ] The author can object once from the statement page; the admin's answer shows up there and in the bell; the reporter sees the outcome under Settings → Moderation
+- [ ] "Glorifying Nazism/fascism, extremist symbols" is Grave (60 points): a first case suggests a warning, a second one a permanent suspension
 - [ ] Removing a report shows "If removed, classify as" with the report's own reason first and the criterion below; picking a type of another reason, or "No strike", asks for a justification and keeps Remove disabled until it's filled
 - [ ] After removal the author's statement names the type, its criterion and the points (not the justification); Settings → Moderation shows the strike and its expiry date
 - [ ] A third removal for the same reason within 30 days shows "(repeat, ×1.5)" and the statement explains it

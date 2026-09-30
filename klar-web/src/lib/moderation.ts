@@ -1,4 +1,4 @@
-import type { AccountMeasure, EvidenceSummary, StrikeSeverity } from "@/lib/api";
+import type { AccountMeasure, EvidenceSummary, ReviewFlag, StrikeSeverity } from "@/lib/api";
 
 // Labels shared by the admin moderation pages (report queue, evidence).
 
@@ -33,6 +33,7 @@ export const SEVERITY_LABELS: Record<StrikeSeverity, string> = {
   minor: "Minor · 5 pts, 90 days",
   moderate: "Moderate · 20 pts, 180 days",
   serious: "Serious · 40 pts, 1 year",
+  grave: "Grave · 60 pts, 1 year",
   severe: "Severe · 100 pts, doesn't expire",
 };
 
@@ -42,3 +43,14 @@ export const MEASURE_LABELS: Record<AccountMeasure, string> = {
   suspend_30d: "Suspend 30 days",
   ban: "Suspend permanently",
 };
+
+// Account review signals (GET /admin/review-candidates, the review page).
+export const FLAG_LABELS: Record<ReviewFlag, string> = {
+  burst: "Burst of activity",
+  duplicates: "Same text repeated",
+  woke_up: "Active again after 60+ days",
+};
+
+// Report reasons that most often mean a hijacked or bot account: the report
+// queue suggests reviewing the account for these.
+export const ACCOUNT_REVIEW_REASONS = new Set(["spam", "fraud", "impersonation"]);
