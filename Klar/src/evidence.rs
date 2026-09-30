@@ -693,7 +693,7 @@ pub fn spawn_sweeper(state: AppState) {
 /// silently disappear -- so the fix is a decision on the report.
 pub const OVERDUE_DAYS: i32 = 30;
 
-async fn sweep(state: &AppState) {
+pub(crate) async fn sweep(state: &AppState) {
     retry_pending_copies(state).await;
     purge_due(state).await;
     warn_overdue(state).await;

@@ -31,6 +31,10 @@ mod storage;
 mod utils;
 mod validation;
 
+// API-level tests against a real Postgres and Redis; see src/integration_tests/mod.rs.
+#[cfg(all(test, feature = "integration-tests"))]
+mod integration_tests;
+
 use email::{EmailProvider, EmailService};
 use futures::StreamExt;
 use handlers::auth::AppState;
