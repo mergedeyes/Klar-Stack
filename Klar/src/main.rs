@@ -19,6 +19,7 @@ mod config;
 mod db;
 mod email;
 mod errors;
+mod evidence;
 mod handlers;
 mod media;
 mod models;
@@ -31,7 +32,7 @@ mod validation;
 use email::{EmailProvider, EmailService};
 use futures::StreamExt;
 use handlers::auth::AppState;
-use crate::storage::{CdnPurger, Storage};
+use crate::storage::{CdnPurger, EvidenceStorage, Storage};
 use tokio::sync::broadcast;
 
 #[tokio::main]
@@ -60,6 +61,7 @@ async fn main() {
     // which was flatly wrong for STORAGE_PROVIDER=local (no network call
     // happens there at all).
     tracing::info!("Storage backend initialized");
+    let evidence_storage = EvidenceStorage::new().await;
 
     // Email service
     let provider: EmailProvider = std::env::var("EMAIL_PROVIDER")
@@ -156,10 +158,13 @@ async fn main() {
         jwt_secret: config.jwt_secret,
         storage,
         cdn: CdnPurger::new(),
+        evidence: evidence_storage,
         email,
         notification_tx,
         redis: redis_conn_manager,
     };
+
+    evidence::spawn_sweeper(state.clone());
 
     let app = routes::create_router(state);
     tracing::info!("Server running on http://{}", addr);

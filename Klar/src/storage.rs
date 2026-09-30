@@ -112,6 +112,101 @@ impl Storage {
     }
 }
 
+// ─── EVIDENCE STORAGE ────────────────────────────────────────────────────────
+// Preserved copies of reported content (see evidence.rs) live in their own
+// storage zone that has no pull zone, so nothing in it is reachable from
+// the internet; the only way to read a file is the admin-only evidence
+// endpoint, which logs every access. It gets its own credentials so a
+// leaked media key can't reach it either.
+//
+// Variables (production, S3):
+//   EVIDENCE_S3_STORAGE_BUCKET=<evidence storage zone>
+//   EVIDENCE_S3_STORAGE_SECRET_ACCESS_KEY=<its password>
+//   EVIDENCE_S3_STORAGE_ENDPOINT   (optional, defaults to S3_STORAGE_ENDPOINT)
+// Local development (STORAGE_PROVIDER=local) writes to
+// EVIDENCE_LOCAL_STORAGE_DIR, default "./evidence".
+//
+// When it isn't configured, nothing breaks: preserved files stay at their
+// original key and the evidence sweeper copies them once it is.
+#[derive(Clone)]
+pub struct EvidenceStorage {
+    backend: Option<Backend>,
+}
+
+impl EvidenceStorage {
+    pub async fn new() -> Self {
+        let provider = std::env::var("STORAGE_PROVIDER")
+            .unwrap_or_else(|_| "bunny".to_string())
+            .to_lowercase();
+        let non_empty = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+
+        let backend = if provider == "local" {
+            let root = non_empty("EVIDENCE_LOCAL_STORAGE_DIR").unwrap_or_else(|| "./evidence".to_string());
+            Some(Backend::Local(LocalStorage::at(&root, "")))
+        } else {
+            match (non_empty("EVIDENCE_S3_STORAGE_BUCKET"), non_empty("EVIDENCE_S3_STORAGE_SECRET_ACCESS_KEY")) {
+                // Pointing both at the same zone would put evidence behind
+                // the public pull zone, which defeats the point.
+                (Some(bucket), _) if non_empty("S3_STORAGE_BUCKET").as_deref() == Some(bucket.as_str()) => {
+                    tracing::error!("EVIDENCE_S3_STORAGE_BUCKET must not be the media bucket; evidence storage disabled");
+                    None
+                }
+                (Some(bucket), Some(secret)) => {
+                    let endpoint = non_empty("EVIDENCE_S3_STORAGE_ENDPOINT")
+                        .or_else(|| non_empty("S3_STORAGE_ENDPOINT"))
+                        .expect("EVIDENCE_S3_STORAGE_ENDPOINT or S3_STORAGE_ENDPOINT must be set");
+                    let region = derive_region_from_endpoint(&endpoint).unwrap_or_else(|| "us-east-1".to_string());
+                    Some(Backend::S3(
+                        S3Storage::connect(endpoint, bucket.clone(), bucket, secret, region, String::new()).await,
+                    ))
+                }
+                _ => {
+                    tracing::error!(
+                        "Evidence storage is not configured (EVIDENCE_S3_STORAGE_BUCKET / \
+                         EVIDENCE_S3_STORAGE_SECRET_ACCESS_KEY): reported content that gets deleted \
+                         keeps its original files until it is"
+                    );
+                    None
+                }
+            }
+        };
+
+        Self { backend }
+    }
+
+    pub fn is_configured(&self) -> bool {
+        self.backend.is_some()
+    }
+
+    fn backend(&self) -> Result<&Backend, AppError> {
+        self.backend.as_ref().ok_or_else(|| AppError::internal("Evidence storage is not configured"))
+    }
+
+    pub async fn save(&self, key: &str, data: &[u8]) -> Result<(), AppError> {
+        match self.backend()? {
+            Backend::S3(s) => s.save(key, data).await,
+            Backend::Bunny(b) => b.save(key, data).await,
+            Backend::Local(l) => l.save(key, data).await,
+        }
+    }
+
+    pub async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
+        match self.backend()? {
+            Backend::S3(s) => s.get(key).await,
+            Backend::Bunny(b) => b.get(key).await,
+            Backend::Local(l) => l.get(key).await,
+        }
+    }
+
+    pub async fn delete(&self, key: &str) -> Result<(), AppError> {
+        match self.backend()? {
+            Backend::S3(s) => s.delete(key).await,
+            Backend::Bunny(b) => b.delete(key).await,
+            Backend::Local(l) => l.delete(key).await,
+        }
+    }
+}
+
 // ─── SIGNED MEDIA URLS ───────────────────────────────────────────────────────
 // With Bunny's token authentication enabled on the pull zone, the CDN only
 // serves a file for a URL carrying a valid, unexpired token. The API only
@@ -394,6 +489,19 @@ impl S3Storage {
         let public_url_base = std::env::var("S3_PUBLIC_STORAGE_URL")
             .expect("S3_PUBLIC_STORAGE_URL missing");
 
+        Self::connect(endpoint, bucket, access_key, secret_key, region_str, public_url_base).await
+    }
+
+    /// Builds the client from explicit settings, so the evidence zone
+    /// (EvidenceStorage below) can reuse this with its own variables.
+    async fn connect(
+        endpoint: String,
+        bucket: String,
+        access_key: String,
+        secret_key: String,
+        region_str: String,
+        public_url_base: String,
+    ) -> Self {
         let credentials = Credentials::new(access_key, secret_key, None, None, "manual");
 
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -521,13 +629,16 @@ pub struct LocalStorage {
 impl LocalStorage {
     pub fn new() -> Self {
         let root = std::env::var("LOCAL_STORAGE_DIR").unwrap_or_else(|_| "./uploads".to_string());
+        let public_url_base = std::env::var("LOCAL_STORAGE_PUBLIC_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        Self::at(&root, &public_url_base)
+    }
+
+    fn at(root: &str, public_url_base: &str) -> Self {
         let root = std::path::PathBuf::from(root);
 
         std::fs::create_dir_all(&root)
             .unwrap_or_else(|e| panic!("Konnte LOCAL_STORAGE_DIR '{}' nicht anlegen: {}", root.display(), e));
-
-        let public_url_base = std::env::var("LOCAL_STORAGE_PUBLIC_URL")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
 
         Self {
             root,

@@ -19,7 +19,7 @@ use crate::models::{
     AuthResponse, LoginRequest, RefreshResponse,
     RegisterRequest, UserResponse, UserRow,
 };
-use crate::storage::{CdnPurger, Storage};
+use crate::storage::{CdnPurger, EvidenceStorage, Storage};
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{normalize_email, validate_new_email, validate_password, validate_username};
 
@@ -29,6 +29,8 @@ pub struct AppState {
     pub jwt_secret: String,
     pub storage: Storage,
     pub cdn: CdnPurger,
+    // Separate zone for preserved evidence (see evidence.rs).
+    pub evidence: EvidenceStorage,
     pub email: EmailService,
     // Local, in-process fan-out to this replica's own SSE subscribers.
     // Never written to directly from request handlers anymore — always go

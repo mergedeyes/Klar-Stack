@@ -173,10 +173,35 @@ export default function DatenschutzPage() {
             Minderjährigen) führen automatisiert zu einer sofortigen
             Ausblendung des gemeldeten Inhalts; andere Meldegründe können
             zunächst zu einer Kennzeichnung mit Warnhinweis führen, bis eine
-            manuelle Prüfung erfolgt ist. Meldedaten sind aktuell an den
-            Lebenszyklus des jeweiligen Accounts gekoppelt; eine über die
-            Kontolöschung hinausgehende gesonderte Aufbewahrung findet
-            derzeit nicht statt.
+            manuelle Prüfung erfolgt ist. Löschst du dein Konto, bleiben von
+            dir abgegebene Meldungen bestehen, sind aber nicht mehr mit dir
+            verknüpft.
+          </p>
+          <p className="mt-2">
+            <strong>Beweissicherung:</strong> Wird ein Beitrag, Kommentar oder
+            Profil wegen eines möglicherweise strafbaren Inhalts gemeldet
+            (etwa Darstellung sexuellen Missbrauchs von Minderjährigen,
+            Gewalt, Hass oder Belästigung), sichern wir sofort eine Kopie des
+            gemeldeten Stands und, solange die Meldung offen ist, jeder
+            späteren Änderung daran. Die Kopie bleibt auch erhalten, wenn der
+            Inhalt gelöscht wird — durch unsere Moderation, durch die
+            verfassende Person selbst oder mit ihrem Konto. Gesichert werden
+            nur der gemeldete Inhalt selbst einschließlich Bildern, die
+            Kontodaten der verfassenden Person (Nutzer-ID, Nutzername,
+            Anzeigename, E-Mail-Adresse, Registrierungsdatum) und der
+            Zusammenhang (z. B. der kommentierte Beitrag) — keine weiteren
+            Kommentare oder Likes. Bei anderen
+            Meldegründen (z. B. Spam) wird nichts kopiert. Die Kopie liegt in einem
+            gesonderten, nicht öffentlich erreichbaren Speicher bei Bunny.net
+            in Deutschland; nur unser Moderationsteam hat Zugriff, und jeder
+            Zugriff wird mit Person, Zeitpunkt und Grund protokolliert.
+            Rechtsgrundlage ist Art. 6 Abs. 1 lit. c und f DSGVO; das Recht
+            auf Löschung ist insoweit nach Art. 17 Abs. 3 lit. e DSGVO
+            eingeschränkt. Erweist sich die Meldung als unbegründet, löschen
+            wir die Kopie umgehend, andernfalls sechs Monate nach unserer
+            Entscheidung — es sei denn, sie wird für ein laufendes Verfahren
+            oder auf Anforderung einer Behörde länger benötigt. Diese Kopien
+            sind nicht Teil des Datenexports.
           </p>
         </section>
 
@@ -206,7 +231,11 @@ export default function DatenschutzPage() {
             Profil, deine Beiträge, Kommentare und Likes werden dabei
             unmittelbar mit dem Klick auf den dazugehörigen Button aus unserer
             Datenbank entfernt — <strong>nicht</strong>, wie bei anderen
-            Plattformen üblich, erst nach einer Wartefrist.
+            Plattformen üblich, erst nach einer Wartefrist. Einzige Ausnahme
+            sind Inhalte, die wegen eines möglicherweise strafbaren Inhalts
+            gemeldet wurden: Sie werden zwar ebenfalls sofort entfernt, die
+            bei der Meldung gesicherte Kopie bleibt aber als Beweismittel
+            erhalten (siehe Abschnitt 7).
           </p>
           <p className="mt-2">
             <strong>Direktnachrichten</strong>, die du anderen geschickt hast,

@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
+use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
 use crate::handlers::events::record_event;
@@ -170,6 +171,8 @@ pub async fn edit_comment(
         return Err(AppError::forbidden("You can only edit your own comments"));
     }
 
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let comment = sqlx::query_as::<_, CommentResponse>(
         r#"
         UPDATE comments SET body = $1, edited_at = NOW()
@@ -186,9 +189,14 @@ pub async fn edit_comment(
     )
     .bind(body)
     .bind(comment_id)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Failed to edit comment")?;
+
+    // A comment under a likely-illegal report keeps a version per edit.
+    let preserved = evidence::capture(&mut tx, "comment", comment_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    evidence::finish(&state, preserved, Vec::new()).await;
 
     Ok(Json(comment.resolve_media(&state.storage)))
 }
@@ -228,6 +236,11 @@ pub async fn delete_comment(
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
+    // A reported comment (or reply under it) is preserved as evidence
+    // before it goes; see evidence.rs.
+    let scope = evidence::Scope { comments: vec![comment_id], ..Default::default() };
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::UserDeletion, Some(auth.user_id)).await?;
+
     // Replies cascade-delete with their parent (parent_comment_id ON DELETE
     // CASCADE), so comment_count must drop by the whole deleted subtree's
     // size, not just 1 -- count it first via a recursive CTE.
@@ -260,6 +273,9 @@ pub async fn delete_comment(
         .db_err_ctx("Failed to update comment_count", "Database error")?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    // Comments have no files; this only finishes the bookkeeping.
+    evidence::finish(&state, preserved, Vec::new()).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

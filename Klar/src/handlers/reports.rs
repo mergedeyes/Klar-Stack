@@ -35,6 +35,7 @@ use uuid::Uuid;
 
 use crate::auth::AuthUser;
 use crate::errors::AppError;
+use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::posts::delete_post_with_media;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
@@ -61,7 +62,7 @@ fn is_high_severity(reason: &str) -> bool {
     matches!(reason, "violence" | "self_harm" | "sexual_content")
 }
 
-async fn require_admin(db: &sqlx::PgPool, auth: &AuthUser) -> Result<(), AppError> {
+pub async fn require_admin(db: &sqlx::PgPool, auth: &AuthUser) -> Result<(), AppError> {
     let row = sqlx::query_as::<_, (String, bool)>(
         "SELECT email, email_verified FROM users WHERE id = $1"
     )
@@ -148,6 +149,10 @@ pub async fn create_report(
         _ => unreachable!("validated above"),
     }
 
+    // One transaction: the report, the auto-moderation and the evidence
+    // snapshot of the reported state commit together.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let report = sqlx::query_as::<_, ReportRow>(
         r#"
         INSERT INTO reports (reporter_id, target_type, target_id, reason, details)
@@ -160,54 +165,69 @@ pub async fn create_report(
     .bind(input.target_id)
     .bind(&input.reason)
     .bind(&input.details)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Failed to submit report")?;
 
     // Auto-moderation: only posts/comments have a moderation_status to
     // update (a "user" report has no content to hide -- it just queues
     // for admin review at whatever priority its reason implies).
+    let mut newly_hidden = false;
     if input.target_type == "post" {
         if is_critical(&input.reason) {
             // Only the transition to hidden rotates the media keys, so a
             // second CSAM report on an already-hidden post doesn't move
             // the files again.
-            let newly_hidden = sqlx::query(
+            newly_hidden = sqlx::query(
                 "UPDATE posts SET moderation_status = 'hidden' WHERE id = $1 AND moderation_status != 'hidden'"
             )
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to auto-hide post", "Database error")?
                 .rows_affected() > 0;
-
-            // Runs in the background: the reporter shouldn't wait on (or
-            // see errors from) storage round-trips, and every failure is
-            // logged with the post ID for manual follow-up.
-            if newly_hidden {
-                let state = state.clone();
-                let post_id = input.target_id;
-                tokio::spawn(async move {
-                    if let Err(e) = rotate_post_media_keys(&state, post_id).await {
-                        tracing::error!("Media key rotation for hidden post {} failed: {}", post_id, e.message);
-                    }
-                });
-            }
         } else if is_high_severity(&input.reason) {
             // Never downgrade an already-hidden (CSAM) post back to
             // merely "flagged".
             sqlx::query("UPDATE posts SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to flag post", "Database error")?;
         }
     } else if input.target_type == "comment" {
         if is_critical(&input.reason) {
             sqlx::query("UPDATE comments SET moderation_status = 'hidden' WHERE id = $1")
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to auto-hide comment", "Database error")?;
         } else if is_high_severity(&input.reason) {
             sqlx::query("UPDATE comments SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to flag comment", "Database error")?;
         }
+    }
+
+    // Likely-illegal content is captured as reported, right away, so later
+    // edits or deletion can't destroy the evidence; see evidence.rs.
+    let preserved = if evidence::is_likely_illegal(&input.reason) {
+        evidence::capture(&mut tx, &input.target_type, input.target_id, evidence::Cause::Reported, Some(auth.user_id)).await?
+    } else {
+        evidence::Preserved::default()
+    };
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    // Runs in the background: the reporter shouldn't wait on (or see
+    // errors from) storage round-trips, and every failure is logged with
+    // the post ID for manual follow-up. The evidence copy goes first, so it
+    // reads the files before the key rotation moves them.
+    {
+        let state = state.clone();
+        let post_id = input.target_id;
+        tokio::spawn(async move {
+            evidence::finish(&state, preserved, Vec::new()).await;
+            if newly_hidden {
+                if let Err(e) = rotate_post_media_keys(&state, post_id).await {
+                    tracing::error!("Media key rotation for hidden post {} failed: {}", post_id, e.message);
+                }
+            }
+        });
     }
 
     tracing::info!(
@@ -289,6 +309,11 @@ async fn rotate_post_media_keys(state: &AppState, post_id: Uuid) -> Result<(), A
             }
         }
 
+        // A pending evidence copy of the old file now reads from the new one.
+        for (old, new) in old_keys.iter().zip(&new_keys) {
+            evidence::follow_moved_source(state, old, new).await?;
+        }
+
         // From here on a failure leaves the old file reachable; delete_media
         // logs each one with its key for manual cleanup.
         for old in &old_keys {
@@ -346,7 +371,9 @@ pub async fn get_reports(
                 WHEN 'post' THEN u_post.username
                 WHEN 'comment' THEN u_comment.username
                 WHEN 'user' THEN u_target.username
-            END as target_username
+            END as target_username,
+            ev.id as evidence_id,
+            ev.content_deleted_at IS NOT NULL as evidence_content_deleted
         FROM reports r
         LEFT JOIN users u_reporter ON u_reporter.id = r.reporter_id
         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
@@ -355,6 +382,11 @@ pub async fn get_reports(
         LEFT JOIN comments c ON r.target_type = 'comment' AND c.id = r.target_id
         LEFT JOIN users u_comment ON u_comment.id = c.user_id
         LEFT JOIN users u_target ON r.target_type = 'user' AND u_target.id = r.target_id
+        LEFT JOIN LATERAL (
+            SELECT e.id, e.content_deleted_at FROM evidence_records e
+            WHERE e.target_type = r.target_type AND e.target_id = r.target_id AND e.purged_at IS NULL
+            ORDER BY e.created_at DESC LIMIT 1
+        ) ev ON true
         WHERE r.status = 'pending'
         ORDER BY
             CASE
@@ -402,11 +434,15 @@ pub async fn dismiss_report(
         }
     }
 
+    // One transaction, so the evidence decision below always matches the
+    // report states it was derived from.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let report = sqlx::query_as::<_, (String, Uuid)>(
-        "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending'"
+        "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending' FOR UPDATE"
     )
     .bind(report_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Report not found or already reviewed"))?;
@@ -419,28 +455,38 @@ pub async fn dismiss_report(
     .bind(auth.user_id)
     .bind(&input.note)
     .bind(report_id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .db_err_ctx("Failed to dismiss report", "Database error")?;
 
     if target_type == "post" {
         sqlx::query("UPDATE posts SET moderation_status = 'visible' WHERE id = $1")
-            .bind(target_id).execute(&state.db).await
+            .bind(target_id).execute(&mut *tx).await
             .db_err("Database error")?;
     } else if target_type == "comment" {
         sqlx::query("UPDATE comments SET moderation_status = 'visible' WHERE id = $1")
-            .bind(target_id).execute(&state.db).await
+            .bind(target_id).execute(&mut *tx).await
             .db_err("Database error")?;
     }
+
+    // Content its author deleted while reported was preserved; if this was
+    // the last likely-illegal report on it, that evidence is now decided.
+    evidence::decide(&mut tx, &target_type, target_id, auth.user_id, input.note.as_deref()).await?;
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /admin/reports/:id/remove (admin only) -- deletes the reported
-/// post/comment outright and marks the report actioned. Not available
-/// for target_type = "user" -- account-level action (suspension,
-/// deletion) is a bigger, separate decision than a single-click queue
-/// action, so it isn't wired up here on purpose.
+/// post/comment outright and marks the report actioned. Likely-illegal
+/// content is preserved as evidence first (evidence.rs).
+///
+/// For target_type = "user" this only works once the account is already
+/// gone (deleted by its owner): it then confirms the violation, which keeps
+/// the preserved profile as evidence. Account-level action on a live
+/// account (suspension, deletion) is a bigger, separate decision than a
+/// single-click queue action, so it isn't wired up here on purpose.
 pub async fn remove_reported_content(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -476,6 +522,13 @@ pub async fn remove_reported_content(
     // Storage objects can't take part in the transaction, so their keys
     // are collected here and the files deleted only after commit.
     let mut media_keys = Vec::new();
+
+    let scope = match target_type.as_str() {
+        "post" => evidence::Scope { posts: vec![target_id], ..Default::default() },
+        "comment" => evidence::Scope { comments: vec![target_id], ..Default::default() },
+        _ => evidence::Scope::default(),
+    };
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::ModerationRemoval, Some(auth.user_id)).await?;
 
     match target_type.as_str() {
         "post" => {
@@ -518,9 +571,16 @@ pub async fn remove_reported_content(
             }
         }
         "user" => {
-            return Err(AppError::bad_request(
-                "Account-level action isn't available from the report queue -- review the account directly"
-            ));
+            let exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)")
+                .bind(target_id)
+                .fetch_one(&mut *tx)
+                .await
+                .db_err("Database error")?;
+            if exists {
+                return Err(AppError::bad_request(
+                    "Account-level action isn't available from the report queue -- review the account directly"
+                ));
+            }
         }
         _ => unreachable!("validated at creation"),
     }
@@ -535,11 +595,11 @@ pub async fn remove_reported_content(
     .await
     .db_err_ctx("Failed to update report", "Database error")?;
 
+    evidence::decide(&mut tx, &target_type, target_id, auth.user_id, input.note.as_deref()).await?;
+
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
-    for key in &media_keys {
-        delete_media(&state, key).await;
-    }
+    evidence::finish(&state, preserved, media_keys).await;
 
     tracing::info!("Report {} actioned (content removed) by admin {}", report_id, auth.user_id);
     Ok(StatusCode::NO_CONTENT)
