@@ -40,6 +40,50 @@ impl std::fmt::Display for ProcessingError {
 /// Process an uploaded image: validate, resize, and generate all variants.
 /// Returns the processed variants as byte vectors ready to be saved.
 pub fn process_image(raw_bytes: &[u8]) -> Result<ProcessedImage, ProcessingError> {
+    let img = decode_oriented(raw_bytes)?;
+    let width = img.width();
+    let height = img.height();
+
+    // Reject tiny images
+    if width < 100 || height < 100 {
+        return Err(ProcessingError("Image must be at least 100x100 pixels".to_string()));
+    }
+
+    // Generate variants
+    let thumb = generate_thumbnail(&img)?;
+    let medium = resize_to_width(&img, 640)?;
+    let full = resize_to_width(&img, 1080)?;
+
+    Ok(ProcessedImage {
+        thumb,
+        medium,
+        full,
+        width,
+        height,
+    })
+}
+
+/// A feedback screenshot: one WebP, wide enough that small text on a
+/// desktop screenshot stays readable, re-encoded like every upload so no
+/// metadata (location, device) survives. Returns (bytes, width, height).
+pub fn process_screenshot(raw_bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), ProcessingError> {
+    const MAX_WIDTH: u32 = 1600;
+    let img = decode_oriented(raw_bytes)?;
+    if img.width() < 50 || img.height() < 50 {
+        return Err(ProcessingError("Image must be at least 50x50 pixels".to_string()));
+    }
+    let img = if img.width() > MAX_WIDTH {
+        let height = (img.height() as f64 * MAX_WIDTH as f64 / img.width() as f64) as u32;
+        img.resize_exact(MAX_WIDTH, height, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+    let (width, height) = (img.width(), img.height());
+    Ok((encode_webp(&img)?, width, height))
+}
+
+/// Decodes an upload and turns it the way it was meant to be viewed.
+fn decode_oriented(raw_bytes: &[u8]) -> Result<DynamicImage, ProcessingError> {
     // Decode via the two-step decoder API (rather than the one-shot
     // ImageReader::decode() convenience method) specifically so we can
     // read the EXIF orientation tag before it's gone.
@@ -65,27 +109,7 @@ pub fn process_image(raw_bytes: &[u8]) -> Result<ProcessedImage, ProcessingError
     // every downstream step (crop, resize, encode) just works on pixels
     // with no further EXIF-awareness needed.
     img.apply_orientation(orientation);
-
-    let width = img.width();
-    let height = img.height();
-
-    // Reject tiny images
-    if width < 100 || height < 100 {
-        return Err(ProcessingError("Image must be at least 100x100 pixels".to_string()));
-    }
-
-    // Generate variants
-    let thumb = generate_thumbnail(&img)?;
-    let medium = resize_to_width(&img, 640)?;
-    let full = resize_to_width(&img, 1080)?;
-
-    Ok(ProcessedImage {
-        thumb,
-        medium,
-        full,
-        width,
-        height,
-    })
+    Ok(img)
 }
 
 /// Generate a 150x150 square center-crop thumbnail

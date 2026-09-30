@@ -80,6 +80,7 @@ loads more as you scroll.
 - [ ] Signed in, the footer shows "Feedback"; signed out it doesn't
 - [ ] Sending from a page records that page (without its query string); unticking "Include technical details" sends no page, browser or screen size
 - [ ] The entry appears in `/admin/feedback`; "Done" hides it from the open list and "Show done" brings it back
+- [ ] On a phone (iPhone and Android), "Add screenshot" opens the photo picker; a screenshot taken on the device attaches, previews, can be removed, and shows in `/admin/feedback` (clicking opens it full size)
 
 ## Legal pages and passcode gate
 

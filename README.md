@@ -142,7 +142,7 @@ Pushing to `main` builds Docker images for the backend and the frontend and depl
 - Age verification at sign-up.
 - Uptime monitoring for the app itself (only backups are monitored).
 - End-to-end encryption for direct messages.
-- Screenshots in feedback; a written guide for testers.
+- A written guide for testers in the repo.
 
 ## License
 

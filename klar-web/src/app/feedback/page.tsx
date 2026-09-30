@@ -1,12 +1,20 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bug, CheckCircle2, Lightbulb, MessageCircle } from "lucide-react";
+import { Bug, CheckCircle2, ImagePlus, Lightbulb, MessageCircle, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { feedbackApi, type FeedbackCategory } from "@/lib/api";
+import {
+  feedbackApi,
+  FEEDBACK_MAX_SCREENSHOT_BYTES,
+  FEEDBACK_MAX_SCREENSHOTS,
+  type FeedbackCategory,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
+
+const SCREENSHOT_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 const CATEGORIES: { value: FeedbackCategory; label: string; icon: typeof Bug; hint: string }[] = [
   { value: "bug", label: "Something's broken", icon: Bug, hint: "What did you do, what happened, and what did you expect?" },
@@ -28,10 +36,18 @@ function FeedbackForm() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Picked screenshots with a preview URL each, revoked when removed.
+  const [screenshots, setScreenshots] = useState<{ file: File; url: string }[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  // The latest list, for revoking what's left when the page unmounts.
+  const previews = useRef(screenshots);
+  useEffect(() => { previews.current = screenshots; }, [screenshots]);
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
+
+  useEffect(() => () => previews.current.forEach((s) => URL.revokeObjectURL(s.url)), []);
 
   if (authLoading || !user) return null;
 
@@ -43,11 +59,31 @@ function FeedbackForm() {
     viewport: `${window.innerWidth}×${window.innerHeight}`,
   };
 
+  const addScreenshots = (files: FileList | null) => {
+    if (!files) return;
+    setError(null);
+    const room = FEEDBACK_MAX_SCREENSHOTS - screenshots.length;
+    const picked = Array.from(files);
+    const valid = picked.filter((f) => SCREENSHOT_TYPES.includes(f.type) && f.size <= FEEDBACK_MAX_SCREENSHOT_BYTES);
+    if (valid.length < picked.length) setError("Screenshots must be JPEG, PNG or WebP images under 10 MB.");
+    else if (valid.length > room) setError(`You can attach up to ${FEEDBACK_MAX_SCREENSHOTS} screenshots.`);
+    setScreenshots((prev) => [...prev, ...valid.slice(0, room).map((file) => ({ file, url: URL.createObjectURL(file) }))]);
+    // Picking the same file again after removing it should work too.
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const removeScreenshot = (url: string) => {
+    URL.revokeObjectURL(url);
+    setScreenshots((prev) => prev.filter((s) => s.url !== url));
+  };
+
   const submit = async () => {
     setSending(true);
     setError(null);
     try {
-      await feedbackApi.send(category, message, includeContext ? context : null);
+      await feedbackApi.send(category, message, includeContext ? context : null, screenshots.map((s) => s.file));
+      screenshots.forEach((s) => URL.revokeObjectURL(s.url));
+      setScreenshots([]);
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't send your feedback");
@@ -111,6 +147,52 @@ function FeedbackForm() {
               aria-label="Your feedback"
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
             />
+
+            <div>
+              {screenshots.length > 0 && (
+                <div className="mb-2 flex gap-2">
+                  {screenshots.map((s) => (
+                    <div key={s.url} className="relative">
+                      <Image
+                        src={s.url}
+                        alt="Screenshot preview"
+                        width={80}
+                        height={112}
+                        unoptimized
+                        className="h-28 w-20 rounded-md border border-border object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeScreenshot(s.url)}
+                        aria-label="Remove screenshot"
+                        className="absolute -right-2 -top-2 rounded-full border border-border bg-background p-0.5 shadow"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileInput}
+                type="file"
+                accept={SCREENSHOT_TYPES.join(",")}
+                multiple
+                hidden
+                onChange={(e) => addScreenshots(e.target.files)}
+                aria-label="Screenshot files"
+              />
+              {screenshots.length < FEEDBACK_MAX_SCREENSHOTS && (
+                <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
+                  <ImagePlus size={16} /> Add screenshot
+                </Button>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Up to {FEEDBACK_MAX_SCREENSHOTS}. Screenshots can show other people&apos;s posts or messages, so only
+                attach what helps. They&apos;re deleted 30 days after we&apos;ve dealt with your feedback, after 90 days at
+                the latest.
+              </p>
+            </div>
 
             <label className="flex items-start gap-2 text-sm">
               <input

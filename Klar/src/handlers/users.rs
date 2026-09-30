@@ -460,6 +460,10 @@ pub async fn delete_account(
     // trail, without the content excerpt.
     moderation::forget_user(&mut tx, auth.user_id).await?;
 
+    // Feedback text stays (it's about the app, see the feedback migration),
+    // but screenshots may show this person, so they go with the account.
+    let screenshot_keys = crate::handlers::feedback::forget_screenshots(&mut tx, auth.user_id).await?;
+
     // Conversations whose other participant already deleted their account
     // would be left with nobody in them once this user goes too -- remove
     // them outright. Conversations with a remaining participant are kept
@@ -491,7 +495,8 @@ pub async fn delete_account(
     let keys = media_keys
         .into_iter()
         .flat_map(|(thumb, medium, full)| [thumb, medium, full])
-        .chain(avatar_key);
+        .chain(avatar_key)
+        .chain(screenshot_keys);
     evidence::finish(&state, preserved, keys).await;
 
     tracing::info!("Account deleted: {}", auth.user_id);
@@ -643,7 +648,8 @@ pub async fn export_my_data(
     .db_err_ctx("Data export query failed", "Database error")?;
 
     // --- Feedback sent through the app ---
-    let feedback_sent = crate::handlers::feedback::export_for(&state.db, auth.user_id).await?;
+    let (feedback_sent, feedback_files) = crate::handlers::feedback::export_for(&state.db, auth.user_id).await?;
+    export_files.extend(feedback_files);
 
     // --- Notifications received (capped — this is a personal export, not
     // an unbounded audit log) ---
