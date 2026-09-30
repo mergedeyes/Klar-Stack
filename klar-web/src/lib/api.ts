@@ -336,6 +336,16 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
+// An API error with its HTTP status, for the few places that react to a
+// specific one (e.g. 423 Locked on login). Still an Error, so every other
+// caller keeps using err.message.
+export class HttpError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
 function errorMessage(data: unknown, status: number): string {
   if (data && typeof data === "object" && typeof (data as ApiError).error === "string") {
     return (data as ApiError).error;
@@ -353,7 +363,7 @@ async function request<T>(
   if (res.status === 204) return undefined as T;
 
   const data = await parseBody(res);
-  if (!res.ok) throw new Error(errorMessage(data, res.status));
+  if (!res.ok) throw new HttpError(errorMessage(data, res.status), res.status);
 
   return data as T;
 }
@@ -381,6 +391,14 @@ export const auth = {
     request<void>("/auth/logout", {
       method: "POST",
       body: JSON.stringify({ refresh_token: refreshToken ?? tokens.getRefresh() ?? undefined }),
+    }),
+
+  // After a 423 on login: the account was locked because a takeover is
+  // suspected; this sends the owner a new reset link (rate-limited).
+  resendLockLink: (email: string, password: string) =>
+    request<{ message: string }>("/auth/locked/resend-link", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
     }),
 
   forgotPassword: (email: string) =>
@@ -959,6 +977,39 @@ export const adminRightsApi = {
   accept: (id: string) => request<void>(`/admin/rights-claims/${id}/accept`, { method: "POST", body: "{}" }, true),
   decline: (id: string, message: string) =>
     request<void>(`/admin/rights-claims/${id}/decline`, { method: "POST", body: JSON.stringify({ message }) }, true),
+};
+
+// ── Account locks (suspected takeovers, admin) ───────────────────────────────
+
+// One lock = one incident record: why it was locked, the assessment
+// (what the intruder could see, risk, reported to the authority or not),
+// and how it ended.
+export interface AccountLock {
+  id: string;
+  // null once the account is deleted.
+  username: string | null;
+  locked_by: string | null;
+  locked_at: string;
+  note: string;
+  assessment: string | null;
+  assessed_at: string | null;
+  links_sent: number;
+  last_link_sent_at: string;
+  unlocked_at: string | null;
+  unlocked_via: "password_reset" | "admin" | null;
+}
+
+export const adminLocksApi = {
+  list: () => request<AccountLock[]>("/admin/locks", {}, true),
+  lock: (username: string, note: string) =>
+    request<void>(
+      `/admin/users/${encodeURIComponent(username)}/lock`,
+      { method: "POST", body: JSON.stringify({ note }) },
+      true
+    ),
+  unlock: (id: string) => request<void>(`/admin/locks/${id}/unlock`, { method: "POST", body: "{}" }, true),
+  assess: (id: string, assessment: string) =>
+    request<void>(`/admin/locks/${id}`, { method: "PATCH", body: JSON.stringify({ assessment }) }, true),
 };
 
 export const adminModerationApi = {

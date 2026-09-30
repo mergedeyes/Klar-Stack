@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ChevronRight, Download, Gauge, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
+import { Archive, ChevronRight, Download, Gauge, KeyRound, Lock, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
 import { FileWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
@@ -69,6 +69,12 @@ export default function SettingsPage() {
           icon: Gauge,
           label: "Account standing",
           description: "Scores, warnings and suspensions",
+        },
+        {
+          href: "/admin/security",
+          icon: Lock,
+          label: "Account security",
+          description: "Lock accounts that look taken over; incident log",
         },
         {
           href: "/admin/rights",

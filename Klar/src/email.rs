@@ -23,6 +23,10 @@ pub struct EmailService {
     transport: Transport,   // which provider/connection to send through (see Transport below)
     from_address: String,   // the "From" address used on every outgoing email
     base_url: String,       // public base URL, used to build verification/reset links
+    // Where replies go: the From address (noreply@) has no inbox, so a user
+    // answering a moderation notice or a lock email would otherwise be
+    // talking to nobody. None: no Reply-To header.
+    reply_to: Option<String>,
 }
 
 // One variant per supported way of actually delivering an email.
@@ -352,7 +356,16 @@ impl EmailService {
             transport,
             from_address: smtp_from.to_string(),
             base_url: base_url.to_string(),
+            reply_to: None,
         }
+    }
+
+    /// Sets the Reply-To address for every email except the verification
+    /// email (see `send_verification`). Empty: none.
+    pub fn with_reply_to(mut self, address: &str) -> Self {
+        let address = address.trim();
+        self.reply_to = (!address.is_empty()).then(|| address.to_string());
+        self
     }
 
     /// Send email verification link
@@ -379,7 +392,9 @@ impl EmailService {
             "Der Link ist 24 Stunden gueltig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
         );
 
-        self.send(to_email, "Bestaetige deine E-Mail bei Klar", &text, &html).await
+        // No Reply-To: replies to a verification email only ever mean
+        // "here's my code" or bounce noise, and noreply@ has no inbox.
+        self.send_with(to_email, "Bestaetige deine E-Mail bei Klar", &text, &html, None).await
     }
 
     /// Tell a user that a moderation decision affects their content (DSA
@@ -494,6 +509,41 @@ impl EmailService {
         self.send(to_email, subject, &text, &html).await
     }
 
+    /// Tell the owner of an account we locked because we suspect someone
+    /// else is using it: why, what happened (all devices signed out), and
+    /// the reset link that unlocks it. Replies go to the contact address,
+    /// for owners who can't use the link (e.g. their inbox was taken over
+    /// too).
+    pub async fn send_account_locked(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
+        let reset_url = format!("{}/reset-password?token={}", self.base_url, token);
+        let contact = self.reply_to.as_deref().unwrap_or("kontakt@klarsocial.eu");
+
+        let text = format!(
+            "Wir haben dein Klar-Konto vorsorglich gesperrt\n\n\
+             Auf deinem Konto gab es Aktivitaet, die darauf hindeutet, dass jemand anderes es benutzt. \
+             Wir haben dich deshalb auf allen Geraeten abgemeldet und das Konto gesperrt.\n\n\
+             Mit einem neuen Passwort entsperrst du es wieder:\n\n\
+             {}\n\n\
+             Der Link ist 24 Stunden gueltig; danach kannst du beim Anmelden einen neuen anfordern. \
+             Nimm ein Passwort, das du nirgends sonst verwendest.\n\n\
+             Kommst du nicht weiter oder hast du Fragen, antworte auf diese E-Mail oder schreib an {}.",
+            reset_url, contact
+        );
+
+        let html = render_html_email(
+            "Wir haben dein Klar-Konto vorsorglich gesperrt",
+            "Auf deinem Konto gab es Aktivität, die darauf hindeutet, dass jemand anderes es benutzt. Wir haben dich deshalb auf allen Geräten abgemeldet und das Konto gesperrt. Mit einem neuen Passwort entsperrst du es wieder.",
+            "Neues Passwort festlegen",
+            &reset_url,
+            &format!(
+                "Der Link ist 24 Stunden gültig; danach kannst du beim Anmelden einen neuen anfordern. Nimm ein Passwort, das du nirgends sonst verwendest. Kommst du nicht weiter, antworte auf diese E-Mail oder schreib an {}.",
+                contact
+            ),
+        );
+
+        self.send(to_email, "Dein Klar-Konto wurde vorsorglich gesperrt", &text, &html).await
+    }
+
     /// Send password reset link
     pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to reset their password.
@@ -521,17 +571,26 @@ impl EmailService {
         self.send(to_email, "Passwort zuruecksetzen bei Klar", &text, &html).await
     }
 
-    /// Send an email with both plain-text and HTML alternatives
+    /// Send an email with both plain-text and HTML alternatives, with the
+    /// configured Reply-To.
     async fn send(&self, to: &str, subject: &str, text: &str, html: &str) -> Result<(), EmailError> {
+        self.send_with(to, subject, text, html, self.reply_to.as_deref()).await
+    }
+
+    async fn send_with(&self, to: &str, subject: &str, text: &str, html: &str, reply_to: Option<&str>) -> Result<(), EmailError> {
         // Dispatch on the configured transport; each provider builds and sends the
         // message differently, but all three end up either Ok(()) or an EmailError.
         match &self.transport {
             Transport::Smtp(mailer) => {
                 // Used for both Local (MailHog) and Ionos: build a standard multipart
                 // email (plain text + HTML alternative) and hand it to lettre's SMTP client.
-                let email = Message::builder()
+                let mut builder = Message::builder()
                     .from(self.from_address.parse().map_err(|e| EmailError(format!("Invalid from: {}", e)))?)
-                    .to(to.parse().map_err(|e| EmailError(format!("Invalid to: {}", e)))?)
+                    .to(to.parse().map_err(|e| EmailError(format!("Invalid to: {}", e)))?);
+                if let Some(reply_to) = reply_to {
+                    builder = builder.reply_to(reply_to.parse().map_err(|e| EmailError(format!("Invalid reply-to: {}", e)))?);
+                }
+                let email = builder
                     .subject(subject)
                     .multipart(
                         MultiPart::alternative()
@@ -556,13 +615,16 @@ impl EmailService {
 
             Transport::Resend(resend) => {
                 // Resend's own client type handles building and sending the request.
-                let email = CreateEmailBaseOptions::new(
+                let mut email = CreateEmailBaseOptions::new(
                     self.from_address.as_str(),
                     [to],
                     subject,
                 )
                 .with_html(html)
                 .with_text(text);
+                if let Some(reply_to) = reply_to {
+                    email = email.with_reply(reply_to);
+                }
 
                 resend
                     .emails
@@ -578,7 +640,7 @@ impl EmailService {
                 // Auth via X-Auth-Token header (not Bearer).
                 // Note: Scaleway requires subjects to be at least 10
                 // characters; both of ours already clear that easily.
-                let payload = serde_json::json!({
+                let mut payload = serde_json::json!({
                     "from": { "email": self.from_address },
                     "to": [{ "email": to }],
                     "subject": subject,
@@ -586,6 +648,9 @@ impl EmailService {
                     "html": html,
                     "project_id": project_id,
                 });
+                if let Some(reply_to) = reply_to {
+                    payload["additional_headers"] = serde_json::json!([{ "key": "Reply-To", "value": reply_to }]);
+                }
 
                 let body_bytes = serde_json::to_vec(&payload)
                     .map_err(|e| EmailError(format!("Failed to serialize request: {}", e)))?;

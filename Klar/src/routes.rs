@@ -88,6 +88,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/forgot-password", post(handlers::auth::forgot_password))
         .route("/auth/reset-password", post(handlers::auth::reset_password))
         .route("/auth/resend-verification", post(handlers::auth::resend_verification))
+        .route("/auth/locked/resend-link", post(handlers::account_lock::resend_link))
         // Public rights-claim form and its status page: no account needed,
         // so the same strict per-IP limit as the auth routes.
         .route("/rights-claims", post(handlers::rights::create_claim))
@@ -210,6 +211,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/rights-claims/{claim_id}/request-evidence", post(handlers::rights::request_evidence))
         .route("/admin/rights-claims/{claim_id}/accept", post(handlers::rights::accept_claim))
         .route("/admin/rights-claims/{claim_id}/decline", post(handlers::rights::decline_claim))
+        .route("/admin/locks", get(handlers::account_lock::list_locks))
+        .route("/admin/locks/{lock_id}", patch(handlers::account_lock::assess_lock))
+        .route("/admin/locks/{lock_id}/unlock", post(handlers::account_lock::unlock_account))
+        .route("/admin/users/{username}/lock", post(handlers::account_lock::lock_account))
         .route("/admin/standing", get(handlers::standing::list_standing))
         .route("/admin/violations", get(handlers::standing::list_violations))
         .route("/admin/strikes/{strike_id}/open", post(handlers::standing::open_strike))
@@ -224,10 +229,18 @@ pub fn create_router(state: AppState) -> Router {
         // ────────────────────────────────────────────────────────────
 
         // Suspended accounts are read-only (standing.rs). A route_layer, so
-        // it sees the matched route template, and runs after the rate limit.
+        // it sees the matched route template.
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             crate::standing::enforce_suspension,
+        ))
+        // A locked account's access tokens stop working at once
+        // (handlers/account_lock.rs). Added after the suspension layer, so
+        // it runs before it: a hijacked session ends even while suspended.
+        // Both run after the rate limit.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            handlers::account_lock::enforce_account_lock,
         ))
         .route_layer(middleware::from_fn_with_state(
             general_limiter,

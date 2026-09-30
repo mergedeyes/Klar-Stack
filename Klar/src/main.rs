@@ -88,7 +88,9 @@ async fn main() {
         &config.smtp_from,
         config.smtp_pass.as_deref(),
         &config.base_url,
-    );
+    )
+    // Replies to noreply@ reach the contact inbox (empty: no Reply-To).
+    .with_reply_to(&std::env::var("EMAIL_REPLY_TO").unwrap_or_else(|_| "kontakt@klarsocial.eu".to_string()));
     tracing::info!("Email service ready (SMTP: {}:{})", config.smtp_host, config.smtp_port);
 
     let addr = config.addr();

@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { useAuth } from "@/lib/auth-context";
+import { auth, HttpError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -42,6 +43,14 @@ export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  // Set when the account is locked after a suspected takeover (423): the
+  // credentials, to request a new link, and the outcome of that request.
+  const [locked, setLocked] = useState<LoginValues | null>(null);
+  const [resend, setResend] = useState<{ busy: boolean; message: string | null; error: boolean }>({
+    busy: false,
+    message: null,
+    error: false,
+  });
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -54,9 +63,71 @@ export default function LoginPage() {
       await login(values.email, values.password);
       router.push("/feed");
     } catch (err) {
+      if (err instanceof HttpError && err.status === 423) {
+        setLocked(values);
+        setResend({ busy: false, message: null, error: false });
+        return;
+      }
       setError(err instanceof Error ? err.message : "Login failed");
     }
   };
+
+  const resendLink = async () => {
+    if (!locked) return;
+    setResend({ busy: true, message: null, error: false });
+    try {
+      const res = await auth.resendLockLink(locked.email, locked.password);
+      setResend({ busy: false, message: res.message, error: false });
+    } catch (err) {
+      setResend({ busy: false, message: err instanceof Error ? err.message : "Couldn't send the link", error: true });
+    }
+  };
+
+  if (locked) {
+    return (
+      <main className="flex flex-1 items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">Your account is locked</CardTitle>
+            <CardDescription>For your protection</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p>
+              We noticed activity on your account that suggests someone else has been using it, so we signed it out
+              everywhere and locked it.
+            </p>
+            <p>
+              We sent a link to your email address. Set a new password with it to unlock your account, and use one
+              you don&apos;t use anywhere else.
+            </p>
+            {resend.message && (
+              <div
+                className={`rounded-md px-3 py-2 ${resend.error ? "bg-destructive/10 text-destructive" : "bg-muted"}`}
+                role="status"
+              >
+                {resend.message}
+              </div>
+            )}
+            <Button className="w-full" variant="outline" onClick={resendLink} disabled={resend.busy}>
+              {resend.busy ? "Sending…" : "Send the link again"}
+            </Button>
+            <p className="text-muted-foreground">
+              No email? Check your spam folder, or write to{" "}
+              <a href="mailto:kontakt@klarsocial.eu" className="underline">
+                kontakt@klarsocial.eu
+              </a>
+              .
+            </p>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <Button variant="ghost" size="sm" onClick={() => setLocked(null)}>
+              Back to sign in
+            </Button>
+          </CardFooter>
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className="flex flex-1 items-center justify-center bg-background p-4">

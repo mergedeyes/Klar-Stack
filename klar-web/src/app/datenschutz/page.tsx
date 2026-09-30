@@ -49,6 +49,21 @@ export default function DatenschutzPage() {
             gespeichert). Rechtsgrundlage ist die Erfüllung des
             Nutzungsvertrags (Art. 6 Abs. 1 lit. b DSGVO).
           </p>
+          <p className="mt-2">
+            <strong>Schutz bei Verdacht auf fremden Zugriff:</strong> Deutet
+            Aktivität darauf hin, dass jemand anderes dein Konto benutzt (etwa
+            plötzlich massenhaft Spam), kann unser Team es vorsorglich sperren:
+            Du wirst auf allen Geräten abgemeldet und erhältst per E-Mail einen
+            Link, mit dem ein neues Passwort das Konto wieder entsperrt. Wir
+            speichern dazu, wer wann aus welchem Grund gesperrt hat, wie oft
+            ein Link versandt wurde und wann das Konto wieder entsperrt wurde,
+            sowie unsere Einschätzung des Vorfalls. Das dient der Sicherheit
+            deines Kontos und deiner Kontakte und der Dokumentation von
+            Datenschutzverletzungen (Art. 6 Abs. 1 lit. c und f, Art. 33 Abs. 5
+            DSGVO). Löschst du dein Konto, bleibt der Vorfall ohne Verknüpfung
+            mit dir dokumentiert. Antworten auf unsere E-Mails erreichen unser
+            Postfach unter kontakt@klarsocial.eu.
+          </p>
         </section>
 
         <section className="mb-6">
