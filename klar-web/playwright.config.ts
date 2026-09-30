@@ -1,11 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Browser tests for behaviour only a real page shows: layout, the post
-// modal's address and history, sharing, the post page, link-preview tags.
+// modal's address and history, sharing, the post page, link-preview tags,
+// and the moderation and admin flows.
 // They run against a running backend and frontend (see e2e/README.md);
 // CI starts both in the e2e job of .github/workflows/ci.yml.
 export default defineConfig({
   testDir: "./e2e",
+  // Registers and verifies the admin account (e2e/global-setup.ts).
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

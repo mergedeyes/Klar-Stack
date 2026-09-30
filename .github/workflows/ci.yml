@@ -181,8 +181,10 @@ jobs:
           path: Klar/bin
 
       # Local file storage, email to a closed port (sends fail and are only
-      # logged), no passcode gate, and a high sign-up limit for the many
-      # test accounts. Migrations run on startup.
+      # logged), no passcode gate, and high rate limits for the many test
+      # accounts and parallel pages. ADMIN_EMAILS names the admin the
+      # Playwright global setup registers and verifies (e2e/global-setup.ts).
+      # Migrations run on startup.
       - name: Start backend
         working-directory: Klar
         env:
@@ -199,6 +201,8 @@ jobs:
           SMTP_HOST: 127.0.0.1
           SMTP_PORT: "9"
           AUTH_RATE_LIMIT_PER_MIN: "1000"
+          GENERAL_RATE_LIMIT_PER_MIN: "10000"
+          ADMIN_EMAILS: e2e-admin@example.test
         run: |
           chmod +x bin/Klar
           nohup ./bin/Klar > backend.log 2>&1 &
@@ -232,6 +236,10 @@ jobs:
 
       - name: Run Playwright
         working-directory: klar-web
+        env:
+          # The global setup marks the admin's email verified directly in
+          # the test database; nothing in the backend opens a shortcut.
+          E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/klar
         run: npx playwright test
 
       - name: Upload report and logs

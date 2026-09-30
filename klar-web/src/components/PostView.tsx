@@ -286,6 +286,8 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
   const [media, setMedia] = useState<MediaAsset[]>([]);
   const [allComments, setAllComments] = useState<Comment[]>([]);
   const [commentBody, setCommentBody] = useState("");
+  // Why the last comment couldn't be posted (e.g. a suspended account).
+  const [commentError, setCommentError] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<{ username: string; commentId: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingComments, setLoadingComments] = useState(true);
@@ -352,14 +354,16 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
   const handleSubmitComment = async () => {
     if (!commentBody.trim() || submitting || !user) return;
     setSubmitting(true);
+    setCommentError(null);
     try {
       const newComment = await commentsApi.create(post.id, commentBody.trim(), replyTo?.commentId);
       setAllComments((prev) => [...prev, newComment]);
       setCommentBody("");
       setReplyTo(null);
       setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    } catch {
-      // silently ignore
+    } catch (err) {
+      // The text stays in the field, so nothing typed is lost.
+      setCommentError(err instanceof Error ? err.message : "Your comment couldn't be posted");
     } finally {
       setSubmitting(false);
     }
@@ -557,6 +561,11 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
           <Send size={16} />
         </Button>
       </div>
+      {commentError && (
+        <p className="mt-1 text-xs text-destructive" role="alert">
+          {commentError}
+        </p>
+      )}
     </div>
   );
 

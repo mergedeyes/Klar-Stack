@@ -76,7 +76,14 @@ pub fn create_router(state: AppState) -> Router {
         .and_then(|v| v.parse().ok())
         .unwrap_or(15);
     let auth_limiter = RateLimitState::new(auth_rate_limit, 60);
-    let general_limiter = RateLimitState::new(500, 60);
+    // Likewise GENERAL_RATE_LIMIT_PER_MIN (default 500): in the browser
+    // tests every page's API calls come from 127.0.0.1, so parallel tests
+    // share one budget.
+    let general_rate_limit: u32 = std::env::var("GENERAL_RATE_LIMIT_PER_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500);
+    let general_limiter = RateLimitState::new(general_rate_limit, 60);
 
     // ── Auth routes (strict rate limit) ─────────────────────────
     let auth_routes = Router::new()
