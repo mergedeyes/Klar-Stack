@@ -130,6 +130,13 @@
   body:has([data-fill-viewport]) {
     height: 100dvh;
   }
+  /* The same from tablet width up only (the post page: a card that fits
+     the screen on wide screens, a normally scrolling column on phones). */
+  @media (min-width: 48rem) {
+    body:has([data-fill-viewport-md]) {
+      height: 100dvh;
+    }
+  }
   html {
     @apply font-sans;
   }
