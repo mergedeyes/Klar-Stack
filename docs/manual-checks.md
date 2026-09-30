@@ -62,6 +62,7 @@ loads more as you scroll.
 - [ ] Opening a post from a feed or profile shows /posts/… in the address bar; back, Escape and ✕ close it and restore the address; reloading keeps the post open
 - [ ] Share: on a phone it opens the share sheet, on desktop it copies the link ("Link copied")
 - [ ] Opening a shared /posts/… link shows the post page (not a modal over the feed): on desktop the card fits the screen with the comment field visible; on a phone the page scrolls and the comment field stays above the footer
+- [ ] Pasting a public post's link into WhatsApp/Signal shows a preview with name, caption start and image; a private account's post shows no preview (only after the passcode gate is gone — bots can't pass it)
 
 ## Moderation
 

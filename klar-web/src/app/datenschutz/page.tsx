@@ -76,6 +76,18 @@ export default function DatenschutzPage() {
             und löschen es nach einem Jahr; löschst du dein Konto vorher,
             entfällt die Verknüpfung mit dir.
           </p>
+          <p className="mt-2">
+            <strong>Link-Vorschauen:</strong> Teilt jemand den Link zu einem
+            Beitrag eines öffentlichen Kontos, zeigen Messenger und andere
+            Dienste (z. B. WhatsApp, Signal, iMessage) eine Vorschau mit
+            Nutzername, dem Anfang der Bildunterschrift und dem Bild. Die
+            Vorschau erstellt der jeweilige Dienst und speichert sie in eigener
+            Verantwortung; wird der Beitrag später gelöscht oder das Konto
+            privat, liefern wir keine Vorschau mehr aus, bereits gespeicherte
+            Vorschauen in Chats können wir aber nicht entfernen. Für private
+            Konten, ausgeblendete oder mit Warnhinweis versehene Beiträge gibt
+            es keine Bildvorschau.
+          </p>
         </section>
 
         <section className="mb-6">
