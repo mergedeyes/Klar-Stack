@@ -143,7 +143,7 @@ async fn csam_is_copied_before_rotation_and_survives_removal(pool: PgPool) {
     let trail = app.scalar(&format!(
         "SELECT string_agg(action, ',' ORDER BY created_at, id) FROM evidence_events WHERE evidence_id = '{ev}'"
     )).await.unwrap();
-    assert_eq!(trail, "created,version_added,content_deleted,decided,viewed,file_viewed,hold_set,authority_report,hold_lifted,purged");
+    assert_eq!(trail, "created,version_added,content_deleted,authority_report_advised,decided,viewed,file_viewed,hold_set,authority_report,hold_lifted,purged");
 }
 
 #[sqlx::test(migrations = "./migrations")]

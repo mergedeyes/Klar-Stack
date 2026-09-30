@@ -84,4 +84,11 @@ ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS violation_note TEXT;
 -- two weeks before (standing::sweep_bans). Both steps are recorded on the
 -- ban decision, which stays as the audit trail after the account is gone.
 ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS deletion_notified_at TIMESTAMPTZ;
+-- Set on an evidence record when a removal classified the content as a
+-- violation that should go to the authorities: 'required' (a suspected
+-- crime threatening life or safety, DSA Art. 18) or 'recommended' (e.g.
+-- Holocaust denial). A record with an unrecorded required report is never
+-- purged automatically.
+ALTER TABLE evidence_records ADD COLUMN IF NOT EXISTS authority_report TEXT
+    CHECK (authority_report IN ('required', 'recommended'));
 ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS account_deleted_at TIMESTAMPTZ;

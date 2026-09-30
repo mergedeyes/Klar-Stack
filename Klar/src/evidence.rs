@@ -133,7 +133,7 @@ pub struct Preserved {
 }
 
 impl Preserved {
-    fn extend(&mut self, other: Preserved) {
+    pub fn extend(&mut self, other: Preserved) {
         self.files.extend(other.files);
     }
 }
@@ -462,6 +462,65 @@ pub async fn preserve(
     Ok(preserved)
 }
 
+/// On a removal: preserves the target when the team classified it as a
+/// likely-illegal violation, even if no report gave a likely-illegal
+/// reason, and sets the record's authority-report advice. Runs before the
+/// delete, after `preserve` (which already captured it if a report's
+/// reason was likely illegal; then this only adds the reason and advice).
+pub async fn preserve_classified(
+    tx: &mut PgConnection,
+    target_type: &str,
+    target_id: Uuid,
+    reason: &str,
+    authority_report: Option<&str>,
+    admin_id: Uuid,
+) -> Result<Preserved, AppError> {
+    if !is_likely_illegal(reason) || !matches!(target_type, "post" | "comment") {
+        return Ok(Preserved::default());
+    }
+    let already = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(SELECT 1 FROM evidence_records WHERE target_type = $1::report_target_type AND target_id = $2
+                      AND decided_at IS NULL AND purged_at IS NULL AND content_deleted_at IS NOT NULL)
+        "#,
+    )
+    .bind(target_type)
+    .bind(target_id)
+    .fetch_one(&mut *tx)
+    .await
+    .db_err("Database error")?;
+    let preserved = if already {
+        Preserved::default()
+    } else {
+        capture(tx, target_type, target_id, Cause::Deleted(Trigger::ModerationRemoval), Some(admin_id)).await?
+    };
+
+    // capture() derives `reasons` from the reports; add the classified one.
+    let updated = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        UPDATE evidence_records
+        SET reasons = CASE WHEN $3 = ANY(reasons) THEN reasons ELSE array_append(reasons, $3) END,
+            authority_report = CASE
+                WHEN authority_report = 'required' OR $4::text = 'required' THEN 'required'
+                ELSE COALESCE($4, authority_report) END
+        WHERE target_type = $1::report_target_type AND target_id = $2 AND decided_at IS NULL AND purged_at IS NULL
+        RETURNING id
+        "#,
+    )
+    .bind(target_type)
+    .bind(target_id)
+    .bind(reason)
+    .bind(authority_report)
+    .fetch_optional(&mut *tx)
+    .await
+    .db_err_ctx("Evidence: recording classification failed", "Database error")?;
+    if let (Some(evidence_id), Some(advice)) = (updated, authority_report) {
+        log_event(tx, evidence_id, Some(admin_id), "authority_report_advised", None, Some(json!({ "advice": advice })))
+            .await?;
+    }
+    Ok(preserved)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn add_file(
     tx: &mut PgConnection,
@@ -766,6 +825,11 @@ async fn purge_due(state: &AppState) {
         r#"
         SELECT id FROM evidence_records
         WHERE purged_at IS NULL AND NOT legal_hold AND retain_until <= NOW()
+          -- A required report to the authorities that nobody recorded yet
+          -- keeps the evidence (DSA Art. 18); it is listed first instead.
+          -- IS DISTINCT FROM, since most records have no advice (NULL).
+          AND (authority_report IS DISTINCT FROM 'required' OR EXISTS (
+              SELECT 1 FROM evidence_events ev WHERE ev.evidence_id = evidence_records.id AND ev.action = 'authority_report'))
         ORDER BY retain_until
         LIMIT 50
         "#,

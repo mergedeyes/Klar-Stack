@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { adminEvidenceApi, type EvidenceSummary } from "@/lib/api";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import { REASON_LABELS, TRIGGER_LABELS } from "@/lib/moderation";
-import EvidenceStatus from "@/components/EvidenceStatus";
+import EvidenceStatus, { AuthorityReportBadge } from "@/components/EvidenceStatus";
 
 export default function AdminEvidencePage() {
   const { user, loading: authLoading } = useAuth();
@@ -86,6 +86,7 @@ export default function AdminEvidencePage() {
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium capitalize">{record.target_type}</span>
                     <EvidenceStatus record={record} />
+                    <AuthorityReportBadge record={record} />
                     {record.overdue && (
                       <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-xs font-semibold text-destructive">
                         Undecided 30+ days

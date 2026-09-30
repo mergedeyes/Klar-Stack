@@ -80,6 +80,7 @@ loads more as you scroll.
 - [ ] After removal the author's statement names the type, its criterion and the points (not the justification); Settings → Moderation shows the strike and its expiry date
 - [ ] A third removal for the same reason within 30 days shows "(repeat, ×1.5)" and the statement explains it
 - [ ] In `/admin/standing`, "Show content" on a strike shows the removed text, the post / replied-to comment, the reports and who removed it; the evidence link appears for likely-illegal reasons
+- [ ] A "spam" report classified as Holocaust denial (extremist promotion) on removal still gets an evidence record, marked "Report to authorities: recommended"; an attack threat is marked "required", listed first in `/admin/evidence`, and isn't purged until a report to the authorities is recorded
 - [ ] The report dialog offers the new reasons (extremism, intimate images, terrorism, scam, illegal goods); an "intimate images" report hides the post at once, a "terrorism" report shows it behind a warning
 - [ ] `/admin/standing` lists accounts from 25 points on, with a suggestion: a warning first, a suspension only once the account was warned
 - [ ] A suspended account gets a statement and a red notice under Settings → Moderation; posting, commenting, liking, following, chatting and editing the profile fail with a "suspended until" message; reading, objecting, exporting, deleting own posts and deleting the account still work

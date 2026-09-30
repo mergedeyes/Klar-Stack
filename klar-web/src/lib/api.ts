@@ -596,6 +596,7 @@ export interface Violation {
   label: string;
   label_de: string;
   criterion_de: string;
+  authority_report: "none" | "recommended" | "required";
 }
 
 export interface Strike {
@@ -727,6 +728,12 @@ export interface EvidenceSummary {
   file_count: number;
   // Undecided 30 days after it was opened.
   overdue: boolean;
+  // Set when the removal's classification says it goes to the authorities:
+  // "required" (threat to life or safety, DSA Art. 18; never purged before
+  // a report is recorded) or "recommended". authority_reported: a report
+  // was recorded on the record.
+  authority_report: "required" | "recommended" | null;
+  authority_reported: boolean;
 }
 
 export interface EvidenceFile {

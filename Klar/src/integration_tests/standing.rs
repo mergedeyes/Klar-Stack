@@ -377,3 +377,58 @@ async fn a_permanently_suspended_account_is_deleted_after_the_objection_window(p
     assert!(app.scalar(&format!("SELECT affected_user_id FROM moderation_decisions WHERE id = '{alice_ban}'")).await.is_none());
     assert_eq!(app.count("SELECT 1 FROM users WHERE username = 'carol'").await, 1, "objection pending");
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn likely_illegal_classifications_are_preserved_and_flagged_for_the_authorities(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, bob, admin) = (app.register("alice").await, app.register("bob").await, app.admin().await);
+
+    // Reported as spam, found to be Holocaust denial: preserved anyway.
+    let post = app.upload(&bob, "a post").await;
+    let comment = app.comment(&alice, post, "Denial text").await;
+    let report = app.report(&bob, "comment", comment, "spam").await;
+    assert_eq!(app.count(&format!("SELECT 1 FROM evidence_records WHERE target_id = '{comment}'")).await, 0, "spam copies nothing");
+    app.post(
+        &admin,
+        &format!("/admin/reports/{report}/remove"),
+        json!({ "violation": "extremism_promotion", "justification": "Denies the Holocaust" }),
+    )
+    .await
+    .ok();
+    let evidence = app.get(&admin, "/admin/evidence").await.ok().json();
+    let record = evidence.as_array().unwrap().iter().find(|e| e["target_id"] == comment.to_string()).unwrap().clone();
+    assert!(record["reasons"].as_array().unwrap().iter().any(|r| r == "extremism"));
+    assert_eq!(record["authority_report"], "recommended");
+    assert_eq!(record["authority_reported"], false);
+    assert_eq!(record["decision"], "removed");
+    assert!(!record["content_deleted_at"].is_null());
+    assert_eq!(
+        app.count(&format!("SELECT 1 FROM evidence_versions v WHERE v.evidence_id = '{}'", record["id"].as_str().unwrap())).await,
+        1,
+        "the content as it was removed"
+    );
+
+    // An attack threat: a required report, listed first and never purged
+    // before it is recorded.
+    let threat = app.upload(&alice, "Tomorrow at the school").await;
+    let report = app.report(&bob, "post", threat, "terrorism").await;
+    app.post(&admin, &format!("/admin/reports/{report}/remove"), json!({ "violation": "terror_threat" })).await.ok();
+    let evidence = app.get(&admin, "/admin/evidence").await.ok().json();
+    assert_eq!(evidence[0]["target_id"], threat.to_string(), "an unrecorded required report comes first");
+    assert_eq!(evidence[0]["authority_report"], "required");
+    let id = evidence[0]["id"].as_str().unwrap().to_string();
+
+    app.exec("UPDATE evidence_records SET retain_until = NOW() - INTERVAL '1 day'").await;
+    crate::evidence::sweep(&app.state).await;
+    assert!(app.scalar(&format!("SELECT purged_at FROM evidence_records WHERE id = '{id}'")).await.is_none(), "kept");
+    assert!(
+        app.scalar(&format!("SELECT purged_at FROM evidence_records WHERE target_id = '{comment}'")).await.is_some(),
+        "a recommended one follows the normal retention"
+    );
+
+    app.post(&admin, &format!("/admin/evidence/{id}/authority-report"), json!({ "authority": "LKA Berlin", "reported_on": "2026-09-30" }))
+        .await
+        .ok();
+    crate::evidence::sweep(&app.state).await;
+    assert!(app.scalar(&format!("SELECT purged_at FROM evidence_records WHERE id = '{id}'")).await.is_some());
+}

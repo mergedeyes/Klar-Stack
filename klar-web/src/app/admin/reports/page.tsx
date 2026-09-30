@@ -243,6 +243,8 @@ export default function AdminReportsPage() {
                             {violations.filter((v) => v.reason === reason).map((v) => (
                               <option key={v.id} value={v.id}>
                                 {v.label} · {SEVERITY_LABELS[v.severity]}
+                                {v.authority_report === "required" && " · report to authorities (required)"}
+                                {v.authority_report === "recommended" && " · report to authorities (recommended)"}
                               </option>
                             ))}
                           </optgroup>

@@ -578,6 +578,7 @@ pub async fn remove_reported_content(
     // The statement cites the ground of what the team found, which can
     // differ from what the reporter picked.
     let decided_reason = classification.violation.map(|v| v.reason).unwrap_or(reason.as_str()).to_string();
+    let classified = classification.violation;
 
     // The statement of reasons for the author, recorded before the delete
     // (it reads the author and an excerpt from the content).
@@ -603,7 +604,17 @@ pub async fn remove_reported_content(
         "comment" => evidence::Scope { comments: vec![target_id], ..Default::default() },
         _ => evidence::Scope::default(),
     };
-    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::ModerationRemoval, Some(auth.user_id)).await?;
+    let mut preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::ModerationRemoval, Some(auth.user_id)).await?;
+    // The reporter's reason decides the above; the team's classification
+    // can find more (a "spam" report that is Holocaust denial), and what it
+    // finds likely illegal is preserved too, flagged for the authorities
+    // where the catalog says so.
+    if let Some(v) = classified {
+        preserved.extend(
+            evidence::preserve_classified(&mut tx, &target_type, target_id, v.reason, v.authority_report.as_db(), auth.user_id)
+                .await?,
+        );
+    }
 
     match target_type.as_str() {
         "post" => {

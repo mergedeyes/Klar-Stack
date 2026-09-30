@@ -92,6 +92,30 @@ impl Severity {
     }
 }
 
+/// Whether removed content of a violation type goes to the authorities.
+/// ⚖️ Which types, pending review.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthorityReport {
+    None,
+    /// A suspected crime that may endanger the rest of the platform or the
+    /// public (e.g. Holocaust denial, § 130(3) StGB): the admin decides.
+    Recommended,
+    /// A suspected crime threatening someone's life or safety: providers
+    /// must tell the authorities (DSA Art. 18).
+    Required,
+}
+
+impl AuthorityReport {
+    pub fn as_db(self) -> Option<&'static str> {
+        match self {
+            AuthorityReport::None => None,
+            AuthorityReport::Recommended => Some("recommended"),
+            AuthorityReport::Required => Some("required"),
+        }
+    }
+}
+
 /// One entry of the violation catalog. The German label and criterion are
 /// shown in the statement of reasons and in Terms of Service section 8;
 /// keep the three in sync. ⚖️ Catalog pending review.
@@ -104,6 +128,7 @@ pub struct Violation {
     pub label: &'static str,
     pub label_de: &'static str,
     pub criterion_de: &'static str,
+    pub authority_report: AuthorityReport,
 }
 
 const fn v(
@@ -114,7 +139,14 @@ const fn v(
     label_de: &'static str,
     criterion_de: &'static str,
 ) -> Violation {
-    Violation { id, reason, severity, label, label_de, criterion_de }
+    Violation { id, reason, severity, label, label_de, criterion_de, authority_report: AuthorityReport::None }
+}
+
+impl Violation {
+    const fn report(mut self, authority_report: AuthorityReport) -> Self {
+        self.authority_report = authority_report;
+        self
+    }
 }
 
 /// The catalog, in report-reason order. The first type of a reason is the
@@ -138,7 +170,7 @@ pub const VIOLATIONS: &[Violation] = &[
     v("threat_stalking", "harassment", Severity::Serious, "Threats, stalking or doxxing",
       "Drohung, Stalking oder Veröffentlichung privater Daten",
       "Androhung von Gewalt oder anderen Übeln gegen eine Person, beharrliches Nachstellen oder Veröffentlichen \
-       privater Daten wie Adresse oder Telefonnummer."),
+       privater Daten wie Adresse oder Telefonnummer.").report(AuthorityReport::Recommended),
     v("hate_derogatory", "hate_speech", Severity::Moderate, "Derogatory generalisation about a group",
       "Abwertende Verallgemeinerung über eine Gruppe",
       "Herabsetzende Aussage über Menschen wegen eines in Abschnitt 4 genannten Merkmals, ohne Entmenschlichung \
@@ -146,7 +178,8 @@ pub const VIOLATIONS: &[Violation] = &[
     v("hate_dehumanising", "hate_speech", Severity::Serious, "Dehumanising or inciting against a group",
       "Entmenschlichung oder Hetze gegen eine Gruppe",
       "Menschen wird wegen eines in Abschnitt 4 genannten Merkmals das Menschsein abgesprochen, etwa durch \
-       Gleichsetzung mit Tieren oder Ungeziefer, oder es wird zu Hass, Gewalt oder Ausgrenzung gegen sie aufgerufen."),
+       Gleichsetzung mit Tieren oder Ungeziefer, oder es wird zu Hass, Gewalt oder Ausgrenzung gegen sie aufgerufen.")
+      .report(AuthorityReport::Recommended),
     v("extremism_glorifying", "extremism", Severity::Moderate,
       "Glorifying Nazism/fascism, extremist symbols", "Verherrlichung von NS/Faschismus, extremistische Symbole",
       "Verherrlichung, Verharmlosung oder Rechtfertigung des Nationalsozialismus, des Faschismus oder ihrer \
@@ -157,7 +190,7 @@ pub const VIOLATIONS: &[Violation] = &[
       "Promoting an extremist organisation, Holocaust denial",
       "Werbung für eine extremistische Organisation, Holocaustleugnung",
       "Werbung für, Unterstützung von oder Anwerbung für eine extremistische Organisation im Sinne von \
-       Abschnitt 4, oder Leugnung des Holocaust."),
+       Abschnitt 4, oder Leugnung des Holocaust.").report(AuthorityReport::Recommended),
     v("violence_graphic", "violence", Severity::Minor, "Graphic violence without context",
       "Drastische Gewaltdarstellung ohne Einordnung",
       "Verstörende Darstellung von Gewalt oder Verletzungen ohne dokumentarischen oder aufklärenden Zusammenhang."),
@@ -167,10 +200,12 @@ pub const VIOLATIONS: &[Violation] = &[
     // 91, 129a StGB) and has to go within an hour of a removal order (EU
     // Regulation 2021/784). The criterion is promoting, not reporting on it.
     v("terror_propaganda", "terrorism", Severity::Severe, "Terrorist propaganda", "Terroristische Propaganda",
-      "Inhalte terroristischer Organisationen oder deren Verherrlichung, ohne konkrete Drohung."),
+      "Inhalte terroristischer Organisationen oder deren Verherrlichung, ohne konkrete Drohung.")
+      .report(AuthorityReport::Recommended),
     v("terror_threat", "terrorism", Severity::Severe, "Concrete threat of an attack or serious violence",
       "Konkrete Androhung eines Anschlags oder schwerer Gewalt",
-      "Ankündigung oder ernst gemeinte Drohung mit einer schweren Gewalttat, etwa einem Anschlag oder Amoklauf."),
+      "Ankündigung oder ernst gemeinte Drohung mit einer schweren Gewalttat, etwa einem Anschlag oder Amoklauf.")
+      .report(AuthorityReport::Required),
     v("self_harm_crisis", "self_harm", Severity::None, "Own crisis (no strike)", "Eigene Krise (keine Punkte)",
       "Die Person spricht über eigene Selbstverletzung oder Suizidgedanken. Der Inhalt wird zu ihrem Schutz \
        entfernt, ohne Punkte."),
@@ -185,10 +220,11 @@ pub const VIOLATIONS: &[Violation] = &[
       "Intime Aufnahmen ohne Einwilligung",
       "Verbreitung intimer oder sexueller Aufnahmen einer Person ohne deren Einwilligung."),
     v("ncii_sextortion", "ncii", Severity::Severe, "Sextortion", "Erpressung mit intimen Aufnahmen",
-      "Drohung, intime Aufnahmen einer Person zu verbreiten, um von ihr etwas zu erzwingen."),
+      "Drohung, intime Aufnahmen einer Person zu verbreiten, um von ihr etwas zu erzwingen.")
+      .report(AuthorityReport::Recommended),
     v("csam", "csam", Severity::Severe, "Child sexual abuse material",
       "Darstellung sexuellen Missbrauchs von Minderjährigen",
-      "Darstellung sexuellen Missbrauchs von Kindern oder Jugendlichen."),
+      "Darstellung sexuellen Missbrauchs von Kindern oder Jugendlichen.").report(AuthorityReport::Required),
     v("fraud_scam", "fraud", Severity::Moderate, "Scam attempt", "Betrugsversuch",
       "Versuch, andere durch Täuschung zu Zahlungen oder anderen Leistungen zu bewegen."),
     v("fraud_phishing", "fraud", Severity::Serious, "Phishing", "Phishing",
