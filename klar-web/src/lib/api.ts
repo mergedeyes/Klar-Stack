@@ -511,7 +511,9 @@ export const followRequestsApi = {
 
 export type ReportReason =
   | 'spam' | 'harassment' | 'hate_speech' | 'violence'
-  | 'self_harm' | 'sexual_content' | 'csam' | 'impersonation' | 'other';
+  | 'self_harm' | 'sexual_content' | 'csam' | 'impersonation' | 'other'
+  // Only on decisions from a rights claim; not a report reason users pick.
+  | 'copyright';
 
 export type ReportTargetType = 'post' | 'comment' | 'user';
 
@@ -727,6 +729,89 @@ export const moderationApi = {
       true
     ),
   myReports: () => request<MyReport[]>("/moderation/reports", {}, true),
+};
+
+// ── Rights claims (copyright etc.) ───────────────────────────────────────────
+
+export type RightsClaimType = "copyright" | "trademark" | "other";
+export type RightsClaimStatus = "submitted" | "triaged" | "evidence_requested" | "accepted" | "declined" | "restored";
+
+export interface NewRightsClaim {
+  claim_type: RightsClaimType;
+  claimant_name: string;
+  claimant_email: string;
+  claimant_organization: string | null;
+  represented_party: string | null;
+  content_url: string;
+  work_description: string;
+  ownership_basis: string;
+  original_url: string | null;
+  good_faith: boolean;
+  // Honeypot, always empty from the real form.
+  website: string;
+}
+
+export interface RightsClaimStatusView {
+  id: string;
+  claim_type: RightsClaimType;
+  content_url: string;
+  work_description: string;
+  status: RightsClaimStatus;
+  evidence_request: string | null;
+  claimant_response: string | null;
+  decision_reason: string | null;
+  created_at: string;
+  decided_at: string | null;
+}
+
+export interface AdminRightsClaim {
+  id: string;
+  created_at: string;
+  claim_type: RightsClaimType;
+  claimant_name: string;
+  claimant_email: string;
+  claimant_organization: string | null;
+  represented_party: string | null;
+  claimant_username: string | null;
+  content_url: string;
+  target_id: string;
+  target_exists: boolean;
+  target_username: string | null;
+  target_caption: string | null;
+  work_description: string;
+  ownership_basis: string;
+  original_url: string | null;
+  status: RightsClaimStatus;
+  evidence_request: string | null;
+  claimant_response: string | null;
+  decision_reason: string | null;
+  decided_at: string | null;
+  decision_id: string | null;
+  overdue: boolean;
+}
+
+export const rightsApi = {
+  // Public: works with or without a session (a signed-in claimant is linked).
+  create: (claim: NewRightsClaim) =>
+    request<{ id: string; token: string }>("/rights-claims", { method: "POST", body: JSON.stringify(claim) }),
+  // The token goes in the body, never in a URL.
+  status: (id: string, token: string) =>
+    request<RightsClaimStatusView>(`/rights-claims/${id}/status`, { method: "POST", body: JSON.stringify({ token }) }),
+  respond: (id: string, token: string, response: string) =>
+    request<RightsClaimStatusView>(`/rights-claims/${id}/respond`, {
+      method: "POST",
+      body: JSON.stringify({ token, response }),
+    }),
+};
+
+export const adminRightsApi = {
+  list: (all = false) => request<AdminRightsClaim[]>(`/admin/rights-claims?filter=${all ? "all" : "open"}`, {}, true),
+  triage: (id: string) => request<void>(`/admin/rights-claims/${id}/triage`, { method: "POST", body: "{}" }, true),
+  requestEvidence: (id: string, message: string) =>
+    request<void>(`/admin/rights-claims/${id}/request-evidence`, { method: "POST", body: JSON.stringify({ message }) }, true),
+  accept: (id: string) => request<void>(`/admin/rights-claims/${id}/accept`, { method: "POST", body: "{}" }, true),
+  decline: (id: string, message: string) =>
+    request<void>(`/admin/rights-claims/${id}/decline`, { method: "POST", body: JSON.stringify({ message }) }, true),
 };
 
 export const adminModerationApi = {

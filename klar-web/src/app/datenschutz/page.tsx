@@ -193,6 +193,22 @@ export default function DatenschutzPage() {
             Inhaltsauszug und die Verknüpfung mit dir.
           </p>
           <p className="mt-2">
+            <strong>Meldungen von Rechteverletzungen:</strong> Wer über das
+            Formular „Rechteverletzung melden“ geltend macht, dass ein Beitrag
+            ein Urheber-, Marken- oder anderes Recht verletzt — auch ohne
+            Klar-Konto —, übermittelt uns Name, E-Mail-Adresse, optional
+            Organisation und vertretene Person, den Link zum Beitrag, die
+            Beschreibung des Werks und die Grundlage der Rechte. Wir nutzen
+            diese Angaben, um die Meldung zu prüfen, Rückfragen zu stellen und
+            über das Ergebnis zu informieren (Art. 6 Abs. 1 lit. c DSGVO i. V. m.
+            Art. 16 DSA). Den Stand kann die meldende Person über einen
+            persönlichen Link einsehen; wir speichern davon nur einen
+            nicht rückrechenbaren Hashwert. Wird die Meldung angenommen, wird
+            der Beitrag ausgeblendet, und die veröffentlichende Person erfährt,
+            um welches Werk es geht — nicht aber, wer gemeldet hat. Meldungen
+            werden drei Jahre nach unserer Entscheidung gelöscht.
+          </p>
+          <p className="mt-2">
             <strong>Beweissicherung:</strong> Wird ein Beitrag, Kommentar oder
             Profil wegen eines möglicherweise strafbaren Inhalts gemeldet
             (etwa Darstellung sexuellen Missbrauchs von Minderjährigen,

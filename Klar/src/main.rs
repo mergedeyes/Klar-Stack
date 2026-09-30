@@ -167,6 +167,7 @@ async fn main() {
     };
 
     evidence::spawn_sweeper(state.clone());
+    handlers::rights::spawn_cleanup(state.db.clone());
 
     let app = routes::create_router(state);
     tracing::info!("Server running on http://{}", addr);

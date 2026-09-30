@@ -88,6 +88,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/forgot-password", post(handlers::auth::forgot_password))
         .route("/auth/reset-password", post(handlers::auth::reset_password))
         .route("/auth/resend-verification", post(handlers::auth::resend_verification))
+        // Public rights-claim form and its status page: no account needed,
+        // so the same strict per-IP limit as the auth routes.
+        .route("/rights-claims", post(handlers::rights::create_claim))
+        .route("/rights-claims/{claim_id}/status", post(handlers::rights::claim_status))
+        .route("/rights-claims/{claim_id}/respond", post(handlers::rights::respond_to_claim))
         .route_layer(middleware::from_fn_with_state(
             auth_limiter,
             rate_limit::rate_limit_middleware,
@@ -186,6 +191,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/moderation", get(handlers::moderation::admin_queue))
         .route("/admin/moderation/decisions/{decision_id}/release", post(handlers::moderation::release_decision))
         .route("/admin/moderation/decisions/{decision_id}/objection", post(handlers::moderation::resolve_objection))
+        .route("/admin/rights-claims", get(handlers::rights::list_claims))
+        .route("/admin/rights-claims/{claim_id}/triage", post(handlers::rights::triage_claim))
+        .route("/admin/rights-claims/{claim_id}/request-evidence", post(handlers::rights::request_evidence))
+        .route("/admin/rights-claims/{claim_id}/accept", post(handlers::rights::accept_claim))
+        .route("/admin/rights-claims/{claim_id}/decline", post(handlers::rights::decline_claim))
         .route("/admin/evidence", get(handlers::evidence::list_evidence))
         .route("/admin/evidence/{evidence_id}/open", post(handlers::evidence::open_evidence))
         .route("/admin/evidence/{evidence_id}/files/{file_id}", post(handlers::evidence::get_evidence_file))

@@ -409,6 +409,57 @@ impl EmailService {
         self.send(to_email, "Moderationsentscheidung zu deinem Inhalt bei Klar", &text, &html).await
     }
 
+    /// Confirm receipt of a rights claim (DSA Art. 16(4)) with the private
+    /// status link. The token is in the URL fragment, which browsers never
+    /// send to a server, so it can't end up in any access log.
+    pub async fn send_rights_claim_received(&self, to_email: &str, claim_id: uuid::Uuid, token: &str) -> Result<(), EmailError> {
+        let url = format!("{}/rights/status/{}#{}", self.base_url, claim_id, token);
+
+        let text = format!(
+            "Deine Rechte-Meldung ist bei Klar eingegangen\n\n\
+             Wir pruefen deine Meldung und informieren dich per E-Mail ueber das Ergebnis. \
+             Den Stand kannst du jederzeit hier ansehen:\n\n\
+             {}\n\n\
+             Bewahre diesen Link auf und gib ihn nicht weiter -- er ist dein Zugang zu dieser Meldung.",
+            url
+        );
+        let html = render_html_email(
+            "Deine Rechte-Meldung ist bei Klar eingegangen",
+            "Wir pruefen deine Meldung und informieren dich per E-Mail ueber das Ergebnis. Den Stand kannst du jederzeit ueber den folgenden Link ansehen.",
+            "Stand ansehen",
+            &url,
+            "Bewahre diesen Link auf und gib ihn nicht weiter -- er ist dein Zugang zu dieser Meldung.",
+        );
+        self.send(to_email, "Deine Rechte-Meldung ist bei Klar eingegangen", &text, &html).await
+    }
+
+    /// A step in a rights claim (evidence request, decision, restoration),
+    /// with the message itself in the email. The button leads to the status
+    /// page, which needs the link from the confirmation email.
+    pub async fn send_rights_claim_update(
+        &self,
+        to_email: &str,
+        claim_id: uuid::Uuid,
+        subject: &str,
+        message: &str,
+    ) -> Result<(), EmailError> {
+        let url = format!("{}/rights/status/{}", self.base_url, claim_id);
+        let text = format!(
+            "{}\n\n{}\n\n\
+             Antworten oder den Stand ansehen kannst du ueber den Link aus deiner Bestaetigungs-E-Mail.",
+            subject, message
+        );
+        let escaped = message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let html = render_html_email(
+            subject,
+            &escaped,
+            "Zur Meldung",
+            &url,
+            "Antworten oder den Stand ansehen kannst du ueber den Link aus deiner Bestaetigungs-E-Mail.",
+        );
+        self.send(to_email, subject, &text, &html).await
+    }
+
     /// Send password reset link
     pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to reset their password.

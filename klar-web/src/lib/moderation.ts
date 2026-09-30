@@ -12,6 +12,7 @@ export const REASON_LABELS: Record<string, string> = {
   csam: "Child sexual abuse material",
   impersonation: "Impersonation",
   other: "Something else",
+  copyright: "Copyright or other rights (rights claim)",
 };
 
 export const TRIGGER_LABELS: Record<NonNullable<EvidenceSummary["deletion_trigger"]>, string> = {

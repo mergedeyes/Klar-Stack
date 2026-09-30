@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
+import { FileWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { SmartBackButton } from '@/components/SmartBackButton';
@@ -60,6 +61,12 @@ export default function SettingsPage() {
           icon: ShieldAlert,
           label: "Reports",
           description: "Review reported content",
+        },
+        {
+          href: "/admin/rights",
+          icon: FileWarning,
+          label: "Rights claims",
+          description: "Copyright and other rights notices",
         },
         {
           href: "/admin/evidence",
