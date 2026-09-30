@@ -94,7 +94,7 @@ docs/        manual-checks.md: what to test by hand before merging
 
 **Evidence.** A separate storage zone without a public URL; files encrypted with AES-256-GCM, the key only in the backend's environment; every access and change in an append-only audit log; an hourly sweeper retries copies and purges expired records.
 
-**Operations.** Daily database backups to a private storage zone, caught up after missed slots, with dead-man's-switch alerting. Per-route rate limits, stricter on sign-in and public forms. An hourly GitHub Actions job checks the API's health endpoint and both sites and alerts through healthchecks.io (`.github/workflows/uptime.yml`).
+**Operations.** Daily database backups to a private storage zone, caught up after missed slots, with dead-man's-switch alerting. Per-route rate limits, stricter on sign-in and public forms. Backend and frontend each ping their own healthchecks.io check every 5 minutes after checking themselves (database and Redis; the rendered `/welcome` page), so an outage alerts at once or after 10 minutes of silence (`UPTIME_HEALTHCHECK_URL`).
 
 </details>
 

@@ -2,7 +2,7 @@
 //! Postgres (a fresh database per test, migrated by `sqlx::test`) and
 //! Redis. They cover the flows where the logic spans handlers, the
 //! database and storage: evidence preservation, moderation decisions,
-//! rights claims, feedback and link previews.
+//! rights claims, feedback, link previews and the uptime ping.
 //!
 //! Run with services up:
 //!
@@ -22,3 +22,4 @@ mod feedback;
 mod moderation;
 mod previews;
 mod rights;
+mod uptime;
