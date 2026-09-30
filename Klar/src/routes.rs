@@ -174,6 +174,11 @@ pub fn create_router(state: AppState) -> Router {
         // Interaction event log (client-reported views)
         .route("/events", post(handlers::events::create_event))
 
+        // In-app feedback (bug reports, ideas)
+        .route("/feedback", post(handlers::feedback::create_feedback))
+        .route("/admin/feedback", get(handlers::feedback::list_feedback))
+        .route("/admin/feedback/{feedback_id}", patch(handlers::feedback::update_feedback))
+
         // ── Reporting & moderation ───────────────────────────────
         .route("/reports", post(handlers::reports::create_report))
         .route("/admin/reports", get(handlers::reports::get_reports))

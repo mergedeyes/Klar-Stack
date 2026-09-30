@@ -49,8 +49,9 @@ export default function RootLayout({
         <AuthProvider>
           <VerifyEmailBanner />
           <NotificationsProvider>{children}</NotificationsProvider>
+          {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
+          <Footer />
         </AuthProvider>
-        <Footer />
       </body>
     </html>
   );

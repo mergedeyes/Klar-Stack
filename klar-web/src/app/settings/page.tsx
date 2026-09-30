@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { SmartBackButton } from '@/components/SmartBackButton';
@@ -60,6 +61,12 @@ export default function SettingsPage() {
           icon: Archive,
           label: "Evidence",
           description: "Preserved copies of deleted, likely-illegal content",
+        },
+        {
+          href: "/admin/feedback",
+          icon: MessageSquareText,
+          label: "Feedback",
+          description: "Bug reports and ideas from testers",
         },
       ]
     : sections;

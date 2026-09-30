@@ -637,6 +637,9 @@ pub async fn export_my_data(
     .await
     .db_err_ctx("Data export query failed", "Database error")?;
 
+    // --- Feedback sent through the app ---
+    let feedback_sent = crate::handlers::feedback::export_for(&state.db, auth.user_id).await?;
+
     // --- Notifications received (capped — this is a personal export, not
     // an unbounded audit log) ---
     let notifications = sqlx::query_as::<_, (String, String, Option<Uuid>, Option<Uuid>, bool, DateTime<Utc>)>(
@@ -785,6 +788,7 @@ pub async fn export_my_data(
         "following": following.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "followers": followers.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "blocked_users": blocked.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+        "feedback_sent": feedback_sent,
         "notifications_received": notifications_json,
         "conversations": conversations_json,
     });

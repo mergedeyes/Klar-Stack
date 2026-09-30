@@ -50,6 +50,11 @@ UPDATE media_assets SET
 
 UPDATE post_events SET metadata = NULL WHERE metadata IS NOT NULL;
 
+UPDATE feedback SET
+    message    = left(repeat('Lorem ipsum ', 400), char_length(message)),
+    user_agent = CASE WHEN user_agent IS NULL THEN NULL ELSE 'Mozilla/5.0 (anonymized)' END,
+    admin_note = CASE WHEN admin_note IS NULL THEN NULL ELSE 'Admin note' END;
+
 -- ── Secrets ──────────────────────────────────────────────────────────────────
 TRUNCATE refresh_tokens, email_tokens;
 
@@ -71,6 +76,9 @@ DECLARE
         'media_assets.original_key', 'media_assets.thumb_key',
         'media_assets.medium_key', 'media_assets.full_key',
         'post_events.metadata',
+        'feedback.message', 'feedback.user_agent', 'feedback.admin_note',
+        -- app paths, screen sizes and fixed vocabularies
+        'feedback.page_path', 'feedback.viewport', 'feedback.category', 'feedback.status',
         -- emptied above
         'refresh_tokens.token_hash', 'refresh_tokens.device_info',
         'email_tokens.token', 'email_tokens.token_type',

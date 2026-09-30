@@ -68,6 +68,12 @@ loads more as you scroll.
 - [ ] Opening an evidence record or one of its files asks for a reason, and the audit trail shows exactly one entry per action
 - [ ] Dismissing the last report on preserved content purges the record at the next sweep; a legal hold stops the purge
 
+## Feedback
+
+- [ ] Signed in, the footer shows "Feedback"; signed out it doesn't
+- [ ] Sending from a page records that page (without its query string); unticking "Include technical details" sends no page, browser or screen size
+- [ ] The entry appears in `/admin/feedback`; "Done" hides it from the open list and "Show done" brings it back
+
 ## Legal pages and passcode gate
 
 - [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
