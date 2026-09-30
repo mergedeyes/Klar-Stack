@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, ShieldCheck } from "lucide-react";
+import { Lock, ScanSearch, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { adminLocksApi, type AccountLock } from "@/lib/api";
+import { adminLocksApi, adminReviewApi, type AccountLock, type ReviewCandidate } from "@/lib/api";
+import { FLAG_LABELS } from "@/lib/moderation";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
 
@@ -107,6 +108,8 @@ export default function AdminSecurityPage() {
   const router = useRouter();
 
   const [locks, setLocks] = useState<AccountLock[] | null>(null);
+  const [candidates, setCandidates] = useState<ReviewCandidate[] | null>(null);
+  const [reviewName, setReviewName] = useState("");
   const [username, setUsername] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -126,6 +129,13 @@ export default function AdminSecurityPage() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  useEffect(() => {
+    if (!user) return;
+    adminReviewApi.candidates()
+      .then(setCandidates)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
+  }, [user]);
 
   const lock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +172,71 @@ export default function AdminSecurityPage() {
           <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
         {done && <div className="mb-4 rounded-md bg-muted px-3 py-2 text-sm" role="status">{done}</div>}
+
+        {/* Accounts to look at first: flagged by activity signals, or with
+            pending spam, fraud or impersonation reports. A review shows the
+            account's recent activity and ends in a decision (lock, bot, or
+            no action). */}
+        <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+          <ScanSearch size={14} /> Needs review
+        </h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = reviewName.trim().replace(/^@/, "");
+            if (name) router.push(`/admin/review/${encodeURIComponent(name)}`);
+          }}
+          className="mb-3 flex gap-2"
+        >
+          <input
+            value={reviewName}
+            onChange={(e) => setReviewName(e.target.value)}
+            placeholder="Review any account by username"
+            aria-label="Username to review"
+            className={inputClass}
+          />
+          <Button size="sm" type="submit" variant="outline" disabled={!reviewName.trim()}>
+            Review
+          </Button>
+        </form>
+        {candidates && candidates.length === 0 && (
+          <p className="mb-6 text-sm text-muted-foreground">No account shows signals or has pending spam reports.</p>
+        )}
+        {candidates && candidates.length > 0 && (
+          <div className="mb-6 space-y-2">
+            {candidates.map((c) => (
+              <Link
+                key={c.username}
+                href={`/admin/review/${c.username}?reason=${encodeURIComponent(
+                  c.flags.length > 0
+                    ? `Signals: ${c.flags.map((f) => FLAG_LABELS[f]).join(", ")}`
+                    : "Pending spam, fraud or impersonation reports",
+                )}`}
+                className="block rounded-xl border border-border p-3 hover:bg-muted/40"
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium">@{c.username}</span>
+                  {c.flags.map((f) => (
+                    <span key={f} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+                      {FLAG_LABELS[f]}
+                    </span>
+                  ))}
+                  {c.spam_reports > 0 && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                      {c.spam_reports} spam/fraud report{c.spam_reports === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {c.locked && <span className="rounded bg-muted px-1.5 py-0.5 text-xs">locked</span>}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {c.signals.max_burst} actions in 10 min at most · {c.signals.max_duplicates}× the same text ·{" "}
+                  {c.signals.activity_24h} in the last day
+                  {c.last_review && ` · last reviewed ${new Date(c.last_review).toLocaleDateString()}`}
+                </p>
+              </Link>
+            ))}
+          </div>
+        )}
 
         <form onSubmit={lock} className="mb-6 space-y-2 rounded-xl border border-border p-3">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">

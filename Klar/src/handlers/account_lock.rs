@@ -169,7 +169,7 @@ pub struct LockRequest {
     pub note: String,
 }
 
-fn checked_text(text: &str, what: &str) -> Result<String, AppError> {
+pub fn checked_text(text: &str, what: &str) -> Result<String, AppError> {
     let text = text.trim();
     if text.is_empty() {
         return Err(AppError::bad_request(format!("{} is required", what)));
@@ -189,17 +189,27 @@ pub async fn lock_account(
 ) -> Result<StatusCode, AppError> {
     require_admin(&state.db, &auth).await?;
     let note = checked_text(&input.note, "A note")?;
+    let user_id = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+        .bind(&username)
+        .fetch_optional(&state.db)
+        .await
+        .db_err("Database error")?
+        .ok_or_else(|| AppError::not_found("User not found"))?;
+    lock_user(&state, user_id, auth.user_id, &note).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
 
+/// Locks an account, ends its sessions and emails the owner a reset link.
+/// Also the "lock" decision of an account review (account_review.rs).
+pub async fn lock_user(state: &AppState, user_id: Uuid, admin_id: Uuid, note: &str) -> Result<(), AppError> {
     let mut tx = state.db.begin().await.db_err("Database error")?;
-    let (user_id, email) = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT id, email FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE",
-    )
-    .bind(&username)
-    .fetch_optional(&mut *tx)
-    .await
-    .db_err("Database error")?
-    .ok_or_else(|| AppError::not_found("User not found"))?;
-    if user_id == auth.user_id {
+    let email = sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = $1 FOR UPDATE")
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .db_err("Database error")?
+        .ok_or_else(|| AppError::not_found("User not found"))?;
+    if user_id == admin_id {
         return Err(AppError::bad_request("You can't lock your own account"));
     }
 
@@ -207,8 +217,8 @@ pub async fn lock_account(
         "INSERT INTO account_locks (user_id, locked_by, note) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
     )
     .bind(user_id)
-    .bind(auth.user_id)
-    .bind(&note)
+    .bind(admin_id)
+    .bind(note)
     .execute(&mut *tx)
     .await
     .db_err("Database error")?
@@ -228,8 +238,8 @@ pub async fn lock_account(
     if let Err(e) = state.email.send_account_locked(&email, &token).await {
         tracing::error!("Lock email for user {} failed: {}", user_id, e.0);
     }
-    tracing::info!("Account {} locked by admin {} (suspected takeover)", user_id, auth.user_id);
-    Ok(StatusCode::NO_CONTENT)
+    tracing::info!("Account {} locked by admin {} (suspected takeover)", user_id, admin_id);
+    Ok(())
 }
 
 /// POST /admin/locks/:id/unlock (admin only) -- e.g. once the owner proved

@@ -56,6 +56,9 @@ pub enum Severity {
     Minor,
     Moderate,
     Serious,
+    /// Hard, but not an instant ban: a first case suggests a warning (the
+    /// warning-first rule), a second within the year a permanent ban.
+    Grave,
     Severe,
 }
 
@@ -66,6 +69,7 @@ impl Severity {
             Severity::Minor => "minor",
             Severity::Moderate => "moderate",
             Severity::Serious => "serious",
+            Severity::Grave => "grave",
             Severity::Severe => "severe",
         }
     }
@@ -76,6 +80,7 @@ impl Severity {
             Severity::Minor => 5,
             Severity::Moderate => 20,
             Severity::Serious => 40,
+            Severity::Grave => 60,
             Severity::Severe => MAX_SCORE,
         }
     }
@@ -86,7 +91,7 @@ impl Severity {
             Severity::None => Some(0), // never stored, see add_strike
             Severity::Minor => Some(90),
             Severity::Moderate => Some(180),
-            Severity::Serious => Some(365),
+            Severity::Serious | Severity::Grave => Some(365),
             Severity::Severe => None,
         }
     }
@@ -180,7 +185,7 @@ pub const VIOLATIONS: &[Violation] = &[
       "Menschen wird wegen eines in Abschnitt 4 genannten Merkmals das Menschsein abgesprochen, etwa durch \
        Gleichsetzung mit Tieren oder Ungeziefer, oder es wird zu Hass, Gewalt oder Ausgrenzung gegen sie aufgerufen.")
       .report(AuthorityReport::Recommended),
-    v("extremism_glorifying", "extremism", Severity::Moderate,
+    v("extremism_glorifying", "extremism", Severity::Grave,
       "Glorifying Nazism/fascism, extremist symbols", "Verherrlichung von NS/Faschismus, extremistische Symbole",
       "Verherrlichung, Verharmlosung oder Rechtfertigung des Nationalsozialismus, des Faschismus oder ihrer \
        Verbrechen, oder Verwenden extremistischer Symbole oder Parolen, ohne Werbung für eine Organisation."),
@@ -721,6 +726,13 @@ pub fn spawn_sweeper(state: AppState) {
             {
                 tracing::error!("Strike view log sweep failed: {}", e);
             }
+            // Account reviews (handlers/account_review.rs) are kept a year.
+            if let Err(e) = sqlx::query("DELETE FROM account_reviews WHERE opened_at < NOW() - INTERVAL '1 year'")
+                .execute(&db)
+                .await
+            {
+                tracing::error!("Account review sweep failed: {}", e);
+            }
             tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
         }
     });
@@ -756,6 +768,9 @@ mod tests {
         assert_eq!(ids.len(), VIOLATIONS.len());
         assert!(violation("none").is_none(), "'none' means no strike");
         assert_eq!(violation("bot_account").unwrap().severity, Severity::Severe);
+        let glorifying = violation("extremism_glorifying").unwrap().severity.points();
+        assert_eq!(suggest(glorifying, true, false), Some(Measure::Warning), "hard, but not an instant ban");
+        assert_eq!(suggest((2 * glorifying).min(MAX_SCORE), true, true), Some(Measure::Ban));
         for id in ["bot_account", "terror_propaganda", "terror_threat", "extremism_promotion"] {
             assert_eq!(suggest(violation(id).unwrap().severity.points(), true, false), Some(Measure::Ban), "{id}");
         }

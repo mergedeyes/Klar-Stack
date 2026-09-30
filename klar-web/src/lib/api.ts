@@ -602,7 +602,7 @@ export const adminReportsApi = {
 
 // ── Account standing (strikes, warnings, suspensions) ────────────────────────
 
-export type StrikeSeverity = "none" | "minor" | "moderate" | "serious" | "severe";
+export type StrikeSeverity = "none" | "minor" | "moderate" | "serious" | "grave" | "severe";
 export type AccountMeasure = "warning" | "suspend_7d" | "suspend_30d" | "ban";
 
 // One entry of the violation catalog (Klar/src/standing.rs): what the
@@ -977,6 +977,78 @@ export const adminRightsApi = {
   accept: (id: string) => request<void>(`/admin/rights-claims/${id}/accept`, { method: "POST", body: "{}" }, true),
   decline: (id: string, message: string) =>
     request<void>(`/admin/rights-claims/${id}/decline`, { method: "POST", body: JSON.stringify({ message }) }, true),
+};
+
+// ── Account reviews (admin) ──────────────────────────────────────────────────
+
+// Signals computed from existing activity (no IPs or devices): the biggest
+// burst of posts/comments/messages in 10 minutes and of identical texts in
+// the last 7 days, links, activity in the last day, and whether that came
+// after 60+ days of silence.
+export interface ReviewSignals {
+  max_burst: number;
+  max_duplicates: number;
+  links: number;
+  activity_24h: number;
+  woke_up: boolean;
+}
+
+export type ReviewFlag = "burst" | "duplicates" | "woke_up";
+
+export interface ReviewCandidate {
+  username: string;
+  signals: ReviewSignals;
+  flags: ReviewFlag[];
+  // Pending spam, fraud or impersonation reports on the account or its content.
+  spam_reports: number;
+  locked: boolean;
+  last_review: string | null;
+}
+
+export interface AccountReview {
+  review_id: string;
+  overview: {
+    username: string;
+    display_name: string | null;
+    created_at: string;
+    email_verified: boolean;
+    is_private: boolean;
+    post_count: number;
+    follower_count: number;
+    following_count: number;
+  };
+  signals: ReviewSignals;
+  flags: ReviewFlag[];
+  standing_score: number;
+  suspended: boolean;
+  locked: boolean;
+  posts: { id: string; caption: string | null; created_at: string; moderation_status: string; image_count: number }[];
+  comments: { id: string; body: string; created_at: string; post_id: string; post_author: string | null }[];
+  likes: { post_id: string; post_author: string | null; created_at: string }[];
+  follows: { username: string; created_at: string }[];
+  // Direct messages as numbers only, never their content.
+  messages: { sent_24h: number; recipients_24h: number; sent_7d: number; recipients_7d: number };
+  reports: { reason: ReportReason; target_type: ReportTargetType; status: string; details: string | null; created_at: string }[];
+  history: { kind: "decision" | "lock" | "review"; what: string | null; at: string }[];
+}
+
+export type ReviewOutcome = "no_action" | "lock" | "bot";
+
+export const adminReviewApi = {
+  candidates: () => request<ReviewCandidate[]>("/admin/review-candidates", {}, true),
+  // Opening is recorded (who, when, why): a reason is required.
+  open: (username: string, reason: string, reportId?: string) =>
+    request<AccountReview>(
+      `/admin/users/${encodeURIComponent(username)}/review`,
+      { method: "POST", body: JSON.stringify({ reason, report_id: reportId ?? null }) },
+      true
+    ),
+  decide: (reviewId: string, outcome: ReviewOutcome, note: string) =>
+    request<{ outcome: string }>(
+      `/admin/reviews/${reviewId}/decide`,
+      { method: "POST", body: JSON.stringify({ outcome, note }) },
+      true
+    ),
 };
 
 // ── Account locks (suspected takeovers, admin) ───────────────────────────────

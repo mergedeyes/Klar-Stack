@@ -194,7 +194,7 @@ export default function NutzungsbedingungenPage() {
                 <strong>Hassrede:</strong> Abwertende Verallgemeinerung über eine Gruppe (20); Entmenschlichung oder Hetze gegen eine Gruppe (40)
               </li>
               <li>
-                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, extremistische Symbole (20); Werbung für eine extremistische Organisation, Holocaustleugnung (100)
+                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, extremistische Symbole (60); Werbung für eine extremistische Organisation, Holocaustleugnung (100)
               </li>
               <li>
                 <strong>Gewalt:</strong> Drastische Gewaltdarstellung ohne Einordnung (5); Verherrlichung von Gewalt (20)
@@ -229,8 +229,8 @@ export default function NutzungsbedingungenPage() {
           </ul>
           <p className="mt-2">
             Punkte verfallen je nach Höhe: 5 Punkte nach 90 Tagen, 20 Punkte
-            nach 180 Tagen, 40 Punkte nach einem Jahr; 100 Punkte verfallen
-            nicht. Abgelaufene Punkte zählen nicht mehr. Ab
+            nach 180 Tagen, 40 und 60 Punkte nach einem Jahr; 100 Punkte
+            verfallen nicht. Abgelaufene Punkte zählen nicht mehr. Ab
             dem dritten Verstoß aus demselben Grund innerhalb von 30 Tagen
             zählen die Punkte eineinhalbfach. Ab 25 Punkten kommt eine
             Verwarnung in Betracht, ab 50 eine Sperrung für 7 Tage, ab 75 für

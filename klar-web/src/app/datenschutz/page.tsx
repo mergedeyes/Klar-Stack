@@ -61,7 +61,16 @@ export default function DatenschutzPage() {
             deines Kontos und deiner Kontakte und der Dokumentation von
             Datenschutzverletzungen (Art. 6 Abs. 1 lit. c und f, Art. 33 Abs. 5
             DSGVO). Löschst du dein Konto, bleibt der Vorfall ohne Verknüpfung
-            mit dir dokumentiert. Antworten auf unsere E-Mails erreichen unser
+            mit dir dokumentiert. Um zu erkennen, ob ein Konto übernommen wurde
+            oder automatisiert betrieben wird, wertet unser Team ungewöhnliche
+            Aktivität aus bereits gespeicherten Daten aus (etwa viele Beiträge
+            in wenigen Minuten oder derselbe Text immer wieder) und kann die
+            jüngsten Beiträge, Kommentare, Likes und Follows eines Kontos
+            gesammelt prüfen; von Direktnachrichten sieht es dabei nur die
+            Anzahl, nie den Inhalt. Wir erheben dafür keine zusätzlichen Daten
+            wie IP-Adressen. Jede solche Prüfung wird mit Grund, Person und
+            Ergebnis protokolliert und nach einem Jahr gelöscht (Art. 6 Abs. 1
+            lit. f DSGVO). Antworten auf unsere E-Mails erreichen unser
             Postfach unter kontakt@klarsocial.eu.
           </p>
         </section>

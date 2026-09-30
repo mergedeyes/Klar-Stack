@@ -10,7 +10,7 @@ import { adminReportsApi, adminStandingApi, type AdminReport, type Violation } f
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import { getMediaUrl } from "@/lib/utils/media";
-import { REASON_LABELS, SEVERITY_LABELS } from "@/lib/moderation";
+import { ACCOUNT_REVIEW_REASONS, REASON_LABELS, SEVERITY_LABELS } from "@/lib/moderation";
 
 const CRITICAL_REASONS = new Set(["csam", "ncii"]);
 const HIGH_REASONS = new Set(["violence", "self_harm", "sexual_content", "terrorism"]);
@@ -204,6 +204,24 @@ export default function AdminReportsPage() {
 
               {report.details && (
                 <p className="mb-2 rounded-md bg-muted/30 p-2 text-sm italic">&ldquo;{report.details}&rdquo;</p>
+              )}
+
+              {/* The author's recent activity on one page (logged), e.g. to
+                  tell a hijacked account from a bot. */}
+              {report.target_username && (
+                <p className="mb-2 text-xs">
+                  <Link
+                    href={`/admin/review/${report.target_username}?report=${report.id}&reason=${encodeURIComponent(
+                      `Report: ${REASON_LABELS[report.reason] ?? report.reason}`,
+                    )}`}
+                    className="font-medium underline"
+                  >
+                    Review account
+                  </Link>
+                  {ACCOUNT_REVIEW_REASONS.has(report.reason) && (
+                    <span className="text-muted-foreground"> — check whether it was taken over or is a bot</span>
+                  )}
+                </p>
               )}
 
               {/* Optional note attached to whichever decision (dismiss or
