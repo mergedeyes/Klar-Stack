@@ -20,6 +20,7 @@ mod db;
 mod email;
 mod errors;
 mod evidence;
+mod evidence_crypto;
 mod handlers;
 mod media;
 mod models;

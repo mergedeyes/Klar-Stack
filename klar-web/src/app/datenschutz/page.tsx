@@ -193,7 +193,7 @@ export default function DatenschutzPage() {
             Kommentare oder Likes. Bei anderen
             Meldegründen (z. B. Spam) wird nichts kopiert. Die Kopie liegt in einem
             gesonderten, nicht öffentlich erreichbaren Speicher bei Bunny.net
-            in Deutschland; nur unser Moderationsteam hat Zugriff, und jeder
+            in Deutschland, Bilder darin verschlüsselt; nur unser Moderationsteam hat Zugriff, und jeder
             Zugriff wird mit Person, Zeitpunkt und Grund protokolliert.
             Rechtsgrundlage ist Art. 6 Abs. 1 lit. c und f DSGVO; das Recht
             auf Löschung ist insoweit nach Art. 17 Abs. 3 lit. e DSGVO

@@ -26,6 +26,7 @@ dependencies = [
  "redis",
  "reqwest",
  "resend-rs",
+ "ring",
  "serde",
  "serde_json",
  "sha2",
