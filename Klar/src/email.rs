@@ -382,6 +382,33 @@ impl EmailService {
         self.send(to_email, "Bestaetige deine E-Mail bei Klar", &text, &html).await
     }
 
+    /// Tell a user that a moderation decision affects their content (DSA
+    /// Art. 17). The statement itself is only on the linked page, so the
+    /// email reveals nothing beyond "there is a decision" if it's read by
+    /// someone else.
+    pub async fn send_moderation_notice(&self, to_email: &str, decision_id: uuid::Uuid) -> Result<(), EmailError> {
+        let url = format!("{}/moderation/decisions/{}", self.base_url, decision_id);
+
+        let text = format!(
+            "Moderationsentscheidung zu deinem Inhalt\n\n\
+             Wir haben eine Entscheidung zu einem deiner Inhalte bei Klar getroffen. \
+             Die Begruendung und wie du widersprechen kannst, findest du hier:\n\n\
+             {}\n\n\
+             Du musst dafuer angemeldet sein.",
+            url
+        );
+
+        let html = render_html_email(
+            "Eine Moderationsentscheidung zu deinem Inhalt bei Klar",
+            "Wir haben eine Entscheidung zu einem deiner Inhalte bei Klar getroffen. Die Begruendung und wie du widersprechen kannst, findest du unter dem folgenden Link.",
+            "Begruendung ansehen",
+            &url,
+            "Du musst dafuer bei Klar angemeldet sein.",
+        );
+
+        self.send(to_email, "Moderationsentscheidung zu deinem Inhalt bei Klar", &text, &html).await
+    }
+
     /// Send password reset link
     pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to reset their password.

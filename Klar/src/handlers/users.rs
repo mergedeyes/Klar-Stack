@@ -13,6 +13,7 @@ use crate::handlers::auth::AppState;
 use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::evidence;
 use crate::media;
+use crate::moderation;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{
@@ -455,6 +456,10 @@ pub async fn delete_account(
     };
     let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::AccountDeletion, Some(auth.user_id)).await?;
 
+    // Decision records about this account stay as the moderation audit
+    // trail, without the content excerpt.
+    moderation::forget_user(&mut tx, auth.user_id).await?;
+
     // Conversations whose other participant already deleted their account
     // would be left with nobody in them once this user goes too -- remove
     // them outright. Conversations with a remaining participant are kept
@@ -639,10 +644,11 @@ pub async fn export_my_data(
 
     // --- Notifications received (capped — this is a personal export, not
     // an unbounded audit log) ---
-    let notifications = sqlx::query_as::<_, (String, String, Option<Uuid>, Option<Uuid>, bool, DateTime<Utc>)>(
+    // LEFT JOIN: moderation notices come from Klar, with no acting user.
+    let notifications = sqlx::query_as::<_, (String, Option<String>, Option<Uuid>, Option<Uuid>, bool, DateTime<Utc>)>(
         r#"
         SELECT n.type::text, u.username, n.post_id, n.comment_id, n.is_read, n.created_at
-        FROM notifications n JOIN users u ON u.id = n.actor_id
+        FROM notifications n LEFT JOIN users u ON u.id = n.actor_id
         WHERE n.user_id = $1
         ORDER BY n.created_at DESC
         LIMIT 500
@@ -656,7 +662,7 @@ pub async fn export_my_data(
     let notifications_json: Vec<serde_json::Value> = notifications.into_iter().map(|(type_, actor_username, post_id, comment_id, is_read, created_at)| {
         serde_json::json!({
             "type": type_,
-            "from": actor_username,
+            "from": actor_username.unwrap_or_else(|| "Klar".to_string()),
             "post_id": post_id,
             "comment_id": comment_id,
             "is_read": is_read,
@@ -760,6 +766,13 @@ pub async fn export_my_data(
         }
     }
 
+    // Statements of reasons about this account's content and the reports
+    // it filed. Preserved evidence is deliberately not included (see
+    // evidence.rs).
+    let mut conn = state.db.acquire().await.db_err("Database error")?;
+    let moderation_json = moderation::export_for(&mut conn, auth.user_id).await?;
+    drop(conn);
+
     let export = serde_json::json!({
         "export_info": {
             "generated_at": Utc::now(),
@@ -787,6 +800,7 @@ pub async fn export_my_data(
         "blocked_users": blocked.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "notifications_received": notifications_json,
         "conversations": conversations_json,
+        "moderation": moderation_json,
     });
 
     // Pretty-printed, not the compact single-line output axum's Json

@@ -686,9 +686,37 @@ pub fn spawn_sweeper(state: AppState) {
     });
 }
 
+/// Grace period for deciding: an evidence record (i.e. a likely-illegal
+/// report) still undecided after this many days is overdue. It is listed
+/// first in the admin views and logged on every sweep. Nothing is purged
+/// automatically -- unreviewed evidence of a possible crime must not
+/// silently disappear -- so the fix is a decision on the report.
+pub const OVERDUE_DAYS: i32 = 30;
+
 async fn sweep(state: &AppState) {
     retry_pending_copies(state).await;
     purge_due(state).await;
+    warn_overdue(state).await;
+}
+
+async fn warn_overdue(state: &AppState) {
+    match sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*) FROM evidence_records
+        WHERE decided_at IS NULL AND purged_at IS NULL AND created_at < NOW() - make_interval(days => $1)
+        "#,
+    )
+    .bind(OVERDUE_DAYS)
+    .fetch_one(&state.db)
+    .await
+    {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(
+            "{} evidence record(s) undecided for more than {} days -- their reports need a decision",
+            n, OVERDUE_DAYS
+        ),
+        Err(e) => tracing::error!("Evidence sweep: counting overdue records failed: {}", e),
+    }
 }
 
 /// Copies files whose copy failed, then deletes originals nothing live

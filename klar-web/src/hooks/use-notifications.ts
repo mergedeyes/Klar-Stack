@@ -120,7 +120,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
           if (incoming.type_name === "message") {
             setChatUnreadCount(prev => prev + 1);
-            setLastMessageEvent({ senderId: incoming.actor.id, at: Date.now() });
+            if (incoming.actor) setLastMessageEvent({ senderId: incoming.actor.id, at: Date.now() });
             return;
           }
 

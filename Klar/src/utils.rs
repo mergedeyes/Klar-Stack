@@ -207,7 +207,7 @@ impl ResolveMedia for crate::handlers::notifications::NotificationResponse {
         // and the embedded actor's avatar_url via NotificationActor's own impl
         // above, rather than duplicating that logic.
         self.post_thumb_url = storage.resolve(self.post_thumb_url);
-        self.actor = self.actor.resolve_media(storage);
+        self.actor = self.actor.map(|actor| actor.resolve_media(storage));
         self
     }
 }

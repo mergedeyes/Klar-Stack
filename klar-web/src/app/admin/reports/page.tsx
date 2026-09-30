@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Archive, ShieldAlert, Trash2, X } from "lucide-react";
+import { Archive, Clock, Scale, ShieldAlert, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { adminReportsApi, type AdminReport } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,9 @@ export default function AdminReportsPage() {
       <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton aria-label="Back" />
         <span className="flex-1 font-semibold">Reports</span>
+        <Link href="/admin/moderation" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Scale size={16} /> Objections
+        </Link>
         <Link href="/admin/evidence" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <Archive size={16} /> Evidence
         </Link>
@@ -113,6 +116,11 @@ export default function AdminReportsPage() {
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <SeverityBadge reason={report.reason} />
+                  {report.overdue && (
+                    <span className="flex items-center gap-1 rounded bg-destructive/15 px-1.5 py-0.5 text-xs font-semibold text-destructive">
+                      <Clock size={11} /> 30+ days
+                    </span>
+                  )}
                   <span className="text-sm font-medium">{REASON_LABELS[report.reason] ?? report.reason}</span>
                 </div>
                 <span className="text-xs text-muted-foreground">

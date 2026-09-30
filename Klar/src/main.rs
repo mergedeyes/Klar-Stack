@@ -23,6 +23,7 @@ mod evidence;
 mod evidence_crypto;
 mod handlers;
 mod media;
+mod moderation;
 mod models;
 mod rate_limit;
 mod routes;

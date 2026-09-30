@@ -97,7 +97,12 @@ export default function NutzungsbedingungenPage() {
             hat. Wir behalten uns vor, Inhalte, die gegen diese
             Nutzungsbedingungen verstoßen, zu entfernen und Konten zu sperren
             oder zu löschen, soweit dies zur Wahrung berechtigter Interessen
-            oder zur Erfüllung rechtlicher Pflichten erforderlich ist. Für
+            oder zur Erfüllung rechtlicher Pflichten erforderlich ist. Über
+            jede solche Maßnahme informieren wir dich mit einer Begründung in
+            der App und per E-Mail; innerhalb von sechs Monaten kannst du dort
+            widersprechen, und ein Mitglied unseres Teams prüft den
+            Widerspruch. Wer einen Inhalt meldet, erfährt, ob die Meldung zu
+            einer Maßnahme geführt hat. Für
             Anliegen, die sich nicht über die Melden-Funktion abdecken lassen,
             erreichst du uns unter{" "}
             <a href="mailto:kontakt@klarsocial.eu" className="underline">

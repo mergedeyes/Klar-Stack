@@ -59,4 +59,6 @@ pub struct AdminReportRow {
     /// see evidence.rs), and whether the original has since been deleted.
     pub evidence_id: Option<Uuid>,
     pub evidence_content_deleted: Option<bool>,
+    /// Pending for more than 30 days: listed first and marked in the queue.
+    pub overdue: bool,
 }
