@@ -1,119 +1,139 @@
-# Klar — Feature List (as of 30 September 2026)
+# Klar
 
-## Accounts & Auth
-- Registration (username, email, password) with email verification link; emails are matched case-insensitively
-- Banner on every page until the email address is verified
-- Login / logout, JWT access tokens (15 min) + refresh tokens (30 days); refresh tokens are stored hashed, single-use and rotated on every refresh, and the frontend refreshes ahead of expiry through one shared request
-- Cross-site auth support: tokens in `localStorage` + `Authorization: Bearer`, with httpOnly cookies as a same-site fallback (handles `klarsocial.eu` vs `klarsocial.de` being different top-level domains)
-- Password reset (forgot password → email link → reset)
-- Resend verification email (email-based, works while logged out)
-- Argon2 password hashing
-- Change password (requires current password, invalidates all other sessions)
-- Account deletion (cascades to posts/comments/messages/media; cleans up stored files)
-- Self-service data export (GDPR Art. 15/20) — a ZIP with `data.json` (everything Klar holds about you) plus your full-size images and avatar, so the copy doesn't depend on expiring media links
+Klar is a photo-sharing social network with a **strictly chronological feed**: no algorithm, no ranking, no ads, no tracking. It is built and run from Germany under EU law, and treats privacy and legal compliance as part of the product rather than an afterthought.
 
-## Profile
-- Username (3–30 characters: letters, digits, underscores; case preserved as entered, case-insensitive uniqueness, reserved names such as `me`/`admin` blocked, 14-day change cooldown)
-- Display name, bio, avatar (upload, resized/processed server-side)
-- Public profile page: avatar, stats (posts/followers/following), bio, and a post grid that loads more as you scroll
-- **Private accounts**: toggle in Settings; when on, posts are hidden from non-followers
-- Follow requests for private accounts: request → pending → accept/reject (not instant-follow)
-  - Accept/decline available in the notification dropdown *and* directly on the requester's profile page
-  - Dedicated `/follow-requests` management page
+Klar is **pre-launch**. The live site ([klarsocial.eu](https://www.klarsocial.eu)) sits behind a passcode while a small group of friends and family test it.
 
-## Posts & Media
-- Create post: caption + optional photo
-- Automatic EXIF stripping on upload (location, device info, timestamp removed)
-- Three generated sizes per image (thumbnail/medium/full), real width/height captured for correct aspect-ratio rendering
-- Media is served through signed, expiring CDN URLs (valid 6–12 h), so a copied link stops working after an unfollow, block or switch to private; every media deletion also purges the CDN cache
-- Edit caption, delete post (with real cascade cleanup of media files)
-- Post permalink pages (`/posts/[id]`) — shareable, deep-linkable
-- Post detail modal: comments, likes, delete (from feed, profile, or permalink)
+**Contents:** [Principles](#principles) · [Features](#features) · [Safety and moderation](#safety-and-moderation) · [Privacy and your data](#privacy-and-your-data) · [Architecture](#architecture) · [Development](#development) · [Deployment](#deployment) · [Not built yet](#not-built-yet) · [License](#license)
 
-## Feed
-- Personal feed: strictly **chronological**, no algorithm, no ranking — deliberate product stance
-- Fan-out-on-write (`feed_items`) for fast reads; backfilled on follow, cleaned up on unfollow
-- Discovery feed: global, cross-user
-- All feeds page with a `(created_at, id)` keyset cursor and infinite scroll, so posts with identical timestamps are never skipped
-- Private-account posts are excluded from the discovery feed and profile grids unless you're the owner or an accepted follower (enforced backend-side in three places: single post view, profile posts list, and the discovery feed itself)
+## Principles
 
-## Social Graph
-- Follow / unfollow (instant for public accounts, request-based for private ones)
-- Followers / following lists
-- Block / unblock (blocked users can't follow, like, or comment on your posts)
+- **Chronological, always.** The feed shows posts from people you follow, newest first. Nothing is boosted, hidden or reordered.
+- **No ads, no tracking.** Only the storage needed to keep you signed in; no analytics or advertising cookies.
+- **Your data stays yours.** Download everything in one ZIP, delete your account at any time, with no waiting period.
+- **EU hosting.** Servers, database and storage run in Germany (Bunny.net); email goes through an EU provider.
 
-## Comments & Likes
-- Post likes, comment likes
-- Comments with threaded replies
-- Edit/delete own comments; post owners can also delete comments on their posts
+## Features
 
-## Notifications
-- Types: post like, comment, comment like, follow, follow request, follow accepted
-- Persisted history (`GET /notifications`) + real-time delivery via SSE, authenticated with a single-use, 30-second stream ticket (no tokens in URLs)
-- **Cross-replica delivery** via Redis (Upstash) pub/sub — works correctly however many backend instances are running, not just replica-count-1
-- Notification previews: actor avatar (follows/requests) or post thumbnail (likes/comments)
-- Clicking a notification navigates to the relevant post or profile
-- Follow-request notifications have inline Accept/Decline buttons, not just a link
+### Posts and profiles
+- Post a photo with a caption; location and camera data (EXIF) are stripped on upload.
+- Edit captions, delete posts.
+- Profiles with avatar, display name, bio and a post grid that loads more as you scroll.
+- Every post has its own page (`/posts/<id>`): opened from the app it appears over the feed, opened from a shared link it gets a full-screen layout.
+- Share button on every post: the system share sheet on phones, "copy link" on desktop. Shared links show a preview (author, caption, image) in messengers, for public accounts only.
 
-## Direct Messages (Chat)
-- 1:1 conversations, gated to mutual followers only
-- Send, edit, delete messages; reply-to-message threading
-- Emoji reactions (8-emoji picker; can react to your own or the other person's messages)
-- Read receipts
-- Real-time message + reaction delivery (same Redis/SSE pipeline as notifications)
-- Unread-message badge on the Chat icon, correctly clears when actively viewing a conversation (no false positives from your own open chat)
-- Conversation list shows the true most-recent activity — a plain message, a reply, or a reaction — with proper phrasing ("Me: ...", "X replied: ...", "X reacted 👍 to your message: ...")
-- Avatar in conversation list/chat header links to the other person's profile; rest of the row opens the chat
-- When an account is deleted, its messages are erased from the partner's chat too; the partner keeps the conversation with their own messages and a read-only "account deleted" notice
+### Feeds and discovery
+- **Home feed:** posts from people you follow, newest first.
+- **Discovery:** posts from across Klar.
+- **Search** for people by username or display name.
 
-## Search
-- User search by username or display name
+### People
+- Follow and unfollow; followers and following lists.
+- **Private accounts:** posts are visible only to approved followers. Follow requests can be accepted from the notification, the requester's profile or a dedicated page.
+- Block users: they can no longer follow you, like or comment.
 
-## Moderation & Reporting
-- Report posts, comments, or user accounts (`POST /reports`) with a fixed reason taxonomy: spam, harassment, hate speech, violence/graphic content, self-harm, sexual content, CSAM, impersonation, other
-- Auto-moderation on submission: a CSAM report hides the content immediately, zero tolerance, no threshold; violence/self-harm/sexual-content reports flag the content (shown behind an interstitial rather than removed outright — a single report shouldn't have unilateral takedown power)
-- Admin review queue (`/admin/reports`), critical reports sorted first: dismiss (restores visibility) or remove content outright, each with an optional internal review note
-- Admin access gated via an `ADMIN_EMAILS` allow-list, requiring the matching account's email to also be verified (prevents someone from claiming an admin address by registering it first)
-- Evidence preservation: when a post, comment or profile is reported for a likely-illegal reason (CSAM, violence, hate speech, …), the reported state — only that item, its images and author, plus the replied-to text for comments — is copied at once into a separate storage zone with no public URL (files encrypted with AES-256-GCM, key only in the backend's environment), and every edit while the report is open adds a version; deleting the item (by moderation, its author or with the account) no longer destroys the evidence. Spam and similar reasons copy nothing. Admins open records and files only with a stated reason, every access is logged, and records are purged immediately if the reports are dismissed, otherwise after six months unless a legal hold is set (`/admin/evidence`)
-- Statements of reasons (DSA Art. 17): every removal, automatic hide or warning of someone's content is recorded with its ground (law or Terms section), explanation and whether it was automated, and delivered in the app and by email (`/moderation/decisions/:id`). Statements for CSAM are held back until an admin releases them. Affected users can object once within six months; admins answer at `/admin/moderation`, and an accepted objection lifts a hide or warning
-- Reporters are told the outcome of their reports (Art. 16) and see them at `/moderation`
-- Reports and evidence still undecided after 30 days are marked overdue and listed first
-- Rights claims (copyright, trademark, other rights): a public form at `/rights` (footer link "Rechteverletzung melden"), usable without an account, with a private status link for the claimant (token hashed at rest). Admins triage, ask for evidence, accept or decline at `/admin/rights`. Accepting hides the post (restorable) and sends the uploader a statement of reasons without the claimant's identity; a successful objection restores it and tells the claimant. Claims are deleted three years after the decision
+### Conversation
+- Likes on posts and comments; threaded comments with replies and @mentions; edit and delete your own comments.
+- Real-time notifications for likes, comments, follows and follow requests.
+- **Direct messages** between people who follow each other: replies, emoji reactions, read receipts, editing and deleting, all in real time.
 
-## Privacy & Compliance
-- Impressum, Datenschutzerklärung (privacy policy), Nutzungsbedingungen (ToS), and a plain-language **Transparenz** page explaining data handling in everyday terms
-- Legal pages carry a "Stand:" date that the frontend build stamps from the last commit on `main` that changed each page (Europe/Berlin time) — nothing is edited by hand or committed by a bot
-- ToS + privacy consent checkbox at registration, enforced server-side (`POST /auth/register` rejects the request with 400 if `accept_terms` isn't `true`, and 422 if it's missing entirely) — not just a client-side gate anymore. Acceptance is timestamped (`users.terms_accepted_at`) and included in the self-service data export
-- No tracking/advertising cookies — only functional auth storage
-- Documented sub-processors: Bunny.net (hosting/CDN/storage and self-hosted Postgres, German DC), Scaleway (transactional email, EU), Upstash (real-time notification relay, US — SCCs apply)
+### Accounts
+- Sign-up with email verification, password reset, password change (signs out other sessions).
+- Usernames of 3–30 characters (letters, digits, underscores), case-insensitively unique, changeable every 14 days.
 
-## Pre-Launch
-- In-app feedback for testers: a "Feedback" link in the footer (signed-in users) opens a form for bugs, ideas or anything else, optionally with the page, screen size and browser; admins triage it at `/admin/feedback`. Capped at 20 per user per day, deleted after a year
-- Site-wide passcode gate (`/welcome`) via Next.js `proxy.ts` — blocks the whole site except the gate page, legal pages and email-link landing pages until a shared passcode is entered; attempts are rate-limited; disabled automatically if no passcode is configured (e.g. local dev)
+## Safety and moderation
 
-## Frontend/UX Details
-- Consistent top navigation bar across all primary pages (Feed, Discovery, Search, Chats, Profile) with active-state icon highlighting
-- Mobile-correct viewport handling (`dvh` instead of `vh`) so nav bars don't get clipped by mobile browser chrome
-- Root URL smart-redirects to Feed (logged in) or Login (logged out)
-- Global cursor-pointer fix for all interactive elements
+Klar follows the EU Digital Services Act (DSA) for handling reports.
 
-## Backend/Infra
-- Rust (Axum) backend, self-hosted PostgreSQL 18 in a Bunny Magic Container (Frankfurt) — TLS enforced even on loopback, connection pool retries through pod-startup races
-- Daily automated Postgres backups at a fixed time (`db-backup` sidecar → private Bunny Storage Zone, no CDN pull zone); missed or failed slots are caught up on the next start, and a dead-man's-switch ping (Healthchecks.io protocol, no data sent) raises an alert when a backup fails or the sidecar stops running. Durability is handled by off-pod storage, so the sidecar itself needs no persistent volume
-- UUIDv7 primary keys, denormalized counters (follower/following/post/like/comment counts), hash-partitioned `likes`/`notifications`, monthly-partitioned interaction event log (`post_events` — logging foundation for possible future recommendations, not used for ranking today)
-- Bunny.net: application hosting (Magic Containers), CDN, S3-compatible object storage
-- Redis (Upstash, TLS) for cross-replica pub/sub
-- Multi-provider transactional email abstraction (currently live on Scaleway TEM)
-- Per-route rate limiting (stricter on auth endpoints)
-- GitHub Actions CI/CD: every pull request runs `cargo clippy -D warnings`, `cargo test`, `tsc` and `eslint --max-warnings 0`; separate backend/frontend pipelines build Docker images and auto-deploy to Bunny on push to `main`, cancelling a running deploy when a newer one starts
-- Health check endpoint
-- Local development: disk storage provider instead of Bunny, and an anonymised production snapshot (`tools/prod-snapshot/`) that keeps the data's structure but replaces everything personal
+- **Reporting:** posts, comments and profiles can be reported for spam, harassment, hate speech, violence, self-harm, sexual content, child sexual abuse material (CSAM), impersonation or other reasons.
+- **Automatic first response:** a CSAM report hides the content immediately; violence, self-harm and sexual-content reports put it behind a warning until a moderator has looked.
+- **Statements of reasons (DSA Art. 17):** every removal, hide or warning tells the author what happened, on which ground and whether it was automated, in the app and by email. The author can object once within six months, and a person reviews the objection.
+- **Report outcomes (DSA Art. 16):** people who report learn whether it led to action.
+- **Evidence preservation:** content reported for a likely-illegal reason is copied at once, including every later edit, so deleting it doesn't destroy the evidence. Copies are encrypted, kept apart from everything else, opened only with a logged reason, and deleted when the report is dismissed or six months after the decision.
+- **Rights claims:** rightsholders can report copyright or other infringements through a public form, with or without an account, and follow their claim through a private link. An accepted claim hides the post and can be reversed by the uploader's objection.
+- **Admin tools:** a review queue for reports, rights claims, objections and preserved evidence; cases open for more than 30 days are flagged.
+
+## Privacy and your data
+
+- **Data export (GDPR Art. 15/20):** a ZIP with everything Klar holds about you as JSON, plus your photos.
+- **Account deletion:** immediate. Your posts, comments, likes and messages go with it, including your messages in other people's chats.
+- **Legal pages:** Impressum, privacy policy (Datenschutzerklärung), terms of use, and a plain-language Transparency page. Their "Stand" date is set automatically from the last change.
+- **Consent:** accepting the terms at sign-up is required and recorded.
+- **Sub-processors:** Bunny.net (hosting, CDN, storage, database; Germany), Scaleway (email; EU), Upstash (real-time relay; US, standard contractual clauses).
+
+## Architecture
+
+| Part | Technology |
+| --- | --- |
+| Backend API | Rust, [axum](https://github.com/tokio-rs/axum) 0.8, [sqlx](https://github.com/launchbadger/sqlx) (`Klar/`) |
+| Frontend | Next.js 16, React 19, Tailwind CSS (`klar-web/`) |
+| Database | PostgreSQL 18, self-hosted; migrations run on backend startup |
+| Media | S3-compatible storage behind a CDN, with signed, expiring URLs |
+| Real-time | Server-Sent Events, fanned out across backend instances through Redis pub/sub |
+| Email | Scaleway Transactional Email (MailHog locally) |
+| Hosting | Bunny.net Magic Containers in Frankfurt |
+
+```
+Klar/        Rust backend: handlers in src/handlers/, routes in src/routes.rs, migrations/
+klar-web/    Next.js frontend: pages in src/app/, API client in src/lib/api.ts
+deploy/      Postgres and backup-sidecar images
+tools/       prod-snapshot: an anonymised copy of production data for local work
+docs/        manual-checks.md: what to test by hand before merging
+```
+
+<details>
+<summary><strong>Technical details</strong></summary>
+
+**Auth.** Short-lived JWT access tokens (15 minutes) sent as a Bearer header, since the sites (klarsocial.eu/.de) and the API are on different domains. Refresh tokens are stored hashed and rotated on every use. Passwords use Argon2. Tokens never travel in URLs; the notification stream uses a single-use, 30-second ticket.
+
+**Feeds.** Fan-out on write into `feed_items`, backfilled on follow and cleaned up on unfollow or block. Paging uses a `(created_at, id)` keyset cursor, so posts with the same timestamp are never skipped.
+
+**Media.** Every upload yields three sizes (thumbnail, medium, full). Client-facing URLs are signed and valid for 6–12 hours, so a copied link stops working after an unfollow or a switch to private; every deletion also purges the CDN. Link previews use a permanent `/posts/<id>/preview-image` address that re-checks the post and redirects to a freshly signed URL.
+
+**Data model.** UUIDv7 keys; denormalised counters updated in the same transaction as the change; hash-partitioned likes and notifications; a monthly-partitioned interaction log (`post_events`, not used for ranking).
+
+**Evidence.** A separate storage zone without a public URL; files encrypted with AES-256-GCM, the key only in the backend's environment; every access and change in an append-only audit log; an hourly sweeper retries copies and purges expired records.
+
+**Operations.** Daily database backups to a private storage zone, caught up after missed slots, with dead-man's-switch alerting. Per-route rate limits, stricter on sign-in and public forms. A health-check endpoint.
+
+</details>
 
 ## Development
 
-- Backend: `cd Klar && SQLX_OFFLINE=true cargo clippy` (regenerate `.sqlx/` with `cargo sqlx prepare` after changing a `query!` macro)
-- Frontend: `cd klar-web && npx tsc --noEmit && npx eslint src`
-- Before merging a change to how the app behaves, go through the matching sections of [docs/manual-checks.md](docs/manual-checks.md) — the PR template asks for them in the test plan
+**You need:** Rust (1.97, as in CI), Node.js 20, PostgreSQL, Redis and [MailHog](https://github.com/mailhog/MailHog) running locally, and a `Klar/.env` (the variables are listed in `Klar/Dockerfile`; set `STORAGE_PROVIDER=local` to store files on disk).
 
----
-*Not yet built / explicitly deferred:* claims against comments or profiles (posts only for now), UrhDaG-specific pre-upload obligations rights-holder copyright portal, birth-date/16+ age verification enforcement, uptime monitoring/alerting for the app itself (only backups are monitored), notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).
+**Run everything:**
+
+```sh
+cd klar-web
+npm install
+npm run dev     # MailHog, the backend on :3000 (runs migrations first) and the frontend on :3001
+```
+
+**Realistic data:** `tools/prod-snapshot/` builds an anonymised copy of the production database: structure and volumes as in production, nothing personal. See its [README](tools/prod-snapshot/README.md).
+
+**Checks** (CI runs these on every pull request):
+
+```sh
+(cd Klar && export SQLX_OFFLINE=true && cargo clippy --all-targets -- -D warnings && cargo test)
+(cd klar-web && npx tsc --noEmit && npx eslint --max-warnings 0 src)
+```
+
+After changing a `query!` macro, regenerate the offline cache with `cargo sqlx prepare`. For changes to how the app behaves, go through the matching sections of [docs/manual-checks.md](docs/manual-checks.md); the pull-request template asks for them.
+
+## Deployment
+
+Pushing to `main` builds Docker images for the backend and the frontend and deploys them to Bunny.net; a newer deploy cancels one still running. The backend's settings are environment variables declared in `Klar/Dockerfile` and filled in on Bunny. Besides the usual database, email, Redis and storage settings, the evidence store needs its own storage zone and an encryption key (`EVIDENCE_S3_STORAGE_*`, `EVIDENCE_ENCRYPTION_KEY`).
+
+## Not built yet
+
+- Rights claims for comments and profiles (posts only for now); UrhDaG-specific obligations.
+- Handling people who repeatedly file unfounded reports (DSA Art. 23); account suspension from the report queue.
+- Age verification at sign-up.
+- Uptime monitoring for the app itself (only backups are monitored).
+- End-to-end encryption for direct messages.
+- Screenshots in feedback; a written guide for testers.
+
+## License
+
+[GNU Affero General Public License v3.0](LICENSE).
