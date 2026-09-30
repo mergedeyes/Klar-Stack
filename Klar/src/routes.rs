@@ -101,6 +101,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/rights-claims", post(handlers::rights::create_claim))
         .route("/rights-claims/{claim_id}/status", post(handlers::rights::claim_status))
         .route("/rights-claims/{claim_id}/respond", post(handlers::rights::respond_to_claim))
+        // Notices from klar-web/legal-updates, sent by the frontend deploy
+        // with LEGAL_UPDATES_TOKEN; the strict limit guards the token.
+        .route("/internal/legal-updates", post(handlers::legal_updates::publish_from_deploy))
         .route_layer(middleware::from_fn_with_state(
             auth_limiter,
             rate_limit::rate_limit_middleware,
@@ -132,6 +135,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/me/blocked", get(handlers::blocks::get_blocked_users))
         .route("/users/me/export", get(handlers::users::export_my_data))
         .route("/users/me/standing", get(handlers::standing::my_standing))
+        .route("/legal-updates/pending", get(handlers::legal_updates::pending))
+        .route("/legal-updates/{update_id}/acknowledge", post(handlers::legal_updates::acknowledge))
         .route("/users/me/keep-account", get(handlers::test_phase::get_keep_account)
             .patch(handlers::test_phase::set_keep_account))
         .route("/users/me/follow-requests", get(handlers::follows::get_follow_requests))
@@ -218,6 +223,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/rights-claims/{claim_id}/request-evidence", post(handlers::rights::request_evidence))
         .route("/admin/rights-claims/{claim_id}/accept", post(handlers::rights::accept_claim))
         .route("/admin/rights-claims/{claim_id}/decline", post(handlers::rights::decline_claim))
+        .route("/admin/legal-updates", get(handlers::legal_updates::list).post(handlers::legal_updates::publish))
         .route("/admin/review-candidates", get(handlers::account_review::list_candidates))
         .route("/admin/users/{username}/review", post(handlers::account_review::open_review))
         .route("/admin/reviews/{review_id}/decide", post(handlers::account_review::decide_review))

@@ -88,3 +88,17 @@ jobs:
           api_key: ${{ secrets.BUNNYNET_API_KEY }}
           container: frontend
           image_tag: "${{ github.sha }}"
+
+      # Notices about changed Terms / privacy policy (klar-web/legal-updates):
+      # once the live pages show this deploy's Stand date, every notice file
+      # goes to the backend, which publishes each file once and ignores the
+      # rest. Needs LEGAL_UPDATES_TOKEN (the same secret as in the backend
+      # container) and SITE_URL (the live site, to wait for the new pages).
+      - name: Publish legal notices
+        if: vars.APP_ID != ''
+        env:
+          API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          LEGAL_UPDATES_TOKEN: ${{ secrets.LEGAL_UPDATES_TOKEN }}
+          TZ: Europe/Berlin
+        run: python3 .github/scripts/legal_notices.py publish

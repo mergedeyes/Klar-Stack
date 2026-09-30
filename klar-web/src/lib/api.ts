@@ -979,6 +979,43 @@ export const adminRightsApi = {
     request<void>(`/admin/rights-claims/${id}/decline`, { method: "POST", body: JSON.stringify({ message }) }, true),
 };
 
+// ── Notices about changed Terms / privacy policy ────────────────────────────
+
+export type LegalDocument = "terms" | "privacy";
+
+// A notice the signed-in user hasn't seen or accepted yet. Terms changes
+// (requires_acceptance) must be accepted to keep using Klar.
+export interface LegalUpdate {
+  id: string;
+  published_at: string;
+  documents: LegalDocument[];
+  summary: string;
+  requires_acceptance: boolean;
+}
+
+export interface AdminLegalUpdate extends LegalUpdate {
+  // The file in klar-web/legal-updates it came from; null if published by hand.
+  source_key: string | null;
+  emails_sent: number;
+  emails_finished_at: string | null;
+  // Accounts that existed when it was published, and how many of them
+  // have seen or accepted it.
+  audience: number;
+  acknowledged: number;
+}
+
+export const legalUpdatesApi = {
+  pending: () => request<LegalUpdate[]>("/legal-updates/pending", {}, true),
+  acknowledge: (id: string) =>
+    request<void>(`/legal-updates/${id}/acknowledge`, { method: "POST", body: "{}" }, true),
+};
+
+// Notices are published by the frontend deploy from klar-web/legal-updates;
+// this only lists them with their progress.
+export const adminLegalUpdatesApi = {
+  list: () => request<AdminLegalUpdate[]>("/admin/legal-updates", {}, true),
+};
+
 // ── Account reviews (admin) ──────────────────────────────────────────────────
 
 // Signals computed from existing activity (no IPs or devices): the biggest
