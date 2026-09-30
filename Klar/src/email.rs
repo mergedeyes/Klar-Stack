@@ -544,6 +544,52 @@ impl EmailService {
         self.send(to_email, "Dein Klar-Konto wurde vorsorglich gesperrt", &text, &html).await
     }
 
+    /// Tell a user that the Terms of Service and/or the privacy policy
+    /// changed: what changed (the admin's summary) and where to read it.
+    /// For Terms changes, that they're asked to accept on their next visit.
+    pub async fn send_legal_update(
+        &self,
+        to_email: &str,
+        documents: &[String],
+        summary: &str,
+        requires_acceptance: bool,
+    ) -> Result<(), EmailError> {
+        let terms = documents.iter().any(|d| d == "terms");
+        let privacy = documents.iter().any(|d| d == "privacy");
+        let what = match (terms, privacy) {
+            (true, true) => "unsere Nutzungsbedingungen und unsere Datenschutzerklärung",
+            (true, false) => "unsere Nutzungsbedingungen",
+            _ => "unsere Datenschutzerklärung",
+        };
+        let url = if terms {
+            format!("{}/nutzungsbedingungen", self.base_url)
+        } else {
+            format!("{}/datenschutz", self.base_url)
+        };
+        let next = if requires_acceptance {
+            "Beim nächsten Öffnen von Klar bitten wir dich, den neuen Nutzungsbedingungen zuzustimmen. Bist du \
+             nicht einverstanden, kannst du dein Konto in den Einstellungen löschen und vorher deine Daten \
+             exportieren."
+        } else {
+            "Du musst nichts tun."
+        };
+
+        let text = format!(
+            "Wir haben {} geändert\n\nDas ist neu:\n{}\n\n{}\n\nDie vollständige Fassung: {}",
+            what, summary, next, url
+        );
+        let escaped = summary.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let html = render_html_email(
+            &format!("Wir haben {} geändert", what),
+            &format!("Das ist neu: {}", escaped),
+            "Vollständige Fassung lesen",
+            &url,
+            next,
+        );
+
+        self.send(to_email, "Aktualisierte Bedingungen bei Klar", &text, &html).await
+    }
+
     /// Send password reset link
     pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to reset their password.

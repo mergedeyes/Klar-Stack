@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ChevronRight, Download, Gauge, KeyRound, Lock, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
-import { FileWarning } from "lucide-react";
+import { FileText, FileWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { MessageSquareText } from "lucide-react";
@@ -75,6 +75,12 @@ export default function SettingsPage() {
           icon: Lock,
           label: "Account security",
           description: "Lock accounts that look taken over; incident log",
+        },
+        {
+          href: "/admin/legal-updates",
+          icon: FileText,
+          label: "Legal updates",
+          description: "Announce changed Terms or privacy policy",
         },
         {
           href: "/admin/rights",

@@ -50,6 +50,15 @@ export default function DatenschutzPage() {
             Nutzungsvertrags (Art. 6 Abs. 1 lit. b DSGVO).
           </p>
           <p className="mt-2">
+            <strong>Änderungen unserer Bedingungen:</strong> Ändern sich die
+            Nutzungsbedingungen oder diese Datenschutzerklärung, zeigen wir dir
+            beim nächsten Öffnen von Klar einen Hinweis und schreiben an
+            bestätigte E-Mail-Adressen. Wir speichern, wann du den Hinweis
+            gesehen oder geänderten Nutzungsbedingungen zugestimmt hast, als
+            Nachweis (Art. 6 Abs. 1 lit. b und c DSGVO); das wird mit deinem
+            Konto gelöscht.
+          </p>
+          <p className="mt-2">
             <strong>Schutz bei Verdacht auf fremden Zugriff:</strong> Deutet
             Aktivität darauf hin, dass jemand anderes dein Konto benutzt (etwa
             plötzlich massenhaft Spam), kann unser Team es vorsorglich sperren:

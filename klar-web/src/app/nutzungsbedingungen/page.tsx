@@ -257,9 +257,13 @@ export default function NutzungsbedingungenPage() {
           <h2 className="mb-2 font-semibold">9. Änderungen dieser Nutzungsbedingungen</h2>
           <p>
             Wir können diese Nutzungsbedingungen ändern, um sie an rechtliche
-            oder technische Entwicklungen anzupassen. Über wesentliche
-            Änderungen informieren wir dich in geeigneter Form (z. B. per
-            E-Mail oder Hinweis innerhalb der Anwendung).
+            oder technische Entwicklungen anzupassen. Über Änderungen
+            informieren wir dich mit einem Hinweis in der App, der kurz
+            zusammenfasst, was neu ist, und bei bestätigter E-Mail-Adresse
+            zusätzlich per E-Mail. Geänderten Nutzungsbedingungen musst du
+            beim nächsten Öffnen von Klar zustimmen, um Klar weiter zu
+            nutzen; bist du nicht einverstanden, kannst du deine Daten
+            exportieren und dein Konto löschen.
           </p>
         </section>
 

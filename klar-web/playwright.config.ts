@@ -19,8 +19,21 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } } },
+    {
+      name: "desktop",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
+      testIgnore: /legal-updates\.spec\.ts/,
+    },
     // Touch and a coarse pointer, like a real phone.
-    { name: "phone", use: { ...devices["Pixel 7"] } },
+    { name: "phone", use: { ...devices["Pixel 7"] }, testIgnore: /legal-updates\.spec\.ts/ },
+    // A published notice about changed Terms covers the app for every
+    // account created before it, which would break the tests running in
+    // parallel, so this runs alone, after the others.
+    {
+      name: "legal-updates",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
+      testMatch: /legal-updates\.spec\.ts/,
+      dependencies: ["desktop", "phone"],
+    },
   ],
 });

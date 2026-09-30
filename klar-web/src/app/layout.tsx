@@ -20,6 +20,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { NotificationsProvider } from "@/hooks/use-notifications";
 import Footer from "@/components/Footer";
+import LegalUpdateNotice from "@/components/LegalUpdateNotice";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 
 const geist = Geist({ subsets: ["latin"] });
@@ -56,6 +57,8 @@ export default function RootLayout({
           </div>
           {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
           <Footer />
+          {/* Changed Terms / privacy policy, once per notice. */}
+          <LegalUpdateNotice />
         </AuthProvider>
       </body>
     </html>

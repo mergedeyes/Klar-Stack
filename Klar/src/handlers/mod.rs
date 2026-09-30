@@ -7,6 +7,7 @@ pub mod comments;
 pub mod events;
 pub mod evidence;
 pub mod follows;
+pub mod legal_updates;
 pub mod health;
 pub mod likes;
 pub mod moderation;

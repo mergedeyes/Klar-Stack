@@ -21,6 +21,7 @@ mod account_lock;
 mod account_review;
 mod evidence;
 mod feedback;
+mod legal_updates;
 mod moderation;
 mod previews;
 mod rights;
