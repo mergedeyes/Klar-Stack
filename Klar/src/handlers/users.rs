@@ -518,8 +518,9 @@ pub async fn export_my_data(
     // because this export is meant to be "everything we hold about you" --
     // proof of when ToS/privacy consent was given is squarely personal
     // data about the account, even though it's never shown in the app UI.
-    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>)>(
-        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at FROM users WHERE id = $1"
+    #[allow(clippy::type_complexity)]
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_one(&state.db)
@@ -791,6 +792,7 @@ pub async fn export_my_data(
             "email_verified": profile.5,
             "created_at": profile.6,
             "terms_accepted_at": profile.7,
+            "keep_after_test_at": profile.8,
         },
         "posts": posts_json,
         "comments": comments_json,
