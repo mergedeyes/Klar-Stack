@@ -248,7 +248,9 @@ pub async fn publish_from_deploy(
     }
 }
 
-/// GET /admin/legal-updates (admin only) -- notices with their progress.
+/// GET /admin/legal-updates (admin only) -- notices with their progress,
+/// newest first. The admin page filters and sorts them; notices are rare, so
+/// 500 covers every one there will be for a long time.
 pub async fn list(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -260,7 +262,7 @@ pub async fn list(
                (SELECT COUNT(*) FROM legal_update_emails e WHERE e.update_id = l.id) AS emails_sent,
                (SELECT COUNT(*) FROM users u WHERE u.created_at < l.published_at) AS audience,
                (SELECT COUNT(*) FROM legal_update_acks a WHERE a.update_id = l.id) AS acknowledged
-        FROM legal_updates l ORDER BY l.published_at DESC LIMIT 50
+        FROM legal_updates l ORDER BY l.published_at DESC LIMIT 500
         "#,
     )
     .fetch_all(&state.db)

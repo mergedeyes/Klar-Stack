@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminSession, apiGet, apiJson, signIn, signUp, uniqueName, withDb } from "./helpers";
+import { adminSession, apiCall, apiGet, apiJson, pageFor, signIn, signUp, uniqueName, withDb } from "./helpers";
 
 // Notices about changed Terms: shown once to accounts that existed before,
 // accepted in the app, not shown to accounts created after. Runs in its own
@@ -53,6 +53,66 @@ test("existing accounts accept changed Terms once; new accounts never see the no
   const newcomer = await signUp("newcomer");
   const pending = await apiGet<unknown[]>(request, newcomer, "/legal-updates/pending");
   expect(pending).toHaveLength(0);
+});
+
+test("the admin list filters by date and sorts by acceptance and emails", async ({ browser, request }) => {
+  const admin = await adminSession();
+  const [reader, other] = await Promise.all([signUp("reader"), signUp("other")]);
+  const accepted = `Viel akzeptiert ${uniqueName("a")}`;
+  const ignored = `Kaum beachtet ${uniqueName("i")}`;
+  const a = await apiJson<{ id: string }>(request, admin, "POST", "/admin/legal-updates", { documents: ["terms"], summary: accepted });
+  const b = await apiJson<{ id: string }>(request, admin, "POST", "/admin/legal-updates", { documents: ["privacy"], summary: ignored });
+  published.push(a.id, b.id);
+
+  // "accepted" gets two acceptances, "ignored" none but more emails.
+  await apiCall(request, reader, "POST", `/legal-updates/${a.id}/acknowledge`);
+  await apiCall(request, other, "POST", `/legal-updates/${a.id}/acknowledge`);
+  await withDb((db) =>
+    db.query(
+      "INSERT INTO legal_update_emails (update_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING",
+      [b.id, reader.id, other.id],
+    ),
+  );
+  // The admin's own account existed before too: accept, so the notices
+  // don't cover the page.
+  const pending = await apiGet<{ id: string }[]>(request, admin, "/legal-updates/pending");
+  for (const p of pending) await apiCall(request, admin, "POST", `/legal-updates/${p.id}/acknowledge`);
+
+  const adminPage = await pageFor(browser, admin);
+  await adminPage.goto("/admin/legal-updates");
+  const order = async () => {
+    const texts = await adminPage.locator("main div.rounded-xl").allInnerTexts();
+    return [texts.findIndex((t) => t.includes(accepted)), texts.findIndex((t) => t.includes(ignored))];
+  };
+  const sortBy = adminPage.getByLabel("Sort by");
+
+  // Newest first by default: "ignored" was published last.
+  await expect(adminPage.getByText(ignored)).toBeVisible();
+  let [ia, ii] = await order();
+  expect(ii).toBeLessThan(ia);
+
+  await sortBy.selectOption("most_accepted");
+  [ia, ii] = await order();
+  expect(ia).toBeLessThan(ii);
+  await sortBy.selectOption("least_accepted");
+  [ia, ii] = await order();
+  expect(ii).toBeLessThan(ia);
+  await sortBy.selectOption("most_emails");
+  [ia, ii] = await order();
+  expect(ii).toBeLessThan(ia);
+  await sortBy.selectOption("least_emails");
+  [ia, ii] = await order();
+  expect(ia).toBeLessThan(ii);
+
+  // A range in the future shows nothing; Reset brings everything back.
+  // A fixed far-future day: "tomorrow" computed in UTC can still be today
+  // in the admin's time zone.
+  await adminPage.getByLabel("From").fill("2099-01-01");
+  await expect(adminPage.getByText("No notice published in this date range.")).toBeVisible();
+  await expect(adminPage.getByText(accepted)).toHaveCount(0);
+  await adminPage.getByRole("button", { name: "Reset" }).click();
+  await expect(adminPage.getByText(accepted)).toBeVisible();
+  await expect(sortBy).toHaveValue("latest");
 });
 
 test("a privacy notice is only acknowledged", async ({ page, request }) => {

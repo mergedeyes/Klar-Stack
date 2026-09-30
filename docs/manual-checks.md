@@ -107,6 +107,7 @@ loads more as you scroll.
 - [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
 - [ ] If the change adds a sub-processor or changes what data is kept, the Datenschutz and Transparenz pages say so
 - [ ] After a deploy with a new file in `klar-web/legal-updates/` (once the page shows its new Stand date), `/admin/legal-updates` lists it and every older account sees a dialog with the summary on its next visit; it can only be accepted, the legal pages and Settings stay reachable, and accepting makes it disappear for good; accounts created afterwards never see it
+- [ ] `/admin/legal-updates` filters by a From/To date range (both days included) and sorts by latest/oldest, most/least accepted (share of accounts), most/least emails; Reset restores the default
 - [ ] A privacy-only notice has "Verstanden" instead; verified addresses get an email (replies go to kontakt@), unverified ones don't; the admin page counts emails and acceptances
 
 ## Rights claims
