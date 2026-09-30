@@ -17,6 +17,7 @@ Chronological, no-ranking social network. Solo project, pre-launch, running behi
 - Backend: `cd Klar && SQLX_OFFLINE=true cargo clippy --all-targets --features integration-tests` (after changing a `query!` macro, regenerate `.sqlx/` with `cargo sqlx prepare`).
 - Backend integration tests (`Klar/src/integration_tests/`, real Postgres + Redis): `SQLX_OFFLINE=true cargo test --features integration-tests integration_tests` with `DATABASE_URL` (a server where databases may be created) and `REDIS_URL` set. New backend behaviour gets a test there, not a throwaway script.
 - Frontend: `cd klar-web && npx tsc --noEmit && npx eslint src`.
+- Browser tests (`klar-web/e2e/`, Playwright, needs the stack running): `npm run test:e2e`. UI behaviour worth keeping gets a test there.
 - Manual: for behaviour changes, copy the matching sections of `docs/manual-checks.md` into the PR test plan (unticked — the user checks them in a browser). Add a check there when a change introduces behaviour worth re-testing.
 
 ## Backend conventions

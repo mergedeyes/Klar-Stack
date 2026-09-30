@@ -127,6 +127,8 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres REDIS_URL=redi
 SQLX_OFFLINE=true cargo test --features integration-tests integration_tests
 ```
 
+**Browser tests** (Playwright) cover the page layout, the post modal and page, sharing and link previews; CI runs them against a full stack on every pull request. See [klar-web/e2e](klar-web/e2e/README.md) to run them locally.
+
 After changing a `query!` macro, regenerate the offline cache with `cargo sqlx prepare`. For changes to how the app behaves, go through the matching sections of [docs/manual-checks.md](docs/manual-checks.md); the pull-request template asks for them.
 
 ## Deployment
