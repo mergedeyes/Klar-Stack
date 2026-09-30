@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Heart, MessageCircle } from "lucide-react";
+import ShareButton from "@/components/ShareButton";
 import { posts as postsApi, type Post } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import EditedBadge from "@/components/EditedBadge";
@@ -170,6 +171,8 @@ export default function PostCard({
             <span>{post.comment_count}</span>
           )}
         </button>
+
+        <ShareButton postId={post.id} username={post.username} className="ml-auto" />
       </div>
     </article>
   );

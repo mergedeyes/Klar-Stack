@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Heart, Send, Trash2, X, Flag, ShieldAlert } from "lucide-react";
+import ShareButton from "@/components/ShareButton";
 import { useAuth } from "@/lib/auth-context";
 import {
   posts as postsApi,
@@ -258,6 +260,61 @@ interface PostModalProps {
 
 export default function PostModal({ post, onClose, onLikeChange, onDeleted }: PostModalProps) {
   const { user } = useAuth();
+  const router = useRouter();
+
+  // The open post gets its own address: opening the modal from a feed or a
+  // profile pushes /posts/:id, so the address bar shows a link that can be
+  // copied, reloaded or shared, and the back button closes the modal. On
+  // the permalink page itself the address is already right and nothing is
+  // pushed. pushedRef survives React's dev double-mount, so the second run
+  // sees the address already set and doesn't push twice.
+  const pushedRef = useRef(false);
+  // Where to go once the pushed entry has been popped (a profile link
+  // clicked inside the modal), so the history reads feed -> profile.
+  const afterBackRef = useRef<string | null>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    const path = `/posts/${post.id}`;
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, "", path);
+      pushedRef.current = true;
+    }
+    const onPop = () => {
+      if (!pushedRef.current) return;
+      pushedRef.current = false;
+      onCloseRef.current();
+      const next = afterBackRef.current;
+      if (next) {
+        afterBackRef.current = null;
+        router.push(next);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [post.id, router]);
+
+  // Every way of closing goes through here: step back out of the pushed
+  // entry (its popstate closes the modal), or close directly if nothing
+  // was pushed.
+  const dismiss = useCallback(() => {
+    if (pushedRef.current) window.history.back();
+    else onCloseRef.current();
+  }, []);
+
+  // Links inside the modal (author, commenters, @mentions): leave the
+  // pushed entry first, then navigate, so back from the profile returns to
+  // the feed rather than to a /posts/:id address without its modal.
+  const leaveViaLink = (e: React.MouseEvent) => {
+    const anchor = (e.target as HTMLElement).closest("a");
+    const href = anchor?.getAttribute("href");
+    if (!pushedRef.current || !href?.startsWith("/") || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    afterBackRef.current = href;
+    window.history.back();
+  };
   const [deleting, setDeleting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
@@ -293,10 +350,10 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
   }, [post.id, showInterstitial]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [dismiss]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -392,7 +449,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
       }
 
       // 5. Close the modal
-      onClose();
+      dismiss();
       
     } catch (error) {
       console.error("Failed to delete post:", error);
@@ -428,7 +485,8 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) dismiss(); }}
+      onClickCapture={leaveViaLink}
     >
       <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl md:flex-row">
         {user?.username === post.username && !showInterstitial && (
@@ -450,7 +508,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
             <Flag size={18} />
           </button>
         )}
-        <button onClick={onClose} className="absolute right-3 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground" aria-label="Close">
+        <button onClick={dismiss} className="absolute right-3 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground" aria-label="Close">
           <X size={18} />
         </button>
 
@@ -464,7 +522,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
               </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>Go back</Button>
+              <Button variant="outline" onClick={dismiss}>Go back</Button>
               <Button variant="secondary" onClick={() => setViewAnyway(true)}>View anyway</Button>
             </div>
           </div>
@@ -495,11 +553,11 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
 
               {/* Author header */}
               <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-                <Link href={`/users/${post.username}`} onClick={onClose}>
+                <Link href={`/users/${post.username}`}>
                   <Avatar username={post.username} avatarUrl={post.avatar_url ?? null} size={9} />
                 </Link>
                 <div>
-                  <Link href={`/users/${post.username}`} onClick={onClose} className="text-sm font-semibold hover:underline">
+                  <Link href={`/users/${post.username}`} className="text-sm font-semibold hover:underline">
                     {post.username}
                   </Link>
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -516,7 +574,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
                   <div className="mb-3 flex gap-2.5">
                     <Avatar username={post.username} avatarUrl={post.avatar_url ?? null} size={8} />
                     <p className="text-sm leading-snug">
-                      <Link href={`/users/${post.username}`} onClick={onClose} className="mr-1.5 font-semibold hover:underline">
+                      <Link href={`/users/${post.username}`} className="mr-1.5 font-semibold hover:underline">
                         {post.username}
                       </Link>
                       <CommentText body={post.caption} />
@@ -538,13 +596,14 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
               </div>
 
               {/* Like bar */}
-              <div className="border-t border-border px-4 py-3">
+              <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
                 <button onClick={handleLike} disabled={!user || liking} className="flex items-center gap-2 text-sm disabled:cursor-not-allowed">
                   <Heart size={20} className={liked ? "fill-red-500 stroke-red-500" : "text-muted-foreground"} />
                   <span className={liked ? "font-semibold" : "text-muted-foreground"}>
                     {likeCount > 0 ? `${likeCount} like${likeCount === 1 ? "" : "s"}` : "Be the first to like this"}
                   </span>
                 </button>
+                <ShareButton postId={post.id} username={post.username} size={20} />
               </div>
 
               {/* Comment input */}

@@ -58,6 +58,8 @@ loads more as you scroll.
 - [ ] Upload a photo (portrait and landscape): correct aspect ratio in feed, grid and modal; no location data left in the downloaded file
 - [ ] Edit a caption, delete a post: it disappears from the feed, the profile grid and its permalink
 - [ ] Counters (likes, comments, posts, followers) stay correct after toggling quickly several times
+- [ ] Opening a post from a feed or profile shows /posts/… in the address bar; back, Escape and ✕ close it and restore the address; reloading keeps the post open
+- [ ] Share: on a phone it opens the share sheet, on desktop it copies the link ("Link copied")
 
 ## Moderation
 
