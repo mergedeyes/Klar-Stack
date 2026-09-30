@@ -166,8 +166,8 @@ async fn main() {
         redis: redis_conn_manager,
     };
 
-    evidence::spawn_sweeper(state.clone());
     handlers::rights::spawn_cleanup(state.db.clone());
+    evidence::spawn_sweeper(state.clone());
 
     let app = routes::create_router(state);
     tracing::info!("Server running on http://{}", addr);

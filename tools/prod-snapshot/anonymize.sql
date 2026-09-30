@@ -43,17 +43,6 @@ UPDATE moderation_decisions SET
     content_excerpt    = CASE WHEN content_excerpt    IS NULL THEN NULL ELSE 'Content excerpt' END,
     objection          = CASE WHEN objection          IS NULL THEN NULL ELSE 'Objection text' END,
     objection_response = CASE WHEN objection_response IS NULL THEN NULL ELSE 'Objection response' END;
-
--- Uploaded images are personal data; point every asset at one placeholder
--- key (files aren't downloaded anyway, this just avoids real CDN URLs).
-UPDATE media_assets SET
-    original_key = 'anon/placeholder.webp',
-    thumb_key    = 'anon/placeholder.webp',
-    medium_key   = 'anon/placeholder.webp',
-    full_key     = 'anon/placeholder.webp';
-
-UPDATE post_events SET metadata = NULL WHERE metadata IS NOT NULL;
-
 -- Rights claims: claimant details and everything they typed.
 UPDATE rights_claims SET
     claimant_name         = 'Claimant',
@@ -69,6 +58,16 @@ UPDATE rights_claims SET
     -- Real status links must not open anything in a copy.
     status_token_hash     = md5(random()::text);
 UPDATE rights_claim_events SET note = CASE WHEN note IS NULL THEN NULL ELSE 'Note' END;
+
+-- Uploaded images are personal data; point every asset at one placeholder
+-- key (files aren't downloaded anyway, this just avoids real CDN URLs).
+UPDATE media_assets SET
+    original_key = 'anon/placeholder.webp',
+    thumb_key    = 'anon/placeholder.webp',
+    medium_key   = 'anon/placeholder.webp',
+    full_key     = 'anon/placeholder.webp';
+
+UPDATE post_events SET metadata = NULL WHERE metadata IS NOT NULL;
 
 -- ── Secrets ──────────────────────────────────────────────────────────────────
 TRUNCATE refresh_tokens, email_tokens;
