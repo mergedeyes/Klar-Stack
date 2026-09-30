@@ -75,7 +75,10 @@
 - Admin review queue (`/admin/reports`), critical reports sorted first: dismiss (restores visibility) or remove content outright, each with an optional internal review note
 - Admin access gated via an `ADMIN_EMAILS` allow-list, requiring the matching account's email to also be verified (prevents someone from claiming an admin address by registering it first)
 - Evidence preservation: when a post, comment or profile is reported for a likely-illegal reason (CSAM, violence, hate speech, …), the reported state — only that item, its images and author, plus the replied-to text for comments — is copied at once into a separate storage zone with no public URL (files encrypted with AES-256-GCM, key only in the backend's environment), and every edit while the report is open adds a version; deleting the item (by moderation, its author or with the account) no longer destroys the evidence. Spam and similar reasons copy nothing. Admins open records and files only with a stated reason, every access is logged, and records are purged immediately if the reports are dismissed, otherwise after six months unless a legal hold is set (`/admin/evidence`)
-- *Not yet built:* DSA-mandated automated "Statement of Reasons" notification to affected users, appeal/counter-notice flow, UrhDaG rights-holder copyright takedown portal
+- Statements of reasons (DSA Art. 17): every removal, automatic hide or warning of someone's content is recorded with its ground (law or Terms section), explanation and whether it was automated, and delivered in the app and by email (`/moderation/decisions/:id`). Statements for CSAM are held back until an admin releases them. Affected users can object once within six months; admins answer at `/admin/moderation`, and an accepted objection lifts a hide or warning
+- Reporters are told the outcome of their reports (Art. 16) and see them at `/moderation`
+- Reports and evidence still undecided after 30 days are marked overdue and listed first
+- *Not yet built:* UrhDaG rights-holder copyright takedown portal
 
 ## Privacy & Compliance
 - Impressum, Datenschutzerklärung (privacy policy), Nutzungsbedingungen (ToS), and a plain-language **Transparenz** page explaining data handling in everyday terms
@@ -112,4 +115,4 @@
 - Before merging a change to how the app behaves, go through the matching sections of [docs/manual-checks.md](docs/manual-checks.md) — the PR template asks for them in the test plan
 
 ---
-*Not yet built / explicitly deferred:* DSA Statement-of-Reasons user notifications & appeal flow, UrhDaG rights-holder copyright portal, birth-date/16+ age verification enforcement, uptime monitoring/alerting for the app itself (only backups are monitored), notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).
+*Not yet built / explicitly deferred:* UrhDaG rights-holder copyright portal, birth-date/16+ age verification enforcement, uptime monitoring/alerting for the app itself (only backups are monitored), notifications for follows-of-a-reply/DM-specific push beyond what's listed above, ClickHouse-based ranking (data collection foundation exists, ranking layer doesn't).

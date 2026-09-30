@@ -67,6 +67,8 @@ loads more as you scroll.
 - [ ] Editing the reported item (caption, comment, bio, avatar) adds a version to the timeline; deleting it (as admin, as its author, or with the account) keeps the record and marks it deleted
 - [ ] Opening an evidence record or one of its files asks for a reason, and the audit trail shows exactly one entry per action
 - [ ] Dismissing the last report on preserved content purges the record at the next sweep; a legal hold stops the purge
+- [ ] A removal, automatic hide or warning gives the author a "Klar" notice in the bell and an email linking to the statement; a CSAM statement only arrives after an admin sends it from `/admin/moderation`
+- [ ] The author can object once from the statement page; the admin's answer shows up there and in the bell; the reporter sees the outcome under Settings → Moderation
 
 ## Legal pages and passcode gate
 

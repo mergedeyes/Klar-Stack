@@ -36,6 +36,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::evidence;
+use crate::moderation::{self, NewDecision, PendingNotices, Restriction};
 use crate::handlers::auth::AppState;
 use crate::handlers::posts::delete_post_with_media;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
@@ -173,6 +174,7 @@ pub async fn create_report(
     // update (a "user" report has no content to hide -- it just queues
     // for admin review at whatever priority its reason implies).
     let mut newly_hidden = false;
+    let mut automatic = None;
     if input.target_type == "post" {
         if is_critical(&input.reason) {
             // Only the transition to hidden rotates the media keys, so a
@@ -184,24 +186,54 @@ pub async fn create_report(
                 .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to auto-hide post", "Database error")?
                 .rows_affected() > 0;
+            if newly_hidden {
+                automatic = Some(Restriction::Hidden);
+            }
         } else if is_high_severity(&input.reason) {
             // Never downgrade an already-hidden (CSAM) post back to
             // merely "flagged".
-            sqlx::query("UPDATE posts SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
+            let flagged = sqlx::query("UPDATE posts SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
                 .bind(input.target_id).execute(&mut *tx).await
-                .db_err_ctx("Failed to flag post", "Database error")?;
+                .db_err_ctx("Failed to flag post", "Database error")?
+                .rows_affected() > 0;
+            if flagged {
+                automatic = Some(Restriction::Flagged);
+            }
         }
     } else if input.target_type == "comment" {
         if is_critical(&input.reason) {
-            sqlx::query("UPDATE comments SET moderation_status = 'hidden' WHERE id = $1")
+            let hidden = sqlx::query("UPDATE comments SET moderation_status = 'hidden' WHERE id = $1 AND moderation_status != 'hidden'")
                 .bind(input.target_id).execute(&mut *tx).await
-                .db_err_ctx("Failed to auto-hide comment", "Database error")?;
+                .db_err_ctx("Failed to auto-hide comment", "Database error")?
+                .rows_affected() > 0;
+            if hidden {
+                automatic = Some(Restriction::Hidden);
+            }
         } else if is_high_severity(&input.reason) {
-            sqlx::query("UPDATE comments SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
+            let flagged = sqlx::query("UPDATE comments SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
                 .bind(input.target_id).execute(&mut *tx).await
-                .db_err_ctx("Failed to flag comment", "Database error")?;
+                .db_err_ctx("Failed to flag comment", "Database error")?
+                .rows_affected() > 0;
+            if flagged {
+                automatic = Some(Restriction::Flagged);
+            }
         }
     }
+
+    // An automatic restriction is a decision like any other: its author
+    // gets a statement of reasons (DSA Art. 17), marked as automated.
+    let notices = match automatic {
+        Some(restriction) => moderation::record_decision(&mut tx, NewDecision {
+            target_type: &input.target_type,
+            target_id: input.target_id,
+            restriction,
+            automated: true,
+            reason: &input.reason,
+            decided_by: None,
+            report_id: report.id,
+        }).await?,
+        None => PendingNotices::default(),
+    };
 
     // Likely-illegal content is captured as reported, right away, so later
     // edits or deletion can't destroy the evidence; see evidence.rs.
@@ -212,6 +244,7 @@ pub async fn create_report(
     };
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    notices.send(&state).await;
 
     // Runs in the background: the reporter shouldn't wait on (or see
     // errors from) storage round-trips, and every failure is logged with
@@ -373,7 +406,8 @@ pub async fn get_reports(
                 WHEN 'user' THEN u_target.username
             END as target_username,
             ev.id as evidence_id,
-            ev.content_deleted_at IS NOT NULL as evidence_content_deleted
+            ev.content_deleted_at IS NOT NULL as evidence_content_deleted,
+            r.created_at < NOW() - INTERVAL '30 days' as overdue
         FROM reports r
         LEFT JOIN users u_reporter ON u_reporter.id = r.reporter_id
         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
@@ -389,6 +423,7 @@ pub async fn get_reports(
         ) ev ON true
         WHERE r.status = 'pending'
         ORDER BY
+            r.created_at < NOW() - INTERVAL '30 days' DESC,
             CASE
                 WHEN r.reason = 'csam' THEN 0
                 WHEN r.reason IN ('violence', 'self_harm', 'sexual_content') THEN 1
@@ -473,7 +508,13 @@ pub async fn dismiss_report(
     // the last likely-illegal report on it, that evidence is now decided.
     evidence::decide(&mut tx, &target_type, target_id, auth.user_id, input.note.as_deref()).await?;
 
+    // The content is visible again: lift its automatic restrictions and
+    // tell its author, and tell the reporter the outcome.
+    let mut notices = moderation::lift_restrictions(&mut tx, &target_type, target_id).await?;
+    notices.extend(moderation::notify_report_outcome(&mut tx, report_id, auth.user_id).await?);
+
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    notices.send(&state).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -508,8 +549,8 @@ pub async fn remove_reported_content(
     // decremented once.
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
-    let report = sqlx::query_as::<_, (String, Uuid)>(
-        "SELECT target_type::text, target_id FROM reports WHERE id = $1 AND status = 'pending' FOR UPDATE"
+    let report = sqlx::query_as::<_, (String, Uuid, String)>(
+        "SELECT target_type::text, target_id, reason::text FROM reports WHERE id = $1 AND status = 'pending' FOR UPDATE"
     )
     .bind(report_id)
     .fetch_optional(&mut *tx)
@@ -517,7 +558,19 @@ pub async fn remove_reported_content(
     .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Report not found or already reviewed"))?;
 
-    let (target_type, target_id) = report;
+    let (target_type, target_id, reason) = report;
+
+    // The statement of reasons for the author, recorded before the delete
+    // (it reads the author and an excerpt from the content).
+    let mut notices = moderation::record_decision(&mut tx, NewDecision {
+        target_type: &target_type,
+        target_id,
+        restriction: Restriction::Removed,
+        automated: false,
+        reason: &reason,
+        decided_by: Some(auth.user_id),
+        report_id,
+    }).await?;
 
     // Storage objects can't take part in the transaction, so their keys
     // are collected here and the files deleted only after commit.
@@ -596,8 +649,10 @@ pub async fn remove_reported_content(
     .db_err_ctx("Failed to update report", "Database error")?;
 
     evidence::decide(&mut tx, &target_type, target_id, auth.user_id, input.note.as_deref()).await?;
+    notices.extend(moderation::notify_report_outcome(&mut tx, report_id, auth.user_id).await?);
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    notices.send(&state).await;
 
     evidence::finish(&state, preserved, media_keys).await;
 

@@ -178,6 +178,21 @@ export default function DatenschutzPage() {
             verknüpft.
           </p>
           <p className="mt-2">
+            <strong>Begründung von Entscheidungen:</strong> Wird ein Inhalt von
+            dir entfernt, ausgeblendet oder mit einem Warnhinweis versehen,
+            speichern wir die Entscheidung mit Begründung, Rechtsgrundlage,
+            einem kurzen Auszug des betroffenen Inhalts, dem Zeitpunkt und der
+            entscheidenden Person und teilen sie dir in der App und per E-Mail
+            mit (Art. 17 Digital Services Act). Dort kannst du innerhalb von
+            sechs Monaten widersprechen; dein Widerspruch und unsere Antwort
+            werden ebenfalls gespeichert. Wer etwas meldet, erfährt, ob die
+            Meldung zu einer Maßnahme geführt hat — nicht aber, wer betroffen
+            ist. Rechtsgrundlage ist Art. 6 Abs. 1 lit. c DSGVO i. V. m. Art. 16
+            und 17 DSA. Die Entscheidungen bleiben als Nachweis unserer
+            Moderation gespeichert; löschst du dein Konto, entfallen der
+            Inhaltsauszug und die Verknüpfung mit dir.
+          </p>
+          <p className="mt-2">
             <strong>Beweissicherung:</strong> Wird ein Beitrag, Kommentar oder
             Profil wegen eines möglicherweise strafbaren Inhalts gemeldet
             (etwa Darstellung sexuellen Missbrauchs von Minderjährigen,

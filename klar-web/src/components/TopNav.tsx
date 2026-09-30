@@ -13,6 +13,7 @@ import {
   Bell,
   MessageCircle,
   Compass,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,9 @@ function notificationText(typeName: string): string {
     case "follow": return " started following you";
     case "follow_request": return " wants to follow you";
     case "follow_accepted": return " accepted your follow request";
+    case "moderation_decision": return ": a moderation decision about your content";
+    case "report_outcome": return ": your report was reviewed";
+    case "objection_resolved": return ": your objection was answered";
     default: return " interacted with you";
   }
 }
@@ -49,7 +53,9 @@ function notificationText(typeName: string): string {
  * follow_request itself isn't a link target -- it has its own
  * accept/decline buttons instead (see below). */
 function notificationHref(n: AppNotification): string {
-  if (n.type_name === "follow" || n.type_name === "follow_accepted") return `/users/${n.actor.username}`;
+  if (n.decision_id) return `/moderation/decisions/${n.decision_id}`;
+  if (n.type_name === "report_outcome") return "/moderation#reports";
+  if (n.actor && (n.type_name === "follow" || n.type_name === "follow_accepted")) return `/users/${n.actor.username}`;
   if (n.post_id) return `/posts/${n.post_id}`;
   return "#";
 }
@@ -59,6 +65,15 @@ function notificationHref(n: AppNotification): string {
  * (follow, follow_request, follow_accepted), or the post's first image
  * (if it has one) for like/comment types. */
 function NotificationPreview({ n }: { n: AppNotification }) {
+  if (!n.actor) {
+    // A notice from Klar itself.
+    return (
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+        <ShieldCheck size={18} />
+      </div>
+    );
+  }
+
   const noPostInvolved =
     n.type_name === "follow" || n.type_name === "follow_request" || n.type_name === "follow_accepted";
 
@@ -128,9 +143,9 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
     setRequestActionLoading(n.id);
     try {
       if (accept) {
-        await followRequestsApi.accept(n.actor.username);
+        await followRequestsApi.accept(n.actor!.username);
       } else {
-        await followRequestsApi.reject(n.actor.username);
+        await followRequestsApi.reject(n.actor!.username);
       }
       setHandledRequestIds((prev) => new Set(prev).add(n.id));
     } catch (err) {
@@ -183,11 +198,13 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             <Plus size={20} />
           </Button>
 
-          <div className="relative" ref={dropdownRef}>
+          {/* Not positioned on phones, so the dropdown below anchors to the
+              header and spans its width; from sm up it hangs off the bell. */}
+          <div className="sm:relative" ref={dropdownRef}>
             <Button
               variant="ghost"
               size="icon"
-              className={iconClass()}
+              className={`${iconClass()} relative`}
               onClick={() => {
                 setShowNotifications(!showNotifications);
                 if (!showNotifications) markAllAsRead();
@@ -201,14 +218,14 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             </Button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-background shadow-lg">
+              <div className="absolute inset-x-4 top-full z-30 mt-1 rounded-md border border-border bg-background shadow-lg sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
                 <div className="p-3 text-sm font-semibold border-b border-border">Notifications</div>
                 <div className="max-h-80 overflow-y-auto">
                   {visibleNotifications.length === 0 ? (
                     <div className="p-4 text-center text-sm text-muted-foreground">No notifications yet</div>
                   ) : (
                     visibleNotifications.map((n) =>
-                      n.type_name === "follow_request" ? (
+                      n.type_name === "follow_request" && n.actor ? (
                         // Own row layout (not a whole-row Link) so the
                         // Accept/Decline buttons can sit as siblings next
                         // to the clickable name, rather than nested
@@ -254,7 +271,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                         >
                           <NotificationPreview n={n} />
                           <span className="min-w-0">
-                            <span className="font-semibold">{n.actor.username}</span>
+                            <span className="font-semibold">{n.actor?.username ?? "Klar"}</span>
                             {notificationText(n.type_name)}
                           </span>
                         </Link>

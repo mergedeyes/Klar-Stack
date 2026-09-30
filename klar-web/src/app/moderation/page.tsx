@@ -1,0 +1,115 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Flag, ShieldCheck } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { moderationApi, type ModerationDecision, type MyReport } from "@/lib/api";
+import { SmartBackButton } from "@/components/SmartBackButton";
+import { REASON_LABELS } from "@/lib/moderation";
+
+const RESTRICTION_LABELS: Record<ModerationDecision["restriction"], string> = {
+  removed: "Removed",
+  hidden: "Temporarily hidden",
+  flagged: "Shown with a warning",
+};
+
+const REPORT_STATUS: Record<MyReport["status"], string> = {
+  pending: "Under review",
+  dismissed: "Reviewed — no violation found",
+  actioned: "Reviewed — action taken",
+};
+
+// Where you see moderation decisions about your content (statements of
+// reasons) and what happened to the reports you filed.
+export default function ModerationPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  const [decisions, setDecisions] = useState<ModerationDecision[] | null>(null);
+  const [reports, setReports] = useState<MyReport[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authLoading && !user) router.push("/login");
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    Promise.all([moderationApi.myDecisions(), moderationApi.myReports()])
+      .then(([d, r]) => { setDecisions(d); setReports(r); })
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
+  }, [user]);
+
+  if (authLoading || !user) return null;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
+        <SmartBackButton aria-label="Back" />
+        <span className="font-semibold">Moderation</span>
+      </header>
+
+      <main className="mx-auto max-w-2xl px-4 py-4">
+        {error && (
+          <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
+        )}
+
+        <h2 className="mb-2 text-sm font-semibold">Decisions about your content</h2>
+        {decisions === null && !error ? (
+          <div className="py-8 text-center text-sm text-muted-foreground animate-pulse">Loading…</div>
+        ) : decisions && decisions.length === 0 ? (
+          <div className="mb-6 rounded-xl border border-border p-4 text-center">
+            <ShieldCheck size={28} className="mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No decisions about your content</p>
+          </div>
+        ) : (
+          <div className="mb-6 space-y-2">
+            {decisions?.map((d) => (
+              <Link
+                key={d.id}
+                href={`/moderation/decisions/${d.id}`}
+                className="flex items-center gap-3 rounded-xl border border-border p-3 hover:bg-muted/40"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">
+                    {RESTRICTION_LABELS[d.restriction]} · <span className="capitalize">{d.target_type}</span>
+                    {d.lifted_at && <span className="text-muted-foreground"> · lifted</span>}
+                    {d.objection_status === "pending" && <span className="text-muted-foreground"> · objection pending</span>}
+                  </p>
+                  {d.content_excerpt && <p className="truncate text-sm text-muted-foreground">{d.content_excerpt}</p>}
+                  <p className="text-xs text-muted-foreground">{new Date(d.created_at).toLocaleString()}</p>
+                </div>
+                <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+              </Link>
+            ))}
+          </div>
+        )}
+
+        <h2 id="reports" className="mb-2 scroll-mt-16 text-sm font-semibold">Your reports</h2>
+        {reports && reports.length === 0 ? (
+          <div className="rounded-xl border border-border p-4 text-center">
+            <Flag size={28} className="mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">You haven&apos;t reported anything</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {reports?.map((r) => (
+              <div key={r.id} className="rounded-xl border border-border p-3">
+                <p className="text-sm font-medium">
+                  <span className="capitalize">{r.target_type}</span> · {REASON_LABELS[r.reason] ?? r.reason}
+                </p>
+                <p className="text-sm text-muted-foreground">{REPORT_STATUS[r.status]}</p>
+                <p className="text-xs text-muted-foreground">
+                  Reported {new Date(r.created_at).toLocaleString()}
+                  {r.reviewed_at && ` · reviewed ${new Date(r.reviewed_at).toLocaleString()}`}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

@@ -7,6 +7,7 @@ pub mod evidence;
 pub mod follows;
 pub mod health;
 pub mod likes;
+pub mod moderation;
 pub mod notifications;
 pub mod posts;
 pub mod uploads;

@@ -86,6 +86,11 @@ export default function AdminEvidencePage() {
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium capitalize">{record.target_type}</span>
                     <EvidenceStatus record={record} />
+                    {record.overdue && (
+                      <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-xs font-semibold text-destructive">
+                        Undecided 30+ days
+                      </span>
+                    )}
                   </div>
                   <p className="truncate text-sm">
                     {record.reasons.map((r) => REASON_LABELS[r] ?? r).join(", ") || "—"}

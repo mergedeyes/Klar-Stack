@@ -79,7 +79,11 @@ export interface AppNotification {
   // -- it's never persisted in the notifications table or returned by
   // notifications.list(), so the hook special-cases it instead of adding
   // it to the notification dropdown list.
-  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message' | 'follow_request' | 'follow_accepted';
+  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message' | 'follow_request' | 'follow_accepted'
+    // Notices from Klar itself (no actor): a statement of reasons about
+    // your content, the outcome of a report you filed, or the answer to
+    // your objection.
+    | 'moderation_decision' | 'report_outcome' | 'objection_resolved';
   is_read: boolean;
   created_at: string;
   post_id: string | null;
@@ -88,11 +92,14 @@ export interface AppNotification {
   // Always null for 'follow'/'follow_request'/'follow_accepted' (no post
   // involved; use actor.avatar_url instead) and 'message' (also no post).
   post_thumb_url: string | null;
+  // null for notices from Klar itself (the moderation types above).
   actor: {
     id: string;
     username: string;
     avatar_url: string | null;
-  };
+  } | null;
+  // The statement of reasons a moderation notice refers to.
+  decision_id: string | null;
 }
 
 /** Keyset cursor for post lists: the last post's created_at plus its id,
@@ -529,6 +536,8 @@ export interface AdminReport {
   // see /admin/evidence), and whether the original has since been deleted.
   evidence_id: string | null;
   evidence_content_deleted: boolean | null;
+  // Pending for more than 30 days.
+  overdue: boolean;
 }
 
 export const reportsApi = {
@@ -577,6 +586,8 @@ export interface EvidenceSummary {
   purged_at: string | null;
   version_count: number;
   file_count: number;
+  // Undecided 30 days after it was opened.
+  overdue: boolean;
 }
 
 export interface EvidenceFile {
@@ -662,6 +673,71 @@ export const adminEvidenceApi = {
         method: "POST",
         body: JSON.stringify({ authority, reported_on: reportedOn, reference: reference || null, note: note || null }),
       },
+      true
+    ),
+};
+
+// ── Moderation decisions (statements of reasons) ─────────────────────────────
+
+export interface ModerationDecision {
+  id: string;
+  target_type: "post" | "comment" | "user";
+  // removed: deleted by the moderation team; hidden / flagged: automatic,
+  // after a report, until reviewed.
+  restriction: "removed" | "hidden" | "flagged";
+  automated: boolean;
+  reason: ReportReason;
+  ground_type: "illegal" | "terms";
+  ground: string;
+  explanation: string;
+  content_excerpt: string | null;
+  created_at: string;
+  lifted_at: string | null;
+  superseded: boolean;
+  objection: string | null;
+  objected_at: string | null;
+  objection_status: "pending" | "rejected" | "accepted" | null;
+  objection_response: string | null;
+  objection_resolved_at: string | null;
+  can_object: boolean;
+}
+
+export interface MyReport {
+  id: string;
+  target_type: ReportTargetType;
+  reason: ReportReason;
+  status: "pending" | "dismissed" | "actioned";
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface AdminModerationDecision extends ModerationDecision {
+  target_id: string;
+  affected_username: string | null;
+  delivered_at: string | null;
+}
+
+export const moderationApi = {
+  myDecisions: () => request<ModerationDecision[]>("/moderation/decisions", {}, true),
+  decision: (id: string) => request<ModerationDecision>(`/moderation/decisions/${id}`, {}, true),
+  object: (id: string, text: string) =>
+    request<ModerationDecision>(
+      `/moderation/decisions/${id}/objection`,
+      { method: "POST", body: JSON.stringify({ text }) },
+      true
+    ),
+  myReports: () => request<MyReport[]>("/moderation/reports", {}, true),
+};
+
+export const adminModerationApi = {
+  queue: () =>
+    request<{ held: AdminModerationDecision[]; objections: AdminModerationDecision[] }>("/admin/moderation", {}, true),
+  release: (id: string) =>
+    request<void>(`/admin/moderation/decisions/${id}/release`, { method: "POST", body: "{}" }, true),
+  resolveObjection: (id: string, accept: boolean, response: string) =>
+    request<void>(
+      `/admin/moderation/decisions/${id}/objection`,
+      { method: "POST", body: JSON.stringify({ accept, response }) },
       true
     ),
 };

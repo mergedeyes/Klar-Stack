@@ -35,7 +35,9 @@ pub struct NotificationResponse {
     pub type_name: String,
     pub is_read: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
-    pub actor: NotificationActor,
+    /// None for notices from Klar itself (moderation.rs), which have no
+    /// acting user.
+    pub actor: Option<NotificationActor>,
     pub post_id: Option<Uuid>,
     /// Storage key (not a full URL) for the post's first image, so the
     /// frontend can show a preview thumbnail on the notification without
@@ -46,6 +48,8 @@ pub struct NotificationResponse {
     /// for the live case. None for notification types with no associated
     /// post (e.g. 'follow').
     pub post_thumb_url: Option<String>,
+    /// The statement of reasons a moderation notice refers to.
+    pub decision_id: Option<Uuid>,
 }
 
 /// Row shape for get_notifications' join, decoded manually via
@@ -60,8 +64,9 @@ struct NotificationRow {
     is_read: bool,
     created_at: chrono::DateTime<chrono::Utc>,
     post_id: Option<Uuid>,
-    actor_id: Uuid,
-    actor_username: String,
+    decision_id: Option<Uuid>,
+    actor_id: Option<Uuid>,
+    actor_username: Option<String>,
     actor_display: Option<String>,
     actor_avatar: Option<String>,
     post_thumb_url: Option<String>,
@@ -178,7 +183,8 @@ pub async fn build_event(
             created_at: chrono::Utc::now(),
             post_id,
             post_thumb_url,
-            actor: NotificationActor::from(actor_row),
+            actor: Some(NotificationActor::from(actor_row)),
+            decision_id: None,
         },
     })
 }
@@ -227,12 +233,12 @@ pub async fn get_notifications(
     let records = sqlx::query_as::<_, NotificationRow>(
         r#"
         SELECT 
-            n.id, n.type::text as type_name, n.is_read, n.created_at, n.post_id,
+            n.id, n.type::text as type_name, n.is_read, n.created_at, n.post_id, n.decision_id,
             u.id as actor_id, u.username as actor_username,
             u.display_name as actor_display, u.avatar_url as actor_avatar,
             m.thumb_key as post_thumb_url
         FROM notifications n
-        JOIN users u ON n.actor_id = u.id
+        LEFT JOIN users u ON n.actor_id = u.id
         LEFT JOIN media_assets m ON m.post_id = n.post_id AND m.sort_order = 0
         WHERE n.user_id = $1
         ORDER BY n.created_at DESC
@@ -251,12 +257,13 @@ pub async fn get_notifications(
         created_at: rec.created_at,
         post_id: rec.post_id,
         post_thumb_url: rec.post_thumb_url,
-        actor: NotificationActor {
-            id: rec.actor_id,
-            username: rec.actor_username,
+        decision_id: rec.decision_id,
+        actor: rec.actor_id.zip(rec.actor_username).map(|(id, username)| NotificationActor {
+            id,
+            username,
             display_name: rec.actor_display,
             avatar_url: rec.actor_avatar,
-        },
+        }),
     }).collect();
 
     Ok(Json(responses.resolve_media(&state.storage)))

@@ -39,6 +39,10 @@ UPDATE comments SET body    = left(repeat('Lorem ipsum ', 200), char_length(body
 UPDATE messages SET body    = left(repeat('Lorem ipsum ', 200), char_length(body));
 UPDATE reports  SET details     = CASE WHEN details     IS NULL THEN NULL ELSE 'Report details' END,
                     review_note = CASE WHEN review_note IS NULL THEN NULL ELSE 'Review note' END;
+UPDATE moderation_decisions SET
+    content_excerpt    = CASE WHEN content_excerpt    IS NULL THEN NULL ELSE 'Content excerpt' END,
+    objection          = CASE WHEN objection          IS NULL THEN NULL ELSE 'Objection text' END,
+    objection_response = CASE WHEN objection_response IS NULL THEN NULL ELSE 'Objection response' END;
 
 -- Uploaded images are personal data; point every asset at one placeholder
 -- key (files aren't downloaded anyway, this just avoids real CDN URLs).
@@ -68,6 +72,8 @@ DECLARE
         'users.avatar_url', 'users.password_hash',
         'posts.caption', 'comments.body', 'messages.body',
         'reports.details', 'reports.review_note',
+        'moderation_decisions.content_excerpt', 'moderation_decisions.objection',
+        'moderation_decisions.objection_response',
         'media_assets.original_key', 'media_assets.thumb_key',
         'media_assets.medium_key', 'media_assets.full_key',
         'post_events.metadata',
@@ -84,6 +90,11 @@ DECLARE
         'comments.moderation_status', 'posts.moderation_status',
         'notifications.type', 'post_events.event_type',
         'reports.reason', 'reports.status', 'reports.target_type',
+        -- statement templates from moderation.rs, not user input
+        'moderation_decisions.target_type', 'moderation_decisions.restriction',
+        'moderation_decisions.reason', 'moderation_decisions.ground_type',
+        'moderation_decisions.ground', 'moderation_decisions.explanation',
+        'moderation_decisions.objection_status',
         'message_reactions.emoji',
         '_sqlx_migrations.description', '_sqlx_migrations.checksum'
     ];

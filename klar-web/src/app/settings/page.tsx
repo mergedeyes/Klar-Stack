@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, Trash2, UserPen } from "lucide-react";
+import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { SmartBackButton } from '@/components/SmartBackButton';
@@ -19,6 +19,12 @@ const sections = [
     icon: KeyRound,
     label: "Change password",
     description: "Update your password",
+  },
+  {
+    href: "/moderation",
+    icon: ShieldCheck,
+    label: "Moderation",
+    description: "Decisions about your content and your reports",
   },
   {
     href: "/settings/account",
