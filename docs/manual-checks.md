@@ -1,9 +1,9 @@
 # Manual checks
 
-CI (`lint.yml`) type-checks, lints and runs the backend tests, but it never
-clicks through the app. This list covers the behaviour only a person in a
-browser can confirm: scrolling, real-time updates, what another account can
-see, and what happens when the network fails.
+CI (`ci.yml`) type-checks, lints, and runs the backend and browser tests. This
+list covers what those don't: real phones and browsers, real-time updates,
+emails arriving, what another account can see, and what happens when the
+network fails.
 
 Copy the sections that match what a change touches into the PR's test plan and
 tick them off against a local stack or the passcode-gated site. Use two

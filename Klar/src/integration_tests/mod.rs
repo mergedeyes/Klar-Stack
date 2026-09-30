@@ -13,7 +13,7 @@
 //! ```
 //!
 //! `DATABASE_URL` must point at a server where the user may create
-//! databases. CI runs them in the "integration" job (.github/workflows/lint.yml).
+//! databases. CI runs them in the backend job (.github/workflows/ci.yml).
 
 mod support;
 

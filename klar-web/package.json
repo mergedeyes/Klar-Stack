@@ -11,6 +11,7 @@
     "dev": "npm run clean && concurrently --kill-others --names \"MAIL\",\"RUST\",\"NODE\" --prefix-colors \"cyan,magenta,green\" \"npm run start:mailhog\" \"npm run start:backend\" \"npm run start:frontend\"",
     "build": "next build",
     "lint": "eslint",
+    "test:e2e": "playwright test",
     "start:base": "next start --port 3001",
     "run:backend:prod": "cd ../Klar && ENV=production ./target/release/Klar",
     "run:frontend:prod": "wait-on tcp:127.0.0.1:3000 && npm run start:base",
@@ -35,6 +36,7 @@
     "zod": "^4.4.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
