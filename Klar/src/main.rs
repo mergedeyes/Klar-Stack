@@ -41,8 +41,12 @@ async fn main() {
     eprintln!("=== KLAR BACKEND: main() started ===");
     // Colors only on a real terminal: in the Bunny log viewer the ANSI
     // escape codes show up as literal "[2m…[0m" noise around every field.
+    // Bunny runs the container with a TTY attached, so the terminal check
+    // alone isn't enough; NO_COLOR (https://no-color.org, set in the
+    // Dockerfile) turns colors off regardless.
+    let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
     tracing_subscriber::fmt()
-        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
+        .with_ansi(!no_color && std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .init();
     dotenvy::dotenv().ok();
 
