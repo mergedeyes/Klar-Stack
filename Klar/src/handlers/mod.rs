@@ -17,3 +17,4 @@ pub mod feed;
 pub mod feedback;
 pub mod reports;
 pub mod rights;
+pub mod test_phase;

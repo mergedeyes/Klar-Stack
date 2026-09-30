@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { MessageSquareText } from "lucide-react";
 import { SmartBackButton } from '@/components/SmartBackButton';
+import KeepAccountCard from "@/components/settings/KeepAccountCard";
 
 const sections = [
   {
@@ -156,6 +157,8 @@ export default function SettingsPage() {
         {exportError && (
           <p className="mt-2 px-1 text-xs text-destructive">{exportError}</p>
         )}
+
+        <KeepAccountCard />
       </main>
     </div>
   );

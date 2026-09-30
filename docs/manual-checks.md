@@ -49,6 +49,7 @@ loads more as you scroll.
 
 ## Accounts and sessions
 
+- [ ] Settings → "Keep my account after the test" is off for a new account; ticking it shows "Requested on …" and stays ticked after a reload; unticking clears it
 - [ ] Register, verify the email via the link, log in, log out
 - [ ] Session survives an idle period longer than 15 minutes (the access token refreshes silently)
 - [ ] Password reset and change password work; changing the password logs out other sessions

@@ -408,6 +408,14 @@ export const auth = {
 // ── User endpoints ────────────────────────────────────────────────────────────
 
 export const users = {
+  // Test phase only: keep this account through the pre-launch wipe.
+  keepAccount: () => request<{ keep: boolean; since: string | null }>("/users/me/keep-account", {}, true),
+  setKeepAccount: (keep: boolean) =>
+    request<{ keep: boolean; since: string | null }>(
+      "/users/me/keep-account",
+      { method: "PATCH", body: JSON.stringify({ keep }) },
+      true
+    ),
   me: () => request<User>("/users/me", {}, true),
   get: (username: string) => request<User>(`/users/${username}`),
   search: (q: string, limit = 20, offset = 0) =>

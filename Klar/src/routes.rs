@@ -123,6 +123,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/me/avatar", post(handlers::users::upload_avatar))
         .route("/users/me/blocked", get(handlers::blocks::get_blocked_users))
         .route("/users/me/export", get(handlers::users::export_my_data))
+        .route("/users/me/keep-account", get(handlers::test_phase::get_keep_account)
+            .patch(handlers::test_phase::set_keep_account))
         .route("/users/me/follow-requests", get(handlers::follows::get_follow_requests))
         .route("/users/me/follow-requests/{requester_username}/accept", post(handlers::follows::accept_follow_request))
         .route("/users/me/follow-requests/{requester_username}/reject", post(handlers::follows::reject_follow_request))

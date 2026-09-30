@@ -22,4 +22,5 @@ mod feedback;
 mod moderation;
 mod previews;
 mod rights;
+mod test_phase;
 mod uptime;
