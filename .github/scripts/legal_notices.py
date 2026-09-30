@@ -129,6 +129,31 @@ def wait_until_live(site):
             sys.exit(1)
 
 
+# The backend deploys in its own workflow and takes longer (the Rust
+# build), so right after a merge that adds or changes the endpoint the
+# frontend can get here first. 404 (endpoint not there yet), 5xx and
+# connection errors are retried for up to 15 minutes; anything else (e.g.
+# 401, a wrong token) fails at once.
+RETRY_STATUSES = {404, 502, 503, 504}
+RETRY_ATTEMPTS, RETRY_PAUSE = 45, 20
+
+
+def send(req):
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as res:
+                return json.loads(res.read())
+        except urllib.error.HTTPError as e:
+            if e.code not in RETRY_STATUSES or attempt == RETRY_ATTEMPTS:
+                raise
+            print(f"{req.full_url}: HTTP {e.code}, the backend may still be deploying; retrying in {RETRY_PAUSE} s")
+        except urllib.error.URLError as e:
+            if attempt == RETRY_ATTEMPTS:
+                raise
+            print(f"{req.full_url}: {e.reason}; retrying in {RETRY_PAUSE} s")
+        time.sleep(RETRY_PAUSE)
+
+
 def publish():
     api, token, site = os.environ.get("API_URL"), os.environ.get("LEGAL_UPDATES_TOKEN"), os.environ.get("SITE_URL")
     files = notice_files()
@@ -151,8 +176,7 @@ def publish():
             method="POST",
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         )
-        with urllib.request.urlopen(req, timeout=30) as res:
-            created = json.loads(res.read()).get("created")
+        created = send(req).get("created")
         print(f"{os.path.basename(path)}: {'published' if created else 'already published'}")
 
 
