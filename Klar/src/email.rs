@@ -409,6 +409,40 @@ impl EmailService {
         self.send(to_email, "Moderationsentscheidung zu deinem Inhalt bei Klar", &text, &html).await
     }
 
+    /// Two weeks before a permanently suspended account is deleted: when,
+    /// and that the data can still be exported or the decision objected to.
+    pub async fn send_ban_deletion_notice(
+        &self,
+        to_email: &str,
+        decision_id: uuid::Uuid,
+        deletion_on: &str,
+    ) -> Result<(), EmailError> {
+        let url = format!("{}/moderation/decisions/{}", self.base_url, decision_id);
+
+        let text = format!(
+            "Dein Klar-Konto wird am {} geloescht\n\n\
+             Dein Konto ist dauerhaft gesperrt. Nach Ablauf der Widerspruchsfrist loeschen wir es am {} \
+             mit allen Inhalten. Bis dahin kannst du in den Einstellungen deine Daten exportieren oder \
+             der Entscheidung widersprechen:\n\n\
+             {}\n\n\
+             Du musst dafuer angemeldet sein.",
+            deletion_on, deletion_on, url
+        );
+
+        let html = render_html_email(
+            &format!("Dein Klar-Konto wird am {} gelöscht", deletion_on),
+            &format!(
+                "Dein Konto ist dauerhaft gesperrt. Nach Ablauf der Widerspruchsfrist löschen wir es am {} mit allen Inhalten. Bis dahin kannst du in den Einstellungen deine Daten exportieren oder der Entscheidung widersprechen.",
+                deletion_on
+            ),
+            "Entscheidung ansehen",
+            &url,
+            "Du musst dafuer bei Klar angemeldet sein.",
+        );
+
+        self.send(to_email, "Dein Klar-Konto wird bald geloescht", &text, &html).await
+    }
+
     /// Confirm receipt of a rights claim (DSA Art. 16(4)) with the private
     /// status link. The token is in the URL fragment, which browsers never
     /// send to a server, so it can't end up in any access log.

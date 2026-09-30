@@ -16,12 +16,15 @@ const RESTRICTION_DE: Record<ModerationDecision["restriction"], string> = {
   removed: "Entfernt",
   hidden: "Ausgeblendet",
   flagged: "Nur mit Warnhinweis angezeigt",
+  warning: "Verwarnt",
+  suspended: "Vorübergehend gesperrt",
+  banned: "Dauerhaft gesperrt",
 };
 
 const TARGET_DE: Record<ModerationDecision["target_type"], string> = {
   post: "Beitrag",
   comment: "Kommentar",
-  user: "Profil",
+  user: "Konto",
 };
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

@@ -13,6 +13,9 @@ const RESTRICTION_LABELS: Record<AdminModerationDecision["restriction"], string>
   removed: "Removed",
   hidden: "Hidden (automatic)",
   flagged: "Warning (automatic)",
+  warning: "Account warning",
+  suspended: "Suspended",
+  banned: "Suspended permanently",
 };
 
 function DecisionSummary({ d }: { d: AdminModerationDecision }) {

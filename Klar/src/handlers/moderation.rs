@@ -19,6 +19,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::reports::require_admin;
 use crate::moderation;
+use crate::standing;
 use crate::utils::DbResultExt;
 
 /// How long after a decision the affected user can object (DSA Art. 20(1)
@@ -38,6 +39,8 @@ pub struct DecisionView {
     pub ground: String,
     pub explanation: String,
     pub content_excerpt: Option<String>,
+    /// Length of a temporary suspension (account measures only).
+    pub suspension_days: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub lifted_at: Option<DateTime<Utc>>,
     pub superseded: bool,
@@ -53,7 +56,7 @@ pub struct DecisionView {
 
 const DECISION_COLUMNS: &str = r#"
     d.id, d.target_type::text AS target_type, d.restriction, d.automated, d.reason::text AS reason,
-    d.ground_type, d.ground, d.explanation, d.content_excerpt, d.created_at, d.lifted_at,
+    d.ground_type, d.ground, d.explanation, d.content_excerpt, d.suspension_days, d.created_at, d.lifted_at,
     d.superseded_by IS NOT NULL AS superseded,
     d.objection, d.objected_at, d.objection_status, d.objection_response, d.objection_resolved_at,
     (d.objection IS NULL AND d.created_at > NOW() - make_interval(days => 183)) AS can_object
@@ -300,10 +303,21 @@ pub async fn resolve_objection(
 
     let (target_type, target_id, restriction, affected_user_id, current, rights_claim_id) = decision;
 
+    // An accepted objection against a suspension ends it, if it is still
+    // the current one.
+    if input.accept && target_type == "user" && moderation::end_suspension(&mut tx, decision_id).await? {
+        tracing::info!("Suspension {} ended by accepted objection", decision_id);
+    }
+
+    // An accepted objection against a removal takes back its strike.
+    if input.accept && restriction == "removed" {
+        standing::revoke_strike(&mut tx, decision_id).await?;
+    }
+
     // An accepted objection against a hide or warning makes the content
     // visible again, unless a later decision (a removal) replaced it.
     // Removed content is gone; the response has to say so.
-    if input.accept && restriction != "removed" && current {
+    if input.accept && target_type != "user" && restriction != "removed" && current {
         let table = if target_type == "post" { "posts" } else { "comments" };
         sqlx::query(&format!("UPDATE {table} SET moderation_status = 'visible' WHERE id = $1"))
             .bind(target_id)

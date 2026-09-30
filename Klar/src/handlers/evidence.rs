@@ -50,6 +50,10 @@ pub struct EvidenceSummary {
     /// Still undecided 30 days after it was opened: its report needs a
     /// decision (see evidence::OVERDUE_DAYS).
     pub overdue: bool,
+    /// 'required' or 'recommended' when the removal's classification says
+    /// it goes to the authorities, and whether a report was recorded.
+    pub authority_report: Option<String>,
+    pub authority_reported: bool,
 }
 
 const SUMMARY_COLUMNS: &str = r#"
@@ -58,7 +62,9 @@ const SUMMARY_COLUMNS: &str = r#"
     e.decision, e.decided_at, e.retain_until, e.legal_hold, e.purged_at,
     (SELECT COUNT(*) FROM evidence_versions v WHERE v.evidence_id = e.id) AS version_count,
     (SELECT COUNT(*) FROM evidence_files f WHERE f.evidence_id = e.id) AS file_count,
-    (e.decided_at IS NULL AND e.purged_at IS NULL AND e.created_at < NOW() - INTERVAL '30 days') AS overdue
+    (e.decided_at IS NULL AND e.purged_at IS NULL AND e.created_at < NOW() - INTERVAL '30 days') AS overdue,
+    e.authority_report,
+    EXISTS (SELECT 1 FROM evidence_events ev WHERE ev.evidence_id = e.id AND ev.action = 'authority_report') AS authority_reported
 "#;
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -189,7 +195,10 @@ pub async fn list_evidence(
 
     let records = sqlx::query_as::<_, EvidenceSummary>(&format!(
         "SELECT {SUMMARY_COLUMNS} FROM evidence_records e \
-         WHERE $1 OR e.purged_at IS NULL ORDER BY overdue DESC, e.created_at DESC LIMIT 500"
+         WHERE $1 OR e.purged_at IS NULL \
+         ORDER BY (e.authority_report = 'required' AND NOT EXISTS (SELECT 1 FROM evidence_events ev \
+                   WHERE ev.evidence_id = e.id AND ev.action = 'authority_report')) IS TRUE DESC, \
+                  overdue DESC, e.created_at DESC LIMIT 500"
     ))
     .bind(query.include_purged)
     .fetch_all(&state.db)

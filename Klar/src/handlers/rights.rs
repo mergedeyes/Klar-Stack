@@ -462,6 +462,9 @@ pub async fn accept_claim(
         report_id: None,
         rights_claim_id: Some(claim_id),
         detail: Some(format!("Betroffenes Werk laut Meldung: {}", work)),
+        // Repeat infringers are a separate, still open question; a hide
+        // after a rights claim doesn't count towards the standing yet.
+        classification: None,
     })
     .await?;
 

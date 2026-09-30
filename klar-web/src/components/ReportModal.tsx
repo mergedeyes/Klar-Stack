@@ -14,11 +14,16 @@ interface ReportModalProps {
 const REASONS: { value: ReportReason; label: string }[] = [
   { value: "spam", label: "Spam" },
   { value: "harassment", label: "Harassment or bullying" },
-  { value: "hate_speech", label: "Hate speech" },
+  { value: "hate_speech", label: "Hate speech or dehumanising content" },
+  { value: "extremism", label: "Extremism or glorifying Nazism/fascism" },
   { value: "violence", label: "Violence or graphic content" },
   { value: "self_harm", label: "Self-harm or suicide" },
   { value: "sexual_content", label: "Sexual content" },
+  { value: "ncii", label: "Intimate images shared without consent" },
   { value: "csam", label: "Child sexual abuse material" },
+  { value: "terrorism", label: "Terrorism or threats of serious violence" },
+  { value: "fraud", label: "Scam or fraud" },
+  { value: "illegal_goods", label: "Selling drugs, weapons or other illegal goods" },
   { value: "impersonation", label: "Impersonation" },
   { value: "other", label: "Something else" },
 ];

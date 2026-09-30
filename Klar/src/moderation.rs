@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::notifications::{publish_notification, NotificationEvent, NotificationResponse};
+use crate::standing::{self, Classification, Measure, NewStrike};
 use crate::utils::DbResultExt;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -60,7 +61,7 @@ fn ground_for(reason: &str) -> (&'static str, &'static str, &'static str) {
         ),
         "hate_speech" => (
             "terms",
-            "Nutzungsbedingungen Abschnitt 4 (rechtswidrige Inhalte, u. a. Volksverhetzung)",
+            "Nutzungsbedingungen Abschnitt 4 (Hassrede und Entmenschlichung; rechtswidrige Inhalte, u. a. Volksverhetzung)",
             "Der Inhalt wurde als Hassrede gemeldet.",
         ),
         "harassment" => (
@@ -95,6 +96,34 @@ fn ground_for(reason: &str) -> (&'static str, &'static str, &'static str) {
             "Nutzungsbedingungen Abschnitt 4 (Vortäuschen falscher Identitäten)",
             "Der Inhalt wurde als Identitätsdiebstahl gemeldet.",
         ),
+        // ⚖️ The four below may also be crimes (e.g. § 263, § 201a, §§ 89a,
+        // 126, 129a, § 29 BtMG / § 52 WaffG); like hate speech, the statement
+        // cites our terms rather than asserting a crime.
+        "fraud" => (
+            "terms",
+            "Nutzungsbedingungen Abschnitt 4 (Betrug und Betrugsversuche)",
+            "Der Inhalt wurde als Betrug oder Betrugsversuch gemeldet.",
+        ),
+        "ncii" => (
+            "terms",
+            "Nutzungsbedingungen Abschnitt 4 (intime Aufnahmen ohne Einwilligung)",
+            "Der Inhalt wurde als intime Aufnahme gemeldet, die ohne Einwilligung der gezeigten Person verbreitet wird.",
+        ),
+        "terrorism" => (
+            "terms",
+            "Nutzungsbedingungen Abschnitt 4 (Terrorismus und Androhung schwerer Gewalt)",
+            "Der Inhalt wurde als terroristischer Inhalt oder als Androhung schwerer Gewalt gemeldet.",
+        ),
+        "extremism" => (
+            "terms",
+            "Nutzungsbedingungen Abschnitt 4 (Extremismus; Verherrlichung des Nationalsozialismus oder Faschismus)",
+            "Der Inhalt wurde als extremistisch oder als Verherrlichung des Nationalsozialismus oder Faschismus gemeldet.",
+        ),
+        "illegal_goods" => (
+            "terms",
+            "Nutzungsbedingungen Abschnitt 4 (Handel mit illegalen Waren)",
+            "Der Inhalt wurde als Angebot oder Handel mit illegalen Waren, etwa Drogen oder Waffen, gemeldet.",
+        ),
         _ => (
             "terms",
             "Nutzungsbedingungen Abschnitt 4",
@@ -117,6 +146,30 @@ fn restriction_text(restriction: Restriction, automated: bool) -> &'static str {
             "Der Inhalt wird nach der Meldung automatisch nur noch mit einem Warnhinweis angezeigt, \
              bis unser Team ihn geprüft hat."
         }
+    }
+}
+
+/// The classification part of a removal's statement: which violation type
+/// the team found, its criterion, and the points it counts. The admin's
+/// justification stays internal.
+fn classification_text(c: &Classification, points: Option<(i32, i32)>) -> String {
+    match (c.violation, points) {
+        (Some(v), Some((base, points))) => format!(
+            "Eingestuft als „{}“: {} Dafür werden deinem Konto {} Punkte angerechnet{}.",
+            v.label_de,
+            v.criterion_de,
+            points,
+            if points > base {
+                format!(
+                    " ({} Punkte, eineinhalbfach, weil es mindestens der dritte Verstoß aus diesem Grund innerhalb von {} Tagen ist)",
+                    base, standing::REPEAT_WINDOW_DAYS
+                )
+            } else {
+                String::new()
+            }
+        ),
+        (Some(v), None) => format!("Eingestuft als „{}“: {} Dafür werden keine Punkte angerechnet.", v.label_de, v.criterion_de),
+        (None, _) => "Dafür werden keine Punkte angerechnet.".to_string(),
     }
 }
 
@@ -212,6 +265,9 @@ pub struct NewDecision<'a> {
     pub rights_claim_id: Option<Uuid>,
     /// Appended to the explanation, e.g. which work a rights claim is about.
     pub detail: Option<String>,
+    /// For an admin's removal: how they classified the violation, which
+    /// sets the author's strike (standing.rs).
+    pub classification: Option<Classification>,
 }
 
 /// Records a restriction of a post or comment, inside the transaction that
@@ -259,10 +315,21 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
         return Ok(pending);
     }
 
+    // The strike's points are worked out first, so the statement can say
+    // exactly what the removal counts.
+    let removal_violation = d.classification.as_ref().filter(|_| d.restriction == Restriction::Removed);
+    let strike_points = match removal_violation.and_then(|c| c.violation) {
+        Some(v) if v.severity.points() > 0 => Some(standing::strike_points(tx, affected_user_id, v).await?),
+        _ => None,
+    };
+
     let (ground_type, ground, reason_text) = ground_for(d.reason);
     let mut explanation = format!("{} {}", reason_text, restriction_text(d.restriction, d.automated));
     if let Some(detail) = &d.detail {
         explanation = format!("{} {}", explanation, detail);
+    }
+    if let Some(c) = removal_violation {
+        explanation = format!("{} {}", explanation, classification_text(c, strike_points));
     }
     let deliver = !held_back(d.reason);
 
@@ -270,10 +337,11 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
         r#"
         INSERT INTO moderation_decisions
             (target_type, target_id, affected_user_id, restriction, automated, reason,
-             ground_type, ground, explanation, content_excerpt, decided_by, report_ids, delivered_at, rights_claim_id)
+             ground_type, ground, explanation, content_excerpt, decided_by, report_ids, delivered_at, rights_claim_id,
+             violation_type, violation_note)
         VALUES ($1::report_target_type, $2, $3, $4, $5, $6::report_reason, $7, $8, $9, $10, $11,
                 CASE WHEN $12::uuid IS NULL THEN '{}'::uuid[] ELSE ARRAY[$12]::uuid[] END,
-                CASE WHEN $13 THEN NOW() END, $14)
+                CASE WHEN $13 THEN NOW() END, $14, $15, $16)
         RETURNING id
         "#,
     )
@@ -291,11 +359,25 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
     .bind(d.report_id)
     .bind(deliver)
     .bind(d.rights_claim_id)
+    .bind(removal_violation.map(|c| c.id()))
+    .bind(removal_violation.and_then(|c| c.note.as_deref()))
     .fetch_one(&mut *tx)
     .await
     .db_err_ctx("Failed to record moderation decision", "Database error")?;
 
     if d.restriction == Restriction::Removed {
+        if let (Some(v), Some((base_points, points))) = (removal_violation.and_then(|c| c.violation), strike_points) {
+            standing::add_strike(tx, NewStrike {
+                user_id: affected_user_id,
+                decision_id,
+                violation: v,
+                base_points,
+                points,
+                target_type: d.target_type,
+                target_id: d.target_id,
+            })
+            .await?;
+        }
         sqlx::query(
             r#"
             UPDATE moderation_decisions SET superseded_by = $3
@@ -320,6 +402,168 @@ pub async fn record_decision(tx: &mut PgConnection, d: NewDecision<'_>) -> Resul
         if deliver { "" } else { ", statement held back" }
     );
     Ok(pending)
+}
+
+/// Why an account measure was taken, in the statement. Built from the
+/// score rather than the report reason, since a measure answers the
+/// account's history, not one post.
+fn measure_text(measure: Measure, score: i32) -> String {
+    let history = format!(
+        "Nach Prüfung wurden wiederholt oder schwerwiegend Inhalte von dir entfernt, weil sie gegen \
+         unsere Nutzungsbedingungen verstoßen. Jeder bestätigte Verstoß ergibt je nach Schwere \
+         Punkte, die nach einer gewissen Zeit wieder verfallen; dein Konto hat derzeit {} von {} \
+         Punkten. Die einzelnen Entscheidungen findest du unter „Kontostatus“.",
+        score, standing::MAX_SCORE
+    );
+    let effect = match measure {
+        Measure::Warning => "Wir verwarnen dein Konto. Weitere Verstöße können zu einer vorübergehenden \
+             oder dauerhaften Sperrung führen."
+            .to_string(),
+        Measure::Suspend7 | Measure::Suspend30 => format!(
+            "Dein Konto ist für {} Tage gesperrt. Solange kannst du Klar nur lesen: Du kannst nichts \
+             veröffentlichen, kommentieren, liken, folgen oder Nachrichten senden, und dein Profil und \
+             deine Inhalte sind für andere nicht sichtbar. Deine Daten exportieren, dein Konto löschen \
+             und dieser Entscheidung widersprechen kannst du weiterhin.",
+            measure.suspension_days().unwrap_or_default()
+        ),
+        Measure::Ban => format!(
+            "Dein Konto ist dauerhaft gesperrt. Du kannst Klar nur noch lesen, und dein Profil und deine \
+             Inhalte sind für andere nicht sichtbar. Deine Daten exportieren, dein Konto löschen und dieser \
+             Entscheidung widersprechen kannst du weiterhin. Nach Ablauf der Widerspruchsfrist von {} Tagen \
+             löschen wir dein Konto mit allen Inhalten, solange kein Widerspruch offen ist; zwei Wochen \
+             vorher erinnern wir dich per E-Mail.",
+            standing::BAN_DELETION_DAYS
+        ),
+    };
+    format!("{} {}", history, effect)
+}
+
+/// Records an account measure (warning or suspension) decided by an admin,
+/// and applies a suspension. A new suspension replaces the current one.
+/// Returns the decision id and the notices to send after commit.
+pub async fn record_account_measure(
+    tx: &mut PgConnection,
+    user_id: Uuid,
+    measure: Measure,
+    reason: &str,
+    decided_by: Uuid,
+    score: i32,
+) -> Result<(Uuid, PendingNotices), AppError> {
+    let (ground_type, ground, _) = ground_for(reason);
+    let ground = format!("{}; Nutzungsbedingungen Abschnitt 8 (Sperrung von Konten)", ground);
+    // ⚖️ Held back like the content decision for CSAM, so a suspect isn't
+    // alerted before a report to the authorities. The suspension itself
+    // still applies. Pending legal review.
+    let deliver = !held_back(reason);
+
+    let decision_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO moderation_decisions
+            (target_type, target_id, affected_user_id, restriction, automated, reason, ground_type, ground,
+             explanation, decided_by, delivered_at, suspension_days, standing_score)
+        VALUES ('user', $1, $1, $2, FALSE, $3::report_reason, $4, $5, $6, $7, CASE WHEN $8 THEN NOW() END, $9, $10)
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(measure.restriction())
+    .bind(reason)
+    .bind(ground_type)
+    .bind(&ground)
+    .bind(measure_text(measure, score))
+    .bind(decided_by)
+    .bind(deliver)
+    .bind(measure.suspension_days())
+    .bind(score)
+    .fetch_one(&mut *tx)
+    .await
+    .db_err_ctx("Failed to record account measure", "Database error")?;
+
+    if measure != Measure::Warning {
+        sqlx::query(
+            r#"
+            UPDATE moderation_decisions SET superseded_by = $2
+            WHERE target_type = 'user' AND target_id = $1 AND id != $2
+              AND restriction IN ('suspended', 'banned') AND lifted_at IS NULL AND superseded_by IS NULL
+            "#,
+        )
+        .bind(user_id)
+        .bind(decision_id)
+        .execute(&mut *tx)
+        .await
+        .db_err("Database error")?;
+
+        sqlx::query(
+            r#"
+            UPDATE users SET suspension_decision_id = $2,
+                suspended_until = CASE WHEN $3::int IS NULL THEN 'infinity'::timestamptz
+                                       ELSE NOW() + make_interval(days => $3) END
+            WHERE id = $1
+            "#,
+        )
+        .bind(user_id)
+        .bind(decision_id)
+        .bind(measure.suspension_days())
+        .execute(&mut *tx)
+        .await
+        .db_err_ctx("Failed to suspend account", "Database error")?;
+    }
+
+    let notices = if deliver { deliver_notice(tx, decision_id, user_id).await? } else { PendingNotices::default() };
+    tracing::info!(
+        "Account measure {}: {} for user {} (score {}, by admin {}){}",
+        decision_id, measure.as_str(), user_id, score, decided_by,
+        if deliver { "" } else { ", statement held back" }
+    );
+    Ok((decision_id, notices))
+}
+
+/// Ends the suspension a decision imposed, if it is still the current one.
+/// Returns whether a suspension ended.
+pub async fn end_suspension(tx: &mut PgConnection, decision_id: Uuid) -> Result<bool, AppError> {
+    let ended = sqlx::query(
+        "UPDATE users SET suspended_until = NULL, suspension_decision_id = NULL WHERE suspension_decision_id = $1",
+    )
+    .bind(decision_id)
+    .execute(&mut *tx)
+    .await
+    .db_err("Database error")?
+    .rows_affected();
+    Ok(ended > 0)
+}
+
+/// An admin lifts a user's current suspension early. Returns the notices,
+/// or None if the user isn't suspended.
+pub async fn lift_suspension(
+    tx: &mut PgConnection,
+    user_id: Uuid,
+    admin_id: Uuid,
+) -> Result<Option<PendingNotices>, AppError> {
+    let decision = sqlx::query_scalar::<_, Uuid>(
+        "SELECT suspension_decision_id FROM users WHERE id = $1 AND suspended_until > NOW() AND suspension_decision_id IS NOT NULL FOR UPDATE",
+    )
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .db_err("Database error")?;
+    let Some(decision_id) = decision else {
+        return Ok(None);
+    };
+
+    sqlx::query(
+        "UPDATE moderation_decisions SET lifted_at = NOW(), lifted_by = $2, delivered_at = COALESCE(delivered_at, NOW()) WHERE id = $1",
+    )
+    .bind(decision_id)
+    .bind(admin_id)
+    .execute(&mut *tx)
+    .await
+    .db_err("Database error")?;
+    end_suspension(tx, decision_id).await?;
+
+    let mut pending = PendingNotices::default();
+    pending.events.push(insert_system_notification(tx, user_id, "moderation_decision", Some(decision_id)).await?);
+    tracing::info!("Suspension {} of user {} lifted by admin {}", decision_id, user_id, admin_id);
+    Ok(Some(pending))
 }
 
 async fn deliver_notice(tx: &mut PgConnection, decision_id: Uuid, user_id: Uuid) -> Result<PendingNotices, AppError> {
@@ -423,7 +667,8 @@ pub async fn export_for(conn: &mut PgConnection, user_id: Uuid) -> Result<serde_
         r#"
         SELECT jsonb_build_object('id', id, 'target_type', target_type, 'restriction', restriction,
             'automated', automated, 'reason', reason, 'ground', ground, 'explanation', explanation,
-            'content_excerpt', content_excerpt, 'created_at', created_at, 'lifted_at', lifted_at,
+            'content_excerpt', content_excerpt, 'suspension_days', suspension_days,
+            'created_at', created_at, 'lifted_at', lifted_at,
             'objection', objection, 'objection_status', objection_status, 'objection_response', objection_response)
         FROM moderation_decisions WHERE affected_user_id = $1 AND delivered_at IS NOT NULL
         ORDER BY created_at
@@ -461,7 +706,31 @@ pub async fn export_for(conn: &mut PgConnection, user_id: Uuid) -> Result<serde_
     .await
     .db_err_ctx("Data export query failed", "Database error")?;
 
-    Ok(json!({ "moderation_decisions": decisions, "reports_filed": reports, "rights_claims_filed": rights_claims }))
+    // Active strikes behind the account's standing; held-back ones stay
+    // out until their statement is released, like the decisions above.
+    let strikes = sqlx::query_scalar::<_, serde_json::Value>(
+        r#"
+        SELECT jsonb_build_object('decision_id', s.decision_id, 'violation', s.violation, 'severity', s.severity,
+            'points', s.points, 'created_at', s.created_at, 'expires_at', s.expires_at,
+            -- Only the removed content itself: the snapshot's context and
+            -- reports are other people's data (Art. 15(4) GDPR).
+            'removed_content', s.snapshot->'content')
+        FROM account_strikes s JOIN moderation_decisions d ON d.id = s.decision_id
+        WHERE s.user_id = $1 AND d.delivered_at IS NOT NULL AND (s.expires_at IS NULL OR s.expires_at > NOW())
+        ORDER BY s.created_at
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&mut *conn)
+    .await
+    .db_err_ctx("Data export query failed", "Database error")?;
+
+    Ok(json!({
+        "moderation_decisions": decisions,
+        "account_strikes": strikes,
+        "reports_filed": reports,
+        "rights_claims_filed": rights_claims,
+    }))
 }
 
 #[cfg(test)]
@@ -482,7 +751,8 @@ mod tests {
     #[test]
     fn every_reason_has_a_ground() {
         for reason in ["spam", "harassment", "hate_speech", "violence", "self_harm",
-                       "sexual_content", "csam", "impersonation", "other", "copyright"] {
+                       "sexual_content", "csam", "impersonation", "other", "copyright",
+                       "fraud", "ncii", "terrorism", "illegal_goods", "extremism"] {
             let (ground_type, ground, text) = ground_for(reason);
             assert!(ground_type == "illegal" || ground_type == "terms");
             assert!(!ground.is_empty() && !text.is_empty());

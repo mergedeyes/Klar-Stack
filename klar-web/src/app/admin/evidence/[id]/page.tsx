@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { adminEvidenceApi, type EvidenceDetail, type EvidenceEvent, type EvidenceFile, type EvidenceVersion } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
-import EvidenceStatus from "@/components/EvidenceStatus";
+import EvidenceStatus, { AuthorityReportBadge } from "@/components/EvidenceStatus";
 import { REASON_LABELS, TRIGGER_LABELS } from "@/lib/moderation";
 
 // The snapshot's shape, per target type (see evidence.rs on the backend).
@@ -183,6 +183,11 @@ export default function EvidenceDetailPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-4">
+        {detail?.authority_report && (
+          <div className="mb-3 flex">
+            <AuthorityReportBadge record={detail} />
+          </div>
+        )}
         {error && (
           <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
