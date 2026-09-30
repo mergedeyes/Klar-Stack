@@ -2,7 +2,8 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
 use uuid::Uuid;
@@ -80,6 +81,47 @@ pub async fn require_visible_post(
     }
 
     Ok(owner_id)
+}
+
+/// GET /posts/:id/preview-image -- the image link previews show (og:image
+/// on the post page, see klar-web/src/app/posts/[id]/page.tsx).
+///
+/// A permanent address, unlike the signed media URLs (valid 6-12 hours):
+/// services that re-fetch a preview weeks later (Slack, Discord, Facebook)
+/// would otherwise get a dead image. Every request checks the post again
+/// -- public account, not hidden or behind a content warning, still there
+/// -- and redirects to a freshly signed URL of its first image, so a post
+/// deleted or made private since also stops showing its picture. Every
+/// refusal is the same 404, so the endpoint says nothing about why.
+pub async fn preview_image(
+    State(state): State<AppState>,
+    Path(post_id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    let key = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT m.medium_key
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
+        WHERE p.id = $1 AND NOT u.is_private AND p.moderation_status = 'visible'
+        "#,
+    )
+    .bind(post_id)
+    .fetch_optional(&state.db)
+    .await
+    .db_err("Database error")?
+    .ok_or_else(|| AppError::not_found("Not found"))?;
+
+    // An hour of caching is safe (the signed URL lives at least six) and
+    // bounds how long a post made private keeps its picture in caches.
+    Ok((
+        StatusCode::FOUND,
+        [
+            (header::LOCATION, state.storage.media_url(&key)),
+            (header::CACHE_CONTROL, "public, max-age=3600".to_string()),
+        ],
+    )
+        .into_response())
 }
 
 /// Bookkeeping every new post needs, inside the transaction that inserts

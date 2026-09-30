@@ -136,6 +136,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/posts/upload", post(handlers::uploads::upload_post)
             .layer(DefaultBodyLimit::max(20 * 1024 * 1024)) // <-- Das hier hinzufügen
         )
+        .route("/posts/{post_id}/preview-image", get(handlers::posts::preview_image))
         .route("/posts/{post_id}", get(handlers::posts::get_post)
             .patch(handlers::posts::edit_post)
             .delete(handlers::posts::delete_post))
