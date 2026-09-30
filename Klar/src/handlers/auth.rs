@@ -230,17 +230,11 @@ pub async fn login(
     let user = user.ok_or_else(|| {
         AppError::bad_request("Invalid email or password")
     })?;
+    verify_password(&user, &input.password)?;
 
-    let stored_hash = user.password_hash.as_ref().ok_or_else(|| {
-        AppError::bad_request("Invalid email or password")
-    })?;
-
-    let parsed_hash = PasswordHash::new(stored_hash)
-        .map_err(|_| AppError::internal("Failed to parse password hash"))?;
-
-    Argon2::default()
-        .verify_password(input.password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::bad_request("Invalid email or password"))?;
+    // Only after the password checks out, so the lock can't be used to
+    // find out which accounts are locked.
+    crate::handlers::account_lock::refuse_if_locked(&state.db, user.id).await?;
 
     let access_token = create_access_token(user.id, &state.jwt_secret)
         .map_err(|_| AppError::internal("Failed to create access token"))?;
@@ -420,18 +414,8 @@ pub async fn forgot_password(
         .await
         .db_err_ctx("Failed to invalidate old tokens", "Database error")?;
 
-        let token = generate_email_token();
-        sqlx::query(
-            r#"
-            INSERT INTO email_tokens (user_id, token, token_type, expires_at)
-            VALUES ($1, $2, 'password_reset', NOW() + INTERVAL '1 hour')
-            "#
-        )
-        .bind(user.id)
-        .bind(&token)
-        .execute(&state.db)
-        .await
-        .db_err("Failed to create reset token")?;
+        let mut conn = state.db.acquire().await.db_err("Database error")?;
+        let token = create_reset_token(&mut conn, user.id, 1).await?;
 
         {
             let email_service = state.email.clone();
@@ -454,6 +438,39 @@ pub async fn forgot_password(
 pub struct ResetPasswordRequest {
     pub token: String,
     pub new_password: String,
+}
+
+/// Stores a new single-use password reset token for the user, valid for
+/// `hours`, and returns it. Earlier unused ones stay valid until they
+/// expire; forgot_password invalidates them itself.
+pub async fn create_reset_token(conn: &mut sqlx::PgConnection, user_id: uuid::Uuid, hours: i32) -> Result<String, AppError> {
+    let token = generate_email_token();
+    sqlx::query(
+        r#"
+        INSERT INTO email_tokens (user_id, token, token_type, expires_at)
+        VALUES ($1, $2, 'password_reset', NOW() + make_interval(hours => $3))
+        "#
+    )
+    .bind(user_id)
+    .bind(&token)
+    .bind(hours)
+    .execute(&mut *conn)
+    .await
+    .db_err("Failed to create reset token")?;
+    Ok(token)
+}
+
+/// Checks a login password against the user's stored hash. The same
+/// message for a wrong password as for an unknown email.
+pub fn verify_password(user: &UserRow, password: &str) -> Result<(), AppError> {
+    let stored_hash = user.password_hash.as_ref().ok_or_else(|| {
+        AppError::bad_request("Invalid email or password")
+    })?;
+    let parsed_hash = PasswordHash::new(stored_hash)
+        .map_err(|_| AppError::internal("Failed to parse password hash"))?;
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .map_err(|_| AppError::bad_request("Invalid email or password"))
 }
 
 /// POST /auth/reset-password
@@ -506,6 +523,9 @@ pub async fn reset_password(
         .execute(&mut *tx)
         .await
         .db_err_ctx("Failed to invalidate sessions", "Database error")?;
+
+    // A new password set through an emailed link is what a lock waits for.
+    crate::handlers::account_lock::unlock_after_reset(&mut tx, user_id).await?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 

@@ -55,6 +55,10 @@ loads more as you scroll.
 - [ ] Password reset and change password work; changing the password logs out other sessions
 - [ ] Data export downloads a ZIP whose `data.json` and images match the account
 - [ ] Account deletion removes the profile, posts and media; the chat partner sees the "account deleted" notice
+- [ ] Locking an account in `/admin/security` signs it out within seconds on every device (next request goes to the login page) and sends an email whose link sets a new password; replying to that email goes to kontakt@klarsocial.eu
+- [ ] Logging in to a locked account with the right password shows "Your account is locked" (a wrong password shows the usual error); "Send the link again" works once, then asks to wait 15 minutes
+- [ ] Setting a new password through the link unlocks the account; the incident log shows "Unlocked by new password" and keeps the assessment
+- [ ] The verification email after sign-up has no Reply-To; other emails (password reset, moderation notice) reply to kontakt@klarsocial.eu
 
 ## Posts and media
 

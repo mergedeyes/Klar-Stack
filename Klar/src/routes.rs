@@ -88,6 +88,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/forgot-password", post(handlers::auth::forgot_password))
         .route("/auth/reset-password", post(handlers::auth::reset_password))
         .route("/auth/resend-verification", post(handlers::auth::resend_verification))
+        .route("/auth/locked/resend-link", post(handlers::account_lock::resend_link))
         // Public rights-claim form and its status page: no account needed,
         // so the same strict per-IP limit as the auth routes.
         .route("/rights-claims", post(handlers::rights::create_claim))
@@ -209,6 +210,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/rights-claims/{claim_id}/request-evidence", post(handlers::rights::request_evidence))
         .route("/admin/rights-claims/{claim_id}/accept", post(handlers::rights::accept_claim))
         .route("/admin/rights-claims/{claim_id}/decline", post(handlers::rights::decline_claim))
+        .route("/admin/locks", get(handlers::account_lock::list_locks))
+        .route("/admin/locks/{lock_id}", patch(handlers::account_lock::assess_lock))
+        .route("/admin/locks/{lock_id}/unlock", post(handlers::account_lock::unlock_account))
+        .route("/admin/users/{username}/lock", post(handlers::account_lock::lock_account))
         .route("/admin/evidence", get(handlers::evidence::list_evidence))
         .route("/admin/evidence/{evidence_id}/open", post(handlers::evidence::open_evidence))
         .route("/admin/evidence/{evidence_id}/files/{file_id}", post(handlers::evidence::get_evidence_file))
@@ -216,6 +221,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/evidence/{evidence_id}/authority-report", post(handlers::evidence::record_authority_report))
         // ────────────────────────────────────────────────────────────
 
+        // A locked account's access tokens stop working at once
+        // (handlers/account_lock.rs). Runs after the rate limit.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            handlers::account_lock::enforce_account_lock,
+        ))
         .route_layer(middleware::from_fn_with_state(
             general_limiter,
             rate_limit::rate_limit_middleware,

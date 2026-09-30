@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
+import { Archive, ChevronRight, Download, Lock, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
 import { FileWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
@@ -63,6 +63,12 @@ export default function SettingsPage() {
           icon: ShieldAlert,
           label: "Reports",
           description: "Review reported content",
+        },
+        {
+          href: "/admin/security",
+          icon: Lock,
+          label: "Account security",
+          description: "Lock accounts that look taken over; incident log",
         },
         {
           href: "/admin/rights",

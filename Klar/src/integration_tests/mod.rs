@@ -17,6 +17,7 @@
 
 mod support;
 
+mod account_lock;
 mod evidence;
 mod feedback;
 mod moderation;

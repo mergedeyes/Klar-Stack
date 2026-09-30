@@ -1,3 +1,4 @@
+pub mod account_lock;
 pub mod auth;
 pub mod blocks;
 pub mod comment_likes;
