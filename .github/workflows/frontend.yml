@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
   packages: write
+  # To see whether the backend deploy of the same commit has finished
+  # (before publishing legal notices).
+  actions: read
 
 # A newer push to main supersedes a running deploy of the same component:
 # its image would be replaced moments later anyway, and two runs racing
@@ -96,6 +99,28 @@ jobs:
       # goes to the backend, which publishes each file once and ignores the
       # rest. Needs LEGAL_UPDATES_TOKEN (the same secret as in the backend
       # container) and SITE_URL (the live site, to wait for the new pages).
+      # The backend deploys in its own workflow and takes longer (5+ minutes
+      # to build, 1-2 to deploy), so a change to the notice endpoint may not
+      # be live yet. Waits for the backend deploy of this same commit, if
+      # there is one (none when the commit didn't touch the backend), for up
+      # to 45 minutes; the publish step retries on top of that.
+      - name: Wait for the backend deploy of this commit
+        if: vars.APP_ID != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for i in $(seq 1 135); do
+            status=$(gh run list --workflow backend.yml --commit "$GITHUB_SHA" --json status --jq '.[0].status // "none"')
+            case "$status" in
+              none) echo "No backend deploy for this commit"; exit 0 ;;
+              completed) echo "Backend deploy of this commit finished"; exit 0 ;;
+            esac
+            echo "Backend deploy of this commit: $status"
+            sleep 20
+          done
+          echo "::warning::The backend deploy of this commit is still running after 45 minutes; publishing anyway"
+
       - name: Publish legal notices
         if: vars.APP_ID != ''
         env:

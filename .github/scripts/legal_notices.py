@@ -129,13 +129,13 @@ def wait_until_live(site):
             sys.exit(1)
 
 
-# The backend deploys in its own workflow and takes longer (the Rust
-# build), so right after a merge that adds or changes the endpoint the
-# frontend can get here first. 404 (endpoint not there yet), 5xx and
-# connection errors are retried for up to 15 minutes; anything else (e.g.
-# 401, a wrong token) fails at once.
+# The deploy workflow waits for the backend deploy of the same commit
+# first; this is the safety net on top (a backend that's restarting, a slow
+# rollout). 404 (endpoint not there yet), 5xx and connection errors are
+# retried for up to 30 minutes; anything else (e.g. 401, a wrong token)
+# fails at once.
 RETRY_STATUSES = {404, 502, 503, 504}
-RETRY_ATTEMPTS, RETRY_PAUSE = 45, 20
+RETRY_ATTEMPTS, RETRY_PAUSE = 90, 20
 
 
 def send(req):
