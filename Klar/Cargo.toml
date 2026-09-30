@@ -3,6 +3,12 @@ name = "Klar"
 version = "0.2.0"
 edition = "2021"
 
+[features]
+# Tests that run the API against a real Postgres and Redis
+# (src/integration_tests/). Off by default so plain `cargo test` needs no
+# services; CI runs them with `cargo test --features integration-tests`.
+integration-tests = []
+
 [dependencies]
 # Web framework
 axum = { version = "0.8", features = ["multipart"] }
@@ -80,3 +86,7 @@ redis = { version = "1", features = ["tokio-comp", "connection-manager", "tls-na
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 tempfile = "3.27.0"
 tokio-util = { version = "0.7.19", features = ["io"] }
+
+[dev-dependencies]
+# ServiceExt::oneshot, to call the router in-process in integration tests.
+tower = { version = "0.5", features = ["util"] }

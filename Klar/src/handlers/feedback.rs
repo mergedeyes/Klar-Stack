@@ -204,18 +204,23 @@ pub async fn export_for(db: &sqlx::PgPool, user_id: Uuid) -> Result<Vec<serde_js
 pub fn spawn_cleanup(db: sqlx::PgPool) {
     tokio::spawn(async move {
         loop {
-            match sqlx::query("DELETE FROM feedback WHERE created_at < NOW() - make_interval(days => $1)")
-                .bind(RETENTION_DAYS)
-                .execute(&db)
-                .await
-            {
-                Ok(r) if r.rows_affected() > 0 => tracing::info!("Deleted {} feedback entries past retention", r.rows_affected()),
+            match delete_expired(&db).await {
+                Ok(n) if n > 0 => tracing::info!("Deleted {} feedback entries past retention", n),
                 Ok(_) => {}
                 Err(e) => tracing::error!("Feedback cleanup failed: {}", e),
             }
             tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
         }
     });
+}
+
+/// One cleanup pass; returns how many rows went.
+pub(crate) async fn delete_expired(db: &sqlx::PgPool) -> Result<u64, sqlx::Error> {
+    sqlx::query("DELETE FROM feedback WHERE created_at < NOW() - make_interval(days => $1)")
+        .bind(RETENTION_DAYS)
+        .execute(db)
+        .await
+        .map(|r| r.rows_affected())
 }
 
 #[cfg(test)]

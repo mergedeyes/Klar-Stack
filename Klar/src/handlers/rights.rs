@@ -571,18 +571,23 @@ pub async fn mark_restored(
 pub fn spawn_cleanup(db: sqlx::PgPool) {
     tokio::spawn(async move {
         loop {
-            match sqlx::query("DELETE FROM rights_claims WHERE decided_at < NOW() - make_interval(days => $1)")
-                .bind(RETENTION_DAYS)
-                .execute(&db)
-                .await
-            {
-                Ok(r) if r.rows_affected() > 0 => tracing::info!("Deleted {} rights claims past retention", r.rows_affected()),
+            match delete_expired(&db).await {
+                Ok(n) if n > 0 => tracing::info!("Deleted {} rights claims past retention", n),
                 Ok(_) => {}
                 Err(e) => tracing::error!("Rights claim cleanup failed: {}", e),
             }
             tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
         }
     });
+}
+
+/// One cleanup pass; returns how many rows went.
+pub(crate) async fn delete_expired(db: &sqlx::PgPool) -> Result<u64, sqlx::Error> {
+    sqlx::query("DELETE FROM rights_claims WHERE decided_at < NOW() - make_interval(days => $1)")
+        .bind(RETENTION_DAYS)
+        .execute(db)
+        .await
+        .map(|r| r.rows_affected())
 }
 
 #[cfg(test)]

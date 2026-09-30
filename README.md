@@ -119,6 +119,14 @@ npm run dev     # MailHog, the backend on :3000 (runs migrations first) and the 
 (cd klar-web && npx tsc --noEmit && npx eslint --max-warnings 0 src)
 ```
 
+**Integration tests** run the API against a real Postgres (a fresh database per test) and Redis, covering moderation, evidence, rights claims, feedback and link previews. CI runs them on every pull request; locally, with both running:
+
+```sh
+cd Klar
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres REDIS_URL=redis://127.0.0.1:6379 \
+SQLX_OFFLINE=true cargo test --features integration-tests integration_tests
+```
+
 After changing a `query!` macro, regenerate the offline cache with `cargo sqlx prepare`. For changes to how the app behaves, go through the matching sections of [docs/manual-checks.md](docs/manual-checks.md); the pull-request template asks for them.
 
 ## Deployment

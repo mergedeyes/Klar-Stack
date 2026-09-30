@@ -46,11 +46,61 @@ jobs:
           key: cargo-lint-${{ runner.os }}-1.97-${{ hashFiles('Klar/Cargo.lock') }}
           restore-keys: cargo-lint-${{ runner.os }}-1.97-
 
+      # With the integration-tests feature, so the test code is linted too.
       - name: clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets --features integration-tests -- -D warnings
 
       - name: test
         run: cargo test --locked
+
+  # API-level tests against a real Postgres and Redis (Klar/src/integration_tests/).
+  integration:
+    name: Backend (integration tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Klar
+    services:
+      postgres:
+        # Same major as deploy/postgres.
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Compile-time query checks still use the committed .sqlx cache; the
+      # database is only for the tests, which create one per test.
+      SQLX_OFFLINE: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      REDIS_URL: redis://localhost:6379
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust 1.97
+        run: |
+          rustup toolchain install 1.97 --profile minimal
+          rustup default 1.97
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            Klar/target
+          key: cargo-integration-${{ runner.os }}-1.97-${{ hashFiles('Klar/Cargo.lock') }}
+          restore-keys: cargo-integration-${{ runner.os }}-1.97-
+
+      - name: integration tests
+        run: cargo test --locked --features integration-tests integration_tests
 
   frontend:
     name: Frontend (tsc + eslint)

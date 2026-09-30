@@ -21,6 +21,12 @@ enum Backend {
 }
 
 impl Storage {
+    /// Local-disk storage in `root`, for tests (no env vars, no signing).
+    #[cfg(all(test, feature = "integration-tests"))]
+    pub fn local_for_tests(root: &str) -> Self {
+        Self { backend: Backend::Local(LocalStorage::at(root, "http://media.test")), signer: None }
+    }
+
     /// Initialisiert den Storage basierend auf der .env Variable.
     /// Setze STORAGE_PROVIDER=s3, um Bunny über die S3-kompatible API zu nutzen,
     /// oder STORAGE_PROVIDER=local, um lokal auf die Festplatte zu schreiben
@@ -144,6 +150,20 @@ pub struct EvidenceStorage {
 const DEV_EVIDENCE_KEY: &str = "klar-local-development-evidence-key-not-secret";
 
 impl EvidenceStorage {
+    /// Encrypted local-disk evidence storage in `root` for tests, or an
+    /// unconfigured one (`None`) to test what happens without it.
+    #[cfg(all(test, feature = "integration-tests"))]
+    pub fn local_for_tests(root: Option<&str>) -> Self {
+        Self {
+            backend: root.map(|root| {
+                (
+                    Backend::Local(LocalStorage::at(root, "")),
+                    EvidenceCipher::from_secret("integration-test-evidence-key-0123456789").unwrap(),
+                )
+            }),
+        }
+    }
+
     pub async fn new() -> Self {
         let provider = std::env::var("STORAGE_PROVIDER")
             .unwrap_or_else(|_| "bunny".to_string())
