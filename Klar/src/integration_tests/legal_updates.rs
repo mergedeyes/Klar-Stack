@@ -1,7 +1,8 @@
 //! Notices about changed Terms and privacy policy
 //! (handlers/legal_updates.rs).
 
-use axum::http::StatusCode;
+use axum::body::Body;
+use axum::http::{header, Method, Request, StatusCode};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -79,4 +80,46 @@ async fn emails_go_once_to_verified_addresses_only(pool: PgPool) {
     .await;
     let mailed = app.scalar(&format!("SELECT string_agg(u.username, ',' ORDER BY u.username) FROM legal_update_emails e JOIN users u ON u.id = e.user_id WHERE e.update_id = '{id}'")).await;
     assert_eq!(mailed.as_deref(), Some("site_admin,verified"), "the unverified address is left out");
+}
+
+async fn deploy(app: &TestApp, token: Option<&str>, body: Value) -> Resp {
+    let mut req = Request::builder()
+        .method(Method::POST)
+        .uri("/internal/legal-updates")
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(token) = token {
+        req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    app.send(req.body(Body::from(body.to_string())).unwrap(), "10.200.0.1").await
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_deploy_publishes_each_notice_file_once(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let alice = app.register("alice").await;
+    let notice = json!({
+        "key": "2026-10-01-sicherer-ort.md",
+        "documents": ["terms"],
+        "summary": "Klar soll ein sicherer Ort für alle sein.",
+    });
+
+    assert_eq!(deploy(&app, None, notice.clone()).await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(deploy(&app, Some("wrong"), notice.clone()).await.status, StatusCode::UNAUTHORIZED);
+    let bad_key = json!({ "key": "../x.md", "documents": ["terms"], "summary": "Klar soll ein sicherer Ort für alle sein." });
+    assert_eq!(deploy(&app, Some(LEGAL_UPDATES_TOKEN), bad_key).await.status, StatusCode::BAD_REQUEST);
+
+    let first = deploy(&app, Some(LEGAL_UPDATES_TOKEN), notice.clone()).await;
+    assert_eq!(first.status, StatusCode::CREATED);
+    assert_eq!(first.json()["created"], true);
+    // Every deploy sends every file again: nothing new.
+    let again = deploy(&app, Some(LEGAL_UPDATES_TOKEN), notice).await;
+    assert_eq!(again.status, StatusCode::OK);
+    assert_eq!(again.json()["created"], false);
+
+    assert_eq!(app.count("SELECT 1 FROM legal_updates").await, 1);
+    assert_eq!(app.scalar("SELECT source_key FROM legal_updates").await.as_deref(), Some("2026-10-01-sicherer-ort.md"));
+    assert!(app.scalar("SELECT published_by FROM legal_updates").await.is_none());
+    let p = pending(&app, &alice).await;
+    assert_eq!(p.len(), 1);
+    assert_eq!(p[0]["requires_acceptance"], true);
 }

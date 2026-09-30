@@ -578,7 +578,13 @@ impl EmailService {
             "Wir haben {} geändert\n\nDas ist neu:\n{}\n\n{}\n\nDie vollständige Fassung: {}",
             what, summary, next, url
         );
-        let escaped = summary.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        // Escaped, and its line breaks (the notice files are written as short
+        // paragraphs and lists) kept.
+        let escaped = summary
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('\n', "<br>");
         let html = render_html_email(
             &format!("Wir haben {} geändert", what),
             &format!("Das ist neu: {}", escaped),

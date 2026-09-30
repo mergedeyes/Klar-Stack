@@ -994,6 +994,8 @@ export interface LegalUpdate {
 }
 
 export interface AdminLegalUpdate extends LegalUpdate {
+  // The file in klar-web/legal-updates it came from; null if published by hand.
+  source_key: string | null;
   emails_sent: number;
   emails_finished_at: string | null;
   // Accounts that existed when it was published, and how many of them
@@ -1008,15 +1010,10 @@ export const legalUpdatesApi = {
     request<void>(`/legal-updates/${id}/acknowledge`, { method: "POST", body: "{}" }, true),
 };
 
+// Notices are published by the frontend deploy from klar-web/legal-updates;
+// this only lists them with their progress.
 export const adminLegalUpdatesApi = {
   list: () => request<AdminLegalUpdate[]>("/admin/legal-updates", {}, true),
-  // Emails verified addresses in the background.
-  publish: (documents: LegalDocument[], summary: string) =>
-    request<{ id: string }>(
-      "/admin/legal-updates",
-      { method: "POST", body: JSON.stringify({ documents, summary }) },
-      true
-    ),
 };
 
 // ── Account reviews (admin) ──────────────────────────────────────────────────

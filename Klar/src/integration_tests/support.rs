@@ -23,6 +23,8 @@ use crate::handlers::auth::AppState;
 use crate::storage::{CdnPurger, EvidenceStorage, Storage};
 
 pub const ADMIN_EMAIL: &str = "admin@example.test";
+/// LEGAL_UPDATES_TOKEN for the deploy endpoint (handlers/legal_updates.rs).
+pub const LEGAL_UPDATES_TOKEN: &str = "test-legal-updates-token";
 pub const PASSWORD: &str = "test-password-123";
 
 /// Every client gets its own address (X-Forwarded-For, one trusted hop),
@@ -39,6 +41,7 @@ fn init_env() {
         // Read on every admin check (utils::is_admin_email); the same value
         // for every test, so setting it once is race-free.
         std::env::set_var("ADMIN_EMAILS", ADMIN_EMAIL);
+        std::env::set_var("LEGAL_UPDATES_TOKEN", LEGAL_UPDATES_TOKEN);
     });
 }
 

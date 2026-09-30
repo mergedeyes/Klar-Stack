@@ -80,7 +80,7 @@ export default function SettingsPage() {
           href: "/admin/legal-updates",
           icon: FileText,
           label: "Legal updates",
-          description: "Announce changed Terms or privacy policy",
+          description: "Notices about changed Terms and privacy policy",
         },
         {
           href: "/admin/rights",

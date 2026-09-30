@@ -34,6 +34,8 @@ Chronological, no-ranking social network. Solo project, pre-launch, running behi
 
 ## Compliance
 
+A change to the Terms (`nutzungsbedingungen`) or the privacy page (`datenschutz`) needs a notice for existing users in `klar-web/legal-updates/` in the same PR: `documents: terms, privacy`, a `---` line, then a short summary in plain German (format in `.github/scripts/legal_notices.py`). CI refuses the change without one, unless the PR has the label `legal: no notice` (typo fixes). The frontend deploy publishes each file once, after the new page is live.
+
 Klar is an EU service run from Germany, so always consider the GDPR (DSGVO) and German/EU law (DSA, TDDDG, StGB §184b for CSAM) when designing a change. Check data minimisation, retention and deletion, sub-processors (update the Datenschutz page when one is added), evidence preservation for illegal content, and whether the action leaves an audit trail (who, what, when, why). Flag legal questions for review instead of guessing.
 
 ## Style

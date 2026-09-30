@@ -1,0 +1,24 @@
+name: Legal notices
+# A change to the Terms or the privacy page needs a notice for existing
+# users in klar-web/legal-updates (see .github/scripts/legal_notices.py),
+# or the PR label "legal: no notice". Its own workflow so adding or removing
+# that label re-runs just this check.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Legal notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check notices
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: python3 .github/scripts/legal_notices.py check "${{ github.event.pull_request.base.sha }}" HEAD

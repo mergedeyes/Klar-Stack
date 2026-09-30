@@ -101,6 +101,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/rights-claims", post(handlers::rights::create_claim))
         .route("/rights-claims/{claim_id}/status", post(handlers::rights::claim_status))
         .route("/rights-claims/{claim_id}/respond", post(handlers::rights::respond_to_claim))
+        // Notices from klar-web/legal-updates, sent by the frontend deploy
+        // with LEGAL_UPDATES_TOKEN; the strict limit guards the token.
+        .route("/internal/legal-updates", post(handlers::legal_updates::publish_from_deploy))
         .route_layer(middleware::from_fn_with_state(
             auth_limiter,
             rate_limit::rate_limit_middleware,
