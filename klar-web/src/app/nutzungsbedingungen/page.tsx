@@ -72,6 +72,32 @@ export default function NutzungsbedingungenPage() {
               Politik und wir behalten uns vor, Behörden zu informieren)
             </li>
             <li>Belästigung, Mobbing, Bedrohung oder Stalking anderer Nutzer</li>
+            <li>
+              Hassrede und Entmenschlichung: Inhalte, die Menschen wegen ihrer
+              Herkunft, Hautfarbe, Religion, Nationalität, ihres Geschlechts,
+              ihrer sexuellen Orientierung, ihrer geschlechtlichen Identität,
+              einer Behinderung oder ihres Alters herabwürdigen oder ihnen das
+              Menschsein absprechen, etwa indem sie mit Tieren, Krankheiten
+              oder Ungeziefer gleichgesetzt werden — auch wenn der Inhalt
+              nicht strafbar ist
+            </li>
+            <li>
+              Verherrlichung, Verharmlosung oder Rechtfertigung des
+              Nationalsozialismus, des Faschismus oder ihrer Verbrechen,
+              einschließlich der Leugnung oder Verharmlosung des Holocaust
+            </li>
+            <li>
+              Werbung für, Unterstützung von oder Anwerbung für extremistische
+              Organisationen, gleich welcher politischen oder religiösen
+              Richtung. Extremistisch sind insbesondere Organisationen, die das
+              Bundesamt oder ein Landesamt für Verfassungsschutz als gesichert
+              extremistisch einstuft, verbotene Vereinigungen sowie
+              terroristische Organisationen
+            </li>
+            <li>Terroristische Inhalte und die Androhung schwerer Gewalt</li>
+            <li>Verbreitung intimer Aufnahmen einer Person ohne deren Einwilligung</li>
+            <li>Betrug, Betrugsversuche und Phishing</li>
+            <li>Angebot von oder Handel mit illegalen Waren, etwa Drogen oder Waffen</li>
             <li>Identitätsdiebstahl oder Vortäuschen falscher Identitäten</li>
             <li>Spam, automatisierte Massen-Registrierungen oder Bots</li>
             <li>
@@ -80,6 +106,11 @@ export default function NutzungsbedingungenPage() {
               Zugriffe)
             </li>
           </ul>
+          <p className="mt-2">
+            Politische Meinungen jeder Richtung sind auf Klar willkommen, auch
+            zugespitzte, solange sie diese Grenzen einhalten. Die Regeln
+            gegen Extremismus gelten für jede Richtung gleichermaßen.
+          </p>
         </section>
 
         <section className="mb-6">
@@ -88,9 +119,11 @@ export default function NutzungsbedingungenPage() {
             Wenn du auf Beiträge, Kommentare oder Profile stößt, die gegen
             diese Nutzungsbedingungen verstoßen, kannst du sie direkt in der
             App über die Melden-Funktion melden und dabei einen passenden
-            Grund auswählen (u. a. Spam, Belästigung, Hassrede,
-            Gewaltdarstellung, Selbstverletzung, sexuelle Inhalte, Darstellung
-            sexuellen Missbrauchs von Minderjährigen, Identitätsdiebstahl oder
+            Grund auswählen (u. a. Spam, Belästigung, Hassrede oder
+            Entmenschlichung, Extremismus, Gewaltdarstellung, Terrorismus oder
+            Gewaltandrohung, Selbstverletzung, sexuelle Inhalte, intime
+            Aufnahmen ohne Einwilligung, Darstellung sexuellen Missbrauchs von
+            Minderjährigen, Betrug, illegale Waren, Identitätsdiebstahl oder
             sonstige Verstöße). Je nach gewähltem Grund kann der gemeldete
             Inhalt automatisch vorübergehend ausgeblendet oder mit einem
             Warnhinweis versehen werden, bis unser Team die Meldung geprüft
@@ -142,6 +175,81 @@ export default function NutzungsbedingungenPage() {
             können Konten bei Verstößen gegen diese Nutzungsbedingungen
             sperren oder löschen. Bei schwerwiegenden Verstößen kann dies ohne
             vorherige Ankündigung erfolgen.
+          </p>
+          <p className="mt-2">
+            Entfernt unser Team einen Inhalt von dir wegen eines Verstoßes,
+            ordnet es ihn einer der folgenden Arten zu. Jede Art hat ein
+            festes Kriterium und eine feste Punktzahl (in Klammern), die dein
+            Konto dafür erhält; welche Art und welches Kriterium zutreffen,
+            steht in der Begründung, die du erhältst:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                <strong>Spam:</strong> Spam (5); Massenspam (20); Bot- oder reines Spam-Konto, nicht aber ein von Dritten übernommenes Konto (100)
+              </li>
+              <li>
+                <strong>Belästigung:</strong> Einzelne Beleidigung (5); Gezielte oder wiederholte Belästigung (20); Drohung, Stalking oder Veröffentlichung privater Daten (40)
+              </li>
+              <li>
+                <strong>Hassrede:</strong> Abwertende Verallgemeinerung über eine Gruppe (20); Entmenschlichung oder Hetze gegen eine Gruppe (40)
+              </li>
+              <li>
+                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, extremistische Symbole (20); Werbung für eine extremistische Organisation, Holocaustleugnung (100)
+              </li>
+              <li>
+                <strong>Gewalt:</strong> Drastische Gewaltdarstellung ohne Einordnung (5); Verherrlichung von Gewalt (20)
+              </li>
+              <li>
+                <strong>Terrorismus:</strong> Terroristische Propaganda (100); Konkrete Androhung eines Anschlags oder schwerer Gewalt (100)
+              </li>
+              <li>
+                <strong>Selbstverletzung:</strong> Eigene Krise (0); Aufforderung oder Anleitung zu Selbstverletzung (40)
+              </li>
+              <li>
+                <strong>Sexuelle Inhalte:</strong> Sexuell expliziter Inhalt (5); Sexuelle Belästigung (20)
+              </li>
+              <li>
+                <strong>Intime Aufnahmen:</strong> Intime Aufnahmen ohne Einwilligung (40); Erpressung mit intimen Aufnahmen (100)
+              </li>
+              <li>
+                <strong>Missbrauchsdarstellungen:</strong> Darstellung sexuellen Missbrauchs von Minderjährigen (100)
+              </li>
+              <li>
+                <strong>Betrug:</strong> Betrugsversuch (20); Phishing (40)
+              </li>
+              <li>
+                <strong>Illegale Waren:</strong> Angebot illegaler Waren (40)
+              </li>
+              <li>
+                <strong>Identität:</strong> Nicht gekennzeichnete Parodie (5); Täuschender Identitätsdiebstahl (20)
+              </li>
+              <li>
+                <strong>Sonstiges:</strong> Sonstiger Verstoß (5)
+              </li>
+          </ul>
+          <p className="mt-2">
+            Punkte verfallen je nach Höhe: 5 Punkte nach 90 Tagen, 20 Punkte
+            nach 180 Tagen, 40 Punkte nach einem Jahr; 100 Punkte verfallen
+            nicht. Abgelaufene Punkte zählen nicht mehr. Ab
+            dem dritten Verstoß aus demselben Grund innerhalb von 30 Tagen
+            zählen die Punkte eineinhalbfach. Ab 25 Punkten kommt eine
+            Verwarnung in Betracht, ab 50 eine Sperrung für 7 Tage, ab 75 für
+            30 Tage und bei 100 Punkten eine dauerhafte Sperrung; einer
+            Sperrung geht in der Regel eine Verwarnung voraus. Verstöße mit
+            100 Punkten, etwa terroristische Inhalte oder Werbung für
+            extremistische Organisationen, können auch ohne vorherige
+            Verwarnung zur dauerhaften Sperrung führen. Die Punkte
+            sind ein Anhaltspunkt: Jede Verwarnung und Sperrung entscheidet ein
+            Mitglied unseres Teams im Einzelfall, unter Berücksichtigung von
+            Anzahl, Schwere und Umständen der Verstöße. Während einer Sperrung
+            kannst du Klar nur lesen; dein Profil und deine Inhalte sind für
+            andere nicht sichtbar. Deine Daten exportieren, dein Konto löschen
+            und der Entscheidung widersprechen kannst du weiterhin. Ein
+            dauerhaft gesperrtes Konto löschen wir nach Ablauf der
+            Widerspruchsfrist von sechs Monaten mit allen Inhalten, solange
+            kein Widerspruch offen ist; zwei Wochen vorher erinnern wir dich
+            per E-Mail. Deinen Punktestand siehst du jederzeit unter
+            „Moderation“ in den Einstellungen.
           </p>
         </section>
 

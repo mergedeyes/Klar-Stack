@@ -88,6 +88,7 @@ pub async fn get_global_feed(
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE (p.created_at, p.id) < ($1, $2)
                   AND p.moderation_status != 'hidden'
+                  AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
                   AND (
                     u.is_private = FALSE
                     OR u.id = $4
@@ -126,6 +127,7 @@ pub async fn get_global_feed(
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE p.moderation_status != 'hidden'
+                  AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
                   AND (
                     u.is_private = FALSE
                     OR u.id = $2

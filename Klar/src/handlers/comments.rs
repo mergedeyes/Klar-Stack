@@ -136,6 +136,8 @@ pub async fn get_comments(
         JOIN users u ON c.user_id = u.id
         WHERE c.post_id = $1
             AND (c.moderation_status != 'hidden' OR c.user_id = $2)
+            -- A suspended author's comments are hidden (standing.rs).
+            AND (c.user_id = $2 OR (u.suspended_until IS NULL OR u.suspended_until <= NOW()))
         ORDER BY c.created_at ASC
         "#
     )

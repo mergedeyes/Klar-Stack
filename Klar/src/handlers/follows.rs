@@ -369,9 +369,14 @@ async fn require_visible_social_graph(
     username: &str,
 ) -> Result<Uuid, AppError> {
     let (owner_id, owner_is_private) = sqlx::query_as::<_, (Uuid, bool)>(
-        "SELECT id, is_private FROM users WHERE LOWER(username) = LOWER($1)"
+        r#"
+        SELECT id, is_private FROM users
+        WHERE LOWER(username) = LOWER($1)
+          AND (id = $2 OR suspended_until IS NULL OR suspended_until <= NOW())
+        "#
     )
     .bind(username)
+    .bind(viewer_id)
     .fetch_optional(db)
     .await
     .db_err("Database error")?
@@ -398,7 +403,7 @@ pub async fn get_followers(
         SELECT u.*
         FROM users u
         JOIN follows f ON u.id = f.follower_id
-        WHERE f.following_id = $1
+        WHERE f.following_id = $1 AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
         ORDER BY f.created_at DESC
         "#
     )
@@ -425,7 +430,7 @@ pub async fn get_following(
         SELECT u.*
         FROM users u
         JOIN follows f ON u.id = f.following_id
-        WHERE f.follower_id = $1
+        WHERE f.follower_id = $1 AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
         ORDER BY f.created_at DESC
         "#
     )
@@ -444,13 +449,19 @@ pub async fn get_following(
 /// queries against follows/follows/posts.
 pub async fn get_user_stats(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<ProfileStats>, AppError> {
 
     let stats = sqlx::query_as::<_, (i64, i64, i64)>(
-        "SELECT follower_count, following_count, post_count FROM users WHERE LOWER(username) = LOWER($1)"
+        r#"
+        SELECT follower_count, following_count, post_count FROM users
+        WHERE LOWER(username) = LOWER($1)
+          AND (id = $2 OR suspended_until IS NULL OR suspended_until <= NOW())
+        "#
     )
     .bind(&username)
+    .bind(auth.user_id)
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?

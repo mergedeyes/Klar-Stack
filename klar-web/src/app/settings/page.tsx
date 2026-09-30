@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ChevronRight, Download, Lock, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
+import { Archive, ChevronRight, Download, Gauge, KeyRound, Lock, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
 import { FileWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
@@ -27,7 +27,7 @@ const sections = [
     href: "/moderation",
     icon: ShieldCheck,
     label: "Moderation",
-    description: "Decisions about your content and your reports",
+    description: "Account status, decisions about your content, and your reports",
   },
   {
     href: "/settings/account",
@@ -63,6 +63,12 @@ export default function SettingsPage() {
           icon: ShieldAlert,
           label: "Reports",
           description: "Review reported content",
+        },
+        {
+          href: "/admin/standing",
+          icon: Gauge,
+          label: "Account standing",
+          description: "Scores, warnings and suspensions",
         },
         {
           href: "/admin/security",
