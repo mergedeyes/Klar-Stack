@@ -525,9 +525,10 @@ export interface AdminReport {
   // Only set after review (dismiss/remove) -- always null in the pending
   // queue itself, since get_reports only returns status='pending' rows.
   review_note?: string | null;
-  // Set when the target was deleted while reported and preserved as
-  // evidence (see /admin/evidence).
+  // The evidence record kept for the target (likely-illegal reasons only,
+  // see /admin/evidence), and whether the original has since been deleted.
   evidence_id: string | null;
+  evidence_content_deleted: boolean | null;
 }
 
 export const reportsApi = {
@@ -556,21 +557,25 @@ export const adminReportsApi = {
 };
 
 // ── Evidence (admin) ──────────────────────────────────────────────────────────
-// Preserved copies of deleted, likely-illegal content. Everything that shows
-// content takes a reason, which the backend logs before answering.
+// Preserved copies of content reported for a likely-illegal reason: the state
+// when reported plus every edit since. Everything that shows content takes a
+// reason, which the backend logs before answering.
 
 export interface EvidenceSummary {
   id: string;
   target_type: ReportTargetType;
   target_id: string;
-  trigger: "moderation_removal" | "user_deletion" | "account_deletion";
   reasons: ReportReason[];
   created_at: string;
+  // Set once the original was deleted, with what deleted it.
+  content_deleted_at: string | null;
+  deletion_trigger: "moderation_removal" | "user_deletion" | "account_deletion" | null;
   decision: "removed" | "dismissed" | null;
   decided_at: string | null;
   retain_until: string | null;
   legal_hold: boolean;
   purged_at: string | null;
+  version_count: number;
   file_count: number;
 }
 
@@ -594,12 +599,33 @@ export interface EvidenceEvent {
   created_at: string;
 }
 
+export interface EvidenceVersion {
+  id: string;
+  captured_at: string;
+  cause: "reported" | "edited" | "deleted";
+  // The item, its author and (for comments) its context; the shape
+  // depends on target_type.
+  content: Record<string, unknown>;
+  // Files first captured in this version (post images come with the
+  // first one, a new avatar with the edit that set it).
+  files: EvidenceFile[];
+}
+
+export interface EvidenceReport {
+  id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: "pending" | "dismissed" | "actioned";
+  created_at: string;
+  reporter_id: string | null;
+}
+
 export interface EvidenceDetail extends EvidenceSummary {
-  // The snapshot; null once purged. Its shape depends on target_type.
-  content: Record<string, unknown> | null;
   decided_by: string | null;
   decision_note: string | null;
-  files: EvidenceFile[];
+  // Oldest first; empty once purged.
+  versions: EvidenceVersion[];
+  reports: EvidenceReport[];
   events: EvidenceEvent[];
 }
 

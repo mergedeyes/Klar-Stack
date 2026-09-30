@@ -1,29 +1,30 @@
 //! Evidence preservation for likely-illegal content.
 //!
-//! Every path that deletes reported content (admin removal, a user deleting
-//! a post or comment, account deletion) calls `preserve` inside its
-//! transaction, before the delete. Anything in scope that has a *pending*
-//! report for a likely-illegal reason is snapshotted into evidence_records:
-//! the content, its author, its context and every report on it. The
-//! caller then commits and hands its media keys to `finish`, which copies
-//! the preserved files into the evidence storage zone and only then deletes
-//! the originals.
+//! When content gets its first report for a likely-illegal reason, an
+//! evidence record is opened and the reported state is captured at once:
+//! the item itself (with its images), its author and, for comments, what it
+//! replied to -- nothing more, no likes, no other comments. From then on,
+//! while the record is open, every edit of the item adds a version, and
+//! deleting it (by moderation, by its author or with the account) only
+//! marks the record, since the evidence is already safe. Reports for other
+//! reasons (spam, impersonation, other) copy nothing.
 //!
-//! A file whose copy fails (or the evidence zone not being configured)
-//! never loses evidence and never blocks a deletion: the original stays at
-//! its key, its CDN cache is purged, and the sweeper retries the copy.
+//! DB rows are written inside the caller's transaction (`capture`,
+//! `preserve`). Files are copied into the evidence storage zone after the
+//! commit (`finish`). An original file is never deleted while a copy of it
+//! is still pending: a failed copy, or the zone not being configured yet,
+//! leaves the original in place for the hourly sweeper to retry.
 //!
-//! Records are decided when the last likely-illegal report on their target
-//! is resolved (`decide`): kept for the retention period if any report was
-//! actioned, purged straight away if they were all dismissed. A legal hold
-//! stops the purge. See migrations/20260930010000_evidence.sql for the
-//! tables, and handlers/evidence.rs for the admin endpoints.
+//! A record is decided when the last likely-illegal report on its target
+//! is resolved (`decide`): purged at the next sweep if all were dismissed,
+//! kept for the retention period if any was actioned, and never purged
+//! while a legal hold is set. See migrations/20260930010000_evidence.sql
+//! for the tables and handlers/evidence.rs for the admin endpoints.
 //!
 //! The data export (Art. 15) deliberately doesn't include evidence records:
 //! disclosing them to the reported person could compromise an
 //! investigation (Art. 23 GDPR, §33 BDSG) -- pending legal review.
 
-use std::collections::HashSet;
 use std::time::Duration;
 
 use serde_json::json;
@@ -35,12 +36,16 @@ use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::utils::{delete_media, DbResultExt};
 
-/// Report reasons that may point to a crime, so the content is preserved
-/// when deleted. Spam, impersonation and "other" are deleted outright.
-/// Kept as one list so a lawyer's answer is a one-line change.
+/// Report reasons that may point to a crime, so the reported content is
+/// preserved. Spam, impersonation and "other" copy nothing. Kept as one
+/// list so a lawyer's answer is a one-line change.
 pub const LIKELY_ILLEGAL_REASONS: &[&str] = &[
     "csam", "violence", "hate_speech", "harassment", "sexual_content", "self_harm",
 ];
+
+pub fn is_likely_illegal(reason: &str) -> bool {
+    LIKELY_ILLEGAL_REASONS.contains(&reason)
+}
 
 /// How long evidence is kept after a "removed" decision, unless a legal
 /// hold is set. Six months by default, pending legal review; override with
@@ -57,6 +62,7 @@ fn likely_illegal() -> Vec<String> {
     LIKELY_ILLEGAL_REASONS.iter().map(|r| r.to_string()).collect()
 }
 
+/// What deleted the original.
 #[derive(Clone, Copy)]
 pub enum Trigger {
     ModerationRemoval,
@@ -72,6 +78,30 @@ impl Trigger {
             Trigger::ModerationRemoval => "moderation_removal",
             Trigger::UserDeletion => "user_deletion",
             Trigger::AccountDeletion => "account_deletion",
+        }
+    }
+}
+
+/// Why `capture` is called.
+#[derive(Clone, Copy)]
+pub enum Cause {
+    /// A likely-illegal report was just filed. Opens the record with the
+    /// reported state; later reports on the same item share it.
+    Reported,
+    /// The item was just edited. Adds the new state, if a record is open.
+    Edited,
+    /// The item is about to be deleted. Marks the open record; only
+    /// captures a version for reports filed before capture-on-report
+    /// existed, which have no record yet.
+    Deleted(Trigger),
+}
+
+impl Cause {
+    fn version_label(self) -> &'static str {
+        match self {
+            Cause::Reported => "reported",
+            Cause::Edited => "edited",
+            Cause::Deleted(_) => "deleted",
         }
     }
 }
@@ -93,14 +123,20 @@ struct PendingFile {
     storage_key: String,
 }
 
-/// Returned by `preserve`, consumed by `finish` after the commit.
+/// Files captured inside a transaction, copied by `finish` after the
+/// commit.
 #[must_use]
+#[derive(Default)]
 pub struct Preserved {
     files: Vec<PendingFile>,
 }
 
-// SQL fragments shared by the snapshot queries, given the column that
-// holds the user's or target's id.
+impl Preserved {
+    fn extend(&mut self, other: Preserved) {
+        self.files.extend(other.files);
+    }
+}
+
 fn author_json(user_id_col: &str) -> String {
     format!(
         "(SELECT jsonb_build_object('id', u.id, 'username', u.username, 'display_name', u.display_name, \
@@ -108,24 +144,243 @@ fn author_json(user_id_col: &str) -> String {
     )
 }
 
-fn reports_json(target_type: &str, id_col: &str) -> String {
-    format!(
-        "(SELECT COALESCE(jsonb_agg(jsonb_build_object('id', r.id, 'reason', r.reason, 'details', r.details, \
-         'status', r.status, 'created_at', r.created_at, 'reporter_id', r.reporter_id) ORDER BY r.created_at), '[]'::jsonb) \
-         FROM reports r WHERE r.target_type = '{target_type}' AND r.target_id = {id_col})"
-    )
+/// SELECT producing one version's content for the target with id $1: the
+/// item, its author and (for comments) its context, nothing else.
+fn snapshot_sql(target_type: &str) -> String {
+    match target_type {
+        "post" => format!(
+            r#"
+            SELECT jsonb_build_object(
+                'post', jsonb_build_object('id', p.id, 'caption', p.caption, 'created_at', p.created_at,
+                    'edited_at', p.edited_at, 'moderation_status', p.moderation_status),
+                'author', {author})
+            FROM posts p WHERE p.id = $1
+            "#,
+            author = author_json("p.user_id"),
+        ),
+        "comment" => format!(
+            r#"
+            SELECT jsonb_build_object(
+                'comment', jsonb_build_object('id', c.id, 'body', c.body, 'created_at', c.created_at,
+                    'edited_at', c.edited_at, 'moderation_status', c.moderation_status),
+                'author', {author},
+                'context', jsonb_build_object(
+                    'post', (SELECT jsonb_build_object('id', p.id, 'caption', p.caption,
+                        'author_id', p.user_id, 'created_at', p.created_at) FROM posts p WHERE p.id = c.post_id),
+                    'parent_comment', (SELECT jsonb_build_object('id', pc.id, 'body', pc.body,
+                        'author_id', pc.user_id, 'created_at', pc.created_at) FROM comments pc WHERE pc.id = c.parent_comment_id)))
+            FROM comments c WHERE c.id = $1
+            "#,
+            author = author_json("c.user_id"),
+        ),
+        _ => format!(
+            r#"
+            SELECT jsonb_build_object(
+                'profile', jsonb_build_object('id', u0.id, 'username', u0.username,
+                    'display_name', u0.display_name, 'bio', u0.bio, 'created_at', u0.created_at),
+                'author', {author})
+            FROM users u0 WHERE u0.id = $1
+            "#,
+            author = author_json("u0.id"),
+        ),
+    }
 }
 
-fn reasons_sql(target_type: &str, id_col: &str) -> String {
-    format!(
-        "(SELECT COALESCE(array_agg(DISTINCT r.reason::text), '{{}}') FROM reports r \
-         WHERE r.target_type = '{target_type}' AND r.target_id = {id_col})"
+/// Captures the target's current state into its open evidence record (see
+/// `Cause` for what each call does). Runs inside the caller's transaction,
+/// right after the report insert or the edit, or right before the delete.
+pub async fn capture(
+    tx: &mut PgConnection,
+    target_type: &str,
+    target_id: Uuid,
+    cause: Cause,
+    actor_id: Option<Uuid>,
+) -> Result<Preserved, AppError> {
+    let mut preserved = Preserved::default();
+
+    let open = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id FROM evidence_records
+        WHERE target_type = $1::report_target_type AND target_id = $2
+          AND decided_at IS NULL AND purged_at IS NULL
+        FOR UPDATE
+        "#,
     )
+    .bind(target_type)
+    .bind(target_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .db_err_ctx("Evidence: finding open record failed", "Database error")?;
+
+    let (evidence_id, created) = match (open, cause) {
+        (Some(id), _) => (id, false),
+        // An edit of something nobody reported as likely illegal.
+        (None, Cause::Edited) => return Ok(preserved),
+        (None, _) => {
+            // DO NOTHING: a concurrent report opened it first, and that
+            // transaction's snapshot is the reported state.
+            let inserted = sqlx::query_scalar::<_, Uuid>(
+                r#"
+                INSERT INTO evidence_records (target_type, target_id)
+                VALUES ($1::report_target_type, $2)
+                ON CONFLICT (target_type, target_id) WHERE decided_at IS NULL AND purged_at IS NULL DO NOTHING
+                RETURNING id
+                "#,
+            )
+            .bind(target_type)
+            .bind(target_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .db_err_ctx("Evidence: opening record failed", "Database error")?;
+            match inserted {
+                Some(id) => (id, true),
+                None => return Ok(preserved),
+            }
+        }
+    };
+
+    sqlx::query(
+        r#"
+        UPDATE evidence_records SET reasons = (
+            SELECT COALESCE(array_agg(DISTINCT r.reason::text), '{}') FROM reports r
+            WHERE r.target_type = $2::report_target_type AND r.target_id = $3 AND r.reason::text = ANY($4)
+        )
+        WHERE id = $1
+        "#,
+    )
+    .bind(evidence_id)
+    .bind(target_type)
+    .bind(target_id)
+    .bind(likely_illegal())
+    .execute(&mut *tx)
+    .await
+    .db_err_ctx("Evidence: updating reasons failed", "Database error")?;
+
+    if created {
+        log_event(tx, evidence_id, actor_id, "created", Some(cause.version_label()), None).await?;
+        tracing::info!("Evidence {} opened for {} {}", evidence_id, target_type, target_id);
+    }
+
+    let add_version = match cause {
+        Cause::Reported => created,
+        Cause::Edited => true,
+        Cause::Deleted(_) => {
+            sqlx::query_scalar::<_, bool>("SELECT NOT EXISTS(SELECT 1 FROM evidence_versions WHERE evidence_id = $1)")
+                .bind(evidence_id)
+                .fetch_one(&mut *tx)
+                .await
+                .db_err("Database error")?
+        }
+    };
+    if add_version {
+        preserved.extend(add_version_row(tx, evidence_id, target_type, target_id, cause, actor_id).await?);
+    }
+
+    if let Cause::Deleted(trigger) = cause {
+        sqlx::query("UPDATE evidence_records SET content_deleted_at = NOW(), deletion_trigger = $2 WHERE id = $1")
+            .bind(evidence_id)
+            .bind(trigger.as_str())
+            .execute(&mut *tx)
+            .await
+            .db_err_ctx("Evidence: marking deletion failed", "Database error")?;
+        log_event(tx, evidence_id, actor_id, "content_deleted", Some(trigger.as_str()), None).await?;
+    }
+
+    Ok(preserved)
 }
 
-/// Snapshots everything in `scope` that has a pending likely-illegal
-/// report. Runs inside the caller's transaction, before its delete, so
-/// the snapshot and the deletion commit or roll back together.
+async fn add_version_row(
+    tx: &mut PgConnection,
+    evidence_id: Uuid,
+    target_type: &str,
+    target_id: Uuid,
+    cause: Cause,
+    actor_id: Option<Uuid>,
+) -> Result<Preserved, AppError> {
+    let mut preserved = Preserved::default();
+
+    let sql = format!(
+        "INSERT INTO evidence_versions (evidence_id, cause, content) \
+         SELECT $2, $3, snap.content FROM ({}) AS snap(content) RETURNING id",
+        snapshot_sql(target_type)
+    );
+    // None: the target is already gone, so there's nothing to capture.
+    let Some(version_id) = sqlx::query_scalar::<_, Uuid>(&sql)
+        .bind(target_id)
+        .bind(evidence_id)
+        .bind(cause.version_label())
+        .fetch_optional(&mut *tx)
+        .await
+        .db_err_ctx("Evidence: saving version failed", "Database error")?
+    else {
+        return Ok(preserved);
+    };
+
+    match target_type {
+        "post" => {
+            // Post images can't be edited, so they're captured once, with
+            // the first version. FOR UPDATE: a concurrent media key rotation
+            // (reports.rs, on a CSAM hide) waits for this transaction.
+            let already = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM evidence_files WHERE evidence_id = $1)")
+                .bind(evidence_id)
+                .fetch_one(&mut *tx)
+                .await
+                .db_err("Database error")?;
+            if !already {
+                let media = sqlx::query_as::<_, (String, i32)>(
+                    "SELECT full_key, sort_order FROM media_assets WHERE post_id = $1 ORDER BY sort_order FOR UPDATE",
+                )
+                .bind(target_id)
+                .fetch_all(&mut *tx)
+                .await
+                .db_err_ctx("Evidence: reading post media failed", "Database error")?;
+                for (key, sort_order) in media {
+                    add_file(tx, &mut preserved, evidence_id, version_id, "post_media", sort_order, key).await?;
+                }
+            }
+        }
+        "user" => {
+            let avatar = sqlx::query_scalar::<_, Option<String>>("SELECT avatar_url FROM users WHERE id = $1")
+                .bind(target_id)
+                .fetch_one(&mut *tx)
+                .await
+                .db_err_ctx("Evidence: reading avatar failed", "Database error")?;
+            if let Some(avatar) = avatar {
+                // Older rows carry a "/media/" prefix (see delete_account).
+                let key = avatar.strip_prefix("/media/").unwrap_or(&avatar).to_string();
+                // Each avatar upload gets a new key, so an unchanged key
+                // means an unchanged picture that's already captured.
+                let already = sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS(SELECT 1 FROM evidence_files WHERE evidence_id = $1 AND source_key = $2)",
+                )
+                .bind(evidence_id)
+                .bind(&key)
+                .fetch_one(&mut *tx)
+                .await
+                .db_err("Database error")?;
+                if !already {
+                    add_file(tx, &mut preserved, evidence_id, version_id, "avatar", 0, key).await?;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    log_event(
+        tx,
+        evidence_id,
+        actor_id,
+        "version_added",
+        Some(cause.version_label()),
+        Some(json!({ "version_id": version_id })),
+    )
+    .await?;
+    Ok(preserved)
+}
+
+/// Before a delete: marks (or, for older reports, creates) the evidence of
+/// everything in `scope` that has a pending likely-illegal report. Runs
+/// inside the caller's transaction, before its delete.
 pub async fn preserve(
     tx: &mut PgConnection,
     scope: &Scope,
@@ -133,7 +388,7 @@ pub async fn preserve(
     actor_id: Option<Uuid>,
 ) -> Result<Preserved, AppError> {
     let reasons = likely_illegal();
-    let mut preserved = Preserved { files: Vec::new() };
+    let mut preserved = Preserved::default();
 
     let posts = sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -192,124 +447,26 @@ pub async fn preserve(
         None => None,
     };
 
+    let cause = Cause::Deleted(trigger);
     for post_id in posts {
-        let evidence_id = insert_record(tx, &post_snapshot_sql(), post_id, trigger).await?;
-        // FOR UPDATE: a concurrent media key rotation (reports.rs, on a
-        // CSAM hide) then waits for this transaction and finds the rows
-        // gone, instead of moving the files away underneath the copy.
-        let media = sqlx::query_as::<_, (String, i32)>(
-            "SELECT full_key, sort_order FROM media_assets WHERE post_id = $1 ORDER BY sort_order FOR UPDATE",
-        )
-        .bind(post_id)
-        .fetch_all(&mut *tx)
-        .await
-        .db_err_ctx("Evidence: reading post media failed", "Database error")?;
-        for (key, sort_order) in media {
-            add_file(tx, &mut preserved, evidence_id, "post_media", sort_order, key).await?;
-        }
-        log_created(tx, evidence_id, actor_id, trigger).await?;
+        preserved.extend(capture(tx, "post", post_id, cause, actor_id).await?);
     }
-
     for comment_id in comments {
-        let evidence_id = insert_record(tx, &comment_snapshot_sql(), comment_id, trigger).await?;
-        log_created(tx, evidence_id, actor_id, trigger).await?;
+        preserved.extend(capture(tx, "comment", comment_id, cause, actor_id).await?);
     }
-
     if let Some(user_id) = user {
-        let evidence_id = insert_record(tx, &user_snapshot_sql(), user_id, trigger).await?;
-        let avatar = sqlx::query_scalar::<_, Option<String>>("SELECT avatar_url FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_one(&mut *tx)
-            .await
-            .db_err_ctx("Evidence: reading avatar failed", "Database error")?;
-        if let Some(avatar) = avatar {
-            // Older rows carry a "/media/" prefix (see delete_account).
-            let key = avatar.strip_prefix("/media/").unwrap_or(&avatar).to_string();
-            add_file(tx, &mut preserved, evidence_id, "avatar", 0, key).await?;
-        }
-        log_created(tx, evidence_id, actor_id, trigger).await?;
+        preserved.extend(capture(tx, "user", user_id, cause, actor_id).await?);
     }
 
     Ok(preserved)
 }
 
-fn post_snapshot_sql() -> String {
-    format!(
-        r#"
-        SELECT 'post'::report_target_type, p.id, $2, {reasons},
-            jsonb_build_object(
-                'post', jsonb_build_object('id', p.id, 'caption', p.caption, 'created_at', p.created_at,
-                    'edited_at', p.edited_at, 'moderation_status', p.moderation_status),
-                'author', {author},
-                'reports', {reports})
-        FROM posts p WHERE p.id = $1
-        "#,
-        reasons = reasons_sql("post", "p.id"),
-        author = author_json("p.user_id"),
-        reports = reports_json("post", "p.id"),
-    )
-}
-
-fn comment_snapshot_sql() -> String {
-    format!(
-        r#"
-        SELECT 'comment'::report_target_type, c.id, $2, {reasons},
-            jsonb_build_object(
-                'comment', jsonb_build_object('id', c.id, 'body', c.body, 'created_at', c.created_at,
-                    'edited_at', c.edited_at, 'moderation_status', c.moderation_status),
-                'author', {author},
-                'context', jsonb_build_object(
-                    'post', (SELECT jsonb_build_object('id', p.id, 'caption', p.caption,
-                        'author_id', p.user_id, 'created_at', p.created_at) FROM posts p WHERE p.id = c.post_id),
-                    'parent_comment', (SELECT jsonb_build_object('id', pc.id, 'body', pc.body,
-                        'author_id', pc.user_id, 'created_at', pc.created_at) FROM comments pc WHERE pc.id = c.parent_comment_id)),
-                'reports', {reports})
-        FROM comments c WHERE c.id = $1
-        "#,
-        reasons = reasons_sql("comment", "c.id"),
-        author = author_json("c.user_id"),
-        reports = reports_json("comment", "c.id"),
-    )
-}
-
-fn user_snapshot_sql() -> String {
-    format!(
-        r#"
-        SELECT 'user'::report_target_type, u0.id, $2, {reasons},
-            jsonb_build_object(
-                'profile', jsonb_build_object('id', u0.id, 'username', u0.username,
-                    'display_name', u0.display_name, 'bio', u0.bio, 'created_at', u0.created_at),
-                'author', {author},
-                'reports', {reports})
-        FROM users u0 WHERE u0.id = $1
-        "#,
-        reasons = reasons_sql("user", "u0.id"),
-        author = author_json("u0.id"),
-        reports = reports_json("user", "u0.id"),
-    )
-}
-
-async fn insert_record(
-    tx: &mut PgConnection,
-    snapshot_sql: &str,
-    target_id: Uuid,
-    trigger: Trigger,
-) -> Result<Uuid, AppError> {
-    let sql = format!(
-        "INSERT INTO evidence_records (target_type, target_id, trigger, reasons, content) {snapshot_sql} RETURNING id"
-    );
-    sqlx::query_scalar::<_, Uuid>(&sql)
-        .bind(target_id)
-        .bind(trigger.as_str())
-        .fetch_one(&mut *tx)
-        .await
-        .db_err_ctx("Evidence: saving snapshot failed", "Database error")
-}
-
+#[allow(clippy::too_many_arguments)]
 async fn add_file(
     tx: &mut PgConnection,
     preserved: &mut Preserved,
     evidence_id: Uuid,
+    version_id: Uuid,
     kind: &str,
     sort_order: i32,
     source_key: String,
@@ -324,12 +481,13 @@ async fn add_file(
 
     sqlx::query(
         r#"
-        INSERT INTO evidence_files (id, evidence_id, kind, sort_order, source_key, storage_key, content_type)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO evidence_files (id, evidence_id, version_id, kind, sort_order, source_key, storage_key, content_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
     )
     .bind(id)
     .bind(evidence_id)
+    .bind(version_id)
     .bind(kind)
     .bind(sort_order)
     .bind(&source_key)
@@ -340,17 +498,6 @@ async fn add_file(
     .db_err_ctx("Evidence: saving file entry failed", "Database error")?;
 
     preserved.files.push(PendingFile { id, source_key, storage_key });
-    Ok(())
-}
-
-async fn log_created(
-    tx: &mut PgConnection,
-    evidence_id: Uuid,
-    actor_id: Option<Uuid>,
-    trigger: Trigger,
-) -> Result<(), AppError> {
-    log_event(tx, evidence_id, actor_id, "created", Some(trigger.as_str()), None).await?;
-    tracing::info!("Evidence {} preserved ({})", evidence_id, trigger.as_str());
     Ok(())
 }
 
@@ -386,31 +533,65 @@ pub fn content_type_for(key: &str) -> &'static str {
     }
 }
 
-/// After the caller's commit: copies the preserved files into the evidence
-/// zone, then deletes `media_keys` (every file of the deleted content) --
-/// except originals whose copy failed, which stay for the sweeper and only
-/// get their CDN cache purged.
+/// After the caller's commit: copies the captured files into the evidence
+/// zone, then releases `media_keys` (files the caller no longer needs, e.g.
+/// of deleted content or a replaced avatar).
 pub async fn finish(state: &AppState, preserved: Preserved, media_keys: impl IntoIterator<Item = String>) {
-    let mut kept = HashSet::new();
     for file in &preserved.files {
         if let Err(e) = copy_file(state, file.id, &file.source_key, &file.storage_key).await {
             tracing::error!(
-                "Evidence file {} not copied yet, keeping {} for the sweeper: {}",
+                "Evidence file {} not copied yet, the sweeper retries from {}: {}",
                 file.id, file.source_key, e.message
             );
-            kept.insert(file.source_key.clone());
         }
     }
-
     for key in media_keys {
-        if kept.contains(&key) {
-            if let Err(e) = state.cdn.purge(&state.storage.public_url(&key)).await {
+        release_media(state, &key).await;
+    }
+}
+
+/// Deletes a media file the caller is done with -- unless a pending
+/// evidence copy still needs it, in which case only its CDN cache is
+/// purged and the sweeper deletes it once the copy has succeeded.
+pub async fn release_media(state: &AppState, key: &str) {
+    let pending = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM evidence_files WHERE source_key = $1 AND copied_at IS NULL)",
+    )
+    .bind(key)
+    .fetch_one(&state.db)
+    .await;
+
+    match pending {
+        Ok(false) => delete_media(state, key).await,
+        Ok(true) | Err(_) => {
+            if let Err(e) = &pending {
+                // Unsure, so keep it: an orphaned file is recoverable, lost
+                // evidence isn't.
+                tracing::error!("Keeping media {}: pending-evidence check failed: {}", key, e);
+            }
+            if let Err(e) = state.cdn.purge(&state.storage.public_url(key)).await {
                 tracing::error!("Failed to purge media {} from CDN: {}", key, e.message);
             }
-        } else {
-            delete_media(state, &key).await;
         }
     }
+}
+
+/// Whether anything live still uses a media file: a post's media or a
+/// user's avatar, or a pending evidence copy outside `except_evidence`.
+async fn source_still_needed(state: &AppState, key: &str, except_evidence: Option<Uuid>) -> Result<bool, AppError> {
+    sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(SELECT 1 FROM media_assets WHERE $1 IN (thumb_key, medium_key, full_key, original_key))
+            OR EXISTS(SELECT 1 FROM users WHERE avatar_url = $1 OR avatar_url = '/media/' || $1)
+            OR EXISTS(SELECT 1 FROM evidence_files
+                      WHERE source_key = $1 AND copied_at IS NULL AND evidence_id IS DISTINCT FROM $2)
+        "#,
+    )
+    .bind(key)
+    .bind(except_evidence)
+    .fetch_one(&state.db)
+    .await
+    .db_err("Database error")
 }
 
 async fn copy_file(state: &AppState, file_id: Uuid, source_key: &str, storage_key: &str) -> Result<(), AppError> {
@@ -433,9 +614,21 @@ async fn copy_file(state: &AppState, file_id: Uuid, source_key: &str, storage_ke
     Ok(())
 }
 
+/// A CSAM hide moves a post's files to new keys (reports.rs). Pending
+/// copies follow them, so the sweeper doesn't retry from a deleted key.
+pub async fn follow_moved_source(state: &AppState, old_key: &str, new_key: &str) -> Result<(), AppError> {
+    sqlx::query("UPDATE evidence_files SET source_key = $2 WHERE source_key = $1 AND copied_at IS NULL")
+        .bind(old_key)
+        .bind(new_key)
+        .execute(&state.db)
+        .await
+        .db_err_ctx("Evidence: updating moved source failed", "Database error")?;
+    Ok(())
+}
+
 /// Called whenever a report is resolved, inside the resolving
 /// transaction. Once no likely-illegal report on the target is pending any
-/// more, its undecided evidence gets its decision: 'removed' (kept for the
+/// more, its open record gets its decision: 'removed' (kept for the
 /// retention period) if any report on it was actioned, else 'dismissed'
 /// (purged by the next sweep).
 pub async fn decide(
@@ -483,7 +676,7 @@ pub async fn decide(
 }
 
 /// Runs the sweep once an hour on every replica. The row locks in each
-/// step (SKIP LOCKED) keep replicas from working on the same item.
+/// step (SKIP LOCKED) keep replicas from working on the same record.
 pub fn spawn_sweeper(state: AppState) {
     tokio::spawn(async move {
         loop {
@@ -498,19 +691,18 @@ async fn sweep(state: &AppState) {
     purge_due(state).await;
 }
 
-/// Copies files whose copy failed at deletion time, then deletes their
-/// originals. Skips anything younger than five minutes, which `finish`
+/// Copies files whose copy failed, then deletes originals nothing live
+/// uses any more. Skips anything younger than five minutes, which `finish`
 /// is most likely still working on.
 async fn retry_pending_copies(state: &AppState) {
     if !state.evidence.is_configured() {
         return;
     }
-    let pending = match sqlx::query_as::<_, (Uuid, String, String)>(
+    let pending = match sqlx::query_as::<_, (Uuid, Uuid, String, String)>(
         r#"
-        SELECT f.id, f.source_key, f.storage_key
-        FROM evidence_files f JOIN evidence_records e ON e.id = f.evidence_id
-        WHERE f.copied_at IS NULL AND e.purged_at IS NULL
-          AND e.created_at < NOW() - INTERVAL '5 minutes'
+        SELECT f.id, f.evidence_id, f.source_key, f.storage_key
+        FROM evidence_files f JOIN evidence_versions v ON v.id = f.version_id
+        WHERE f.copied_at IS NULL AND v.captured_at < NOW() - INTERVAL '5 minutes'
         LIMIT 100
         "#,
     )
@@ -524,19 +716,22 @@ async fn retry_pending_copies(state: &AppState) {
         }
     };
 
-    for (file_id, source_key, storage_key) in pending {
-        match copy_file(state, file_id, &source_key, &storage_key).await {
-            Ok(()) => {
-                delete_media(state, &source_key).await;
-                tracing::info!("Evidence sweep: copied file {}", file_id);
-            }
-            Err(e) => tracing::error!("Evidence sweep: file {} still not copied: {}", file_id, e.message),
+    for (file_id, evidence_id, source_key, storage_key) in pending {
+        if let Err(e) = copy_file(state, file_id, &source_key, &storage_key).await {
+            tracing::error!("Evidence sweep: file {} still not copied: {}", file_id, e.message);
+            continue;
+        }
+        tracing::info!("Evidence sweep: copied file {}", file_id);
+        match source_still_needed(state, &source_key, Some(evidence_id)).await {
+            Ok(false) => delete_media(state, &source_key).await,
+            Ok(true) => {}
+            Err(e) => tracing::error!("Evidence sweep: keeping {}: {}", source_key, e.message),
         }
     }
 }
 
 /// Purges records whose retention has passed and that aren't on hold: the
-/// files are deleted, content becomes NULL, and a 'purged' event is logged.
+/// versions and files are deleted and a 'purged' event is logged.
 async fn purge_due(state: &AppState) {
     let due = match sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -596,12 +791,10 @@ async fn purge(state: &AppState, evidence_id: Uuid) -> Result<(), AppError> {
     for (source_key, storage_key, copied) in files {
         if copied {
             state.evidence.delete(&storage_key).await?;
-        } else {
-            // Never copied: the only copy is still the original.
-            state.storage.delete(&source_key).await?;
-            if let Err(e) = state.cdn.purge(&state.storage.public_url(&source_key)).await {
-                tracing::error!("Failed to purge media {} from CDN: {}", source_key, e.message);
-            }
+        } else if !source_still_needed(state, &source_key, Some(evidence_id)).await? {
+            // Never copied, and the content is gone: the original is the
+            // only copy. Live content (a dismissed report) keeps its file.
+            delete_media(state, &source_key).await;
         }
     }
 
@@ -610,7 +803,12 @@ async fn purge(state: &AppState, evidence_id: Uuid) -> Result<(), AppError> {
         .execute(&mut *tx)
         .await
         .db_err("Database error")?;
-    sqlx::query("UPDATE evidence_records SET content = NULL, purged_at = NOW() WHERE id = $1")
+    sqlx::query("DELETE FROM evidence_versions WHERE evidence_id = $1")
+        .bind(evidence_id)
+        .execute(&mut *tx)
+        .await
+        .db_err("Database error")?;
+    sqlx::query("UPDATE evidence_records SET purged_at = NOW() WHERE id = $1")
         .bind(evidence_id)
         .execute(&mut *tx)
         .await

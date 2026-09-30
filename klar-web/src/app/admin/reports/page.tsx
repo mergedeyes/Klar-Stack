@@ -62,7 +62,7 @@ export default function AdminReportsPage() {
   };
 
   const handleRemove = async (report: AdminReport) => {
-    const prompt = report.target_type === "user" || report.evidence_id
+    const prompt = report.target_type === "user" || report.evidence_content_deleted
       ? "Confirm this violation? The preserved copy is kept as evidence for the retention period."
       : "Remove this content? This can't be undone.";
     if (!window.confirm(prompt)) return;
@@ -152,14 +152,17 @@ export default function AdminReportsPage() {
                 </div>
               )}
 
-              {/* The content was deleted while this report was pending and
-                  kept as evidence -- that copy is what to review now. */}
+              {/* Likely-illegal reports keep an evidence copy; once the
+                  original is gone, that copy is what to review. */}
               {report.evidence_id && (
                 <Link
                   href={`/admin/evidence/${report.evidence_id}`}
                   className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/50 p-2 text-sm underline-offset-2 hover:underline"
                 >
-                  <Archive size={14} /> Deleted, preserved as evidence — review it there
+                  <Archive size={14} />
+                  {report.evidence_content_deleted
+                    ? "Deleted, preserved as evidence — review it there"
+                    : "Evidence copy (as reported, with any edits since)"}
                 </Link>
               )}
 
@@ -197,7 +200,7 @@ export default function AdminReportsPage() {
                   >
                     {/* Already deleted and preserved: nothing left to
                         remove, but confirming keeps the evidence. */}
-                    {report.evidence_id
+                    {report.evidence_content_deleted
                       ? <><ShieldAlert size={14} className="mr-1" /> Confirm violation</>
                       : <><Trash2 size={14} className="mr-1" /> Remove content</>}
                   </Button>

@@ -229,6 +229,8 @@ pub async fn edit_post(
         return Err(AppError::forbidden("You can only edit your own posts"));
     }
 
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     // Update caption and set edited_at
     let post = sqlx::query_as::<_, PostResponse>(
         r#"
@@ -253,9 +255,14 @@ pub async fn edit_post(
     )
     .bind(caption)
     .bind(post_id)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Failed to edit post")?;
+
+    // A post under a likely-illegal report keeps a version per edit.
+    let preserved = evidence::capture(&mut tx, "post", post_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    evidence::finish(&state, preserved, Vec::new()).await;
 
     tracing::info!("Post edited: {}", post_id);
     Ok(Json(post.resolve_media(&state.storage)))

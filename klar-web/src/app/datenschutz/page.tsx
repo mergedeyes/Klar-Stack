@@ -178,17 +178,20 @@ export default function DatenschutzPage() {
             verknüpft.
           </p>
           <p className="mt-2">
-            <strong>Beweissicherung:</strong> Wird ein Inhalt oder Profil
-            gelöscht, während eine Meldung wegen eines möglicherweise
-            strafbaren Inhalts offen ist (etwa Darstellung sexuellen
-            Missbrauchs von Minderjährigen, Gewalt, Hass oder Belästigung),
-            bewahren wir eine Kopie auf — unabhängig davon, ob die Löschung
-            durch unsere Moderation, durch die verfassende Person selbst oder
-            mit ihrem Konto erfolgt. Die Kopie umfasst den Inhalt
-            einschließlich Bildern, die Kontodaten der verfassenden Person
-            (Nutzer-ID, Nutzername, Anzeigename, E-Mail-Adresse,
-            Registrierungsdatum), den Zusammenhang (z. B. den kommentierten
-            Beitrag) und die zugehörigen Meldungen. Sie liegt in einem
+            <strong>Beweissicherung:</strong> Wird ein Beitrag, Kommentar oder
+            Profil wegen eines möglicherweise strafbaren Inhalts gemeldet
+            (etwa Darstellung sexuellen Missbrauchs von Minderjährigen,
+            Gewalt, Hass oder Belästigung), sichern wir sofort eine Kopie des
+            gemeldeten Stands und, solange die Meldung offen ist, jeder
+            späteren Änderung daran. Die Kopie bleibt auch erhalten, wenn der
+            Inhalt gelöscht wird — durch unsere Moderation, durch die
+            verfassende Person selbst oder mit ihrem Konto. Gesichert werden
+            nur der gemeldete Inhalt selbst einschließlich Bildern, die
+            Kontodaten der verfassenden Person (Nutzer-ID, Nutzername,
+            Anzeigename, E-Mail-Adresse, Registrierungsdatum) und der
+            Zusammenhang (z. B. der kommentierte Beitrag) — keine weiteren
+            Kommentare oder Likes. Bei anderen
+            Meldegründen (z. B. Spam) wird nichts kopiert. Die Kopie liegt in einem
             gesonderten, nicht öffentlich erreichbaren Speicher bei Bunny.net
             in Deutschland; nur unser Moderationsteam hat Zugriff, und jeder
             Zugriff wird mit Person, Zeitpunkt und Grund protokolliert.
@@ -229,10 +232,10 @@ export default function DatenschutzPage() {
             unmittelbar mit dem Klick auf den dazugehörigen Button aus unserer
             Datenbank entfernt — <strong>nicht</strong>, wie bei anderen
             Plattformen üblich, erst nach einer Wartefrist. Einzige Ausnahme
-            sind Inhalte mit einer offenen Meldung wegen eines möglicherweise
-            strafbaren Inhalts: Sie werden zwar ebenfalls sofort entfernt,
-            eine Kopie bewahren wir aber als Beweismittel auf (siehe
-            Abschnitt 7).
+            sind Inhalte, die wegen eines möglicherweise strafbaren Inhalts
+            gemeldet wurden: Sie werden zwar ebenfalls sofort entfernt, die
+            bei der Meldung gesicherte Kopie bleibt aber als Beweismittel
+            erhalten (siehe Abschnitt 7).
           </p>
           <p className="mt-2">
             <strong>Direktnachrichten</strong>, die du anderen geschickt hast,

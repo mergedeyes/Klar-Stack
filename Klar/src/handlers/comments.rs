@@ -171,6 +171,8 @@ pub async fn edit_comment(
         return Err(AppError::forbidden("You can only edit your own comments"));
     }
 
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let comment = sqlx::query_as::<_, CommentResponse>(
         r#"
         UPDATE comments SET body = $1, edited_at = NOW()
@@ -187,9 +189,14 @@ pub async fn edit_comment(
     )
     .bind(body)
     .bind(comment_id)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Failed to edit comment")?;
+
+    // A comment under a likely-illegal report keeps a version per edit.
+    let preserved = evidence::capture(&mut tx, "comment", comment_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    evidence::finish(&state, preserved, Vec::new()).await;
 
     Ok(Json(comment.resolve_media(&state.storage)))
 }

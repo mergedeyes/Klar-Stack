@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, Lock, LockOpen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { adminEvidenceApi, type EvidenceDetail, type EvidenceEvent, type EvidenceFile } from "@/lib/api";
+import { adminEvidenceApi, type EvidenceDetail, type EvidenceEvent, type EvidenceFile, type EvidenceVersion } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import EvidenceStatus from "@/components/EvidenceStatus";
@@ -18,14 +18,6 @@ interface Person {
   email: string;
   created_at: string;
 }
-interface SnapshotReport {
-  id: string;
-  reason: string;
-  details: string | null;
-  status: string;
-  created_at: string;
-  reporter_id: string | null;
-}
 interface Snapshot {
   post?: { caption: string | null; created_at: string; edited_at: string | null };
   comment?: { body: string; created_at: string; edited_at: string | null };
@@ -35,11 +27,24 @@ interface Snapshot {
     parent_comment: { id: string; body: string; author_id: string } | null;
   };
   author?: Person | null;
-  reports?: SnapshotReport[];
 }
 
+const CAUSE_LABELS: Record<EvidenceVersion["cause"], string> = {
+  reported: "As reported",
+  edited: "After an edit",
+  deleted: "At deletion",
+};
+
+const CAUSE_TEXT: Record<string, string> = {
+  reported: "when reported",
+  edited: "after an edit",
+  deleted: "at deletion",
+};
+
 const ACTION_LABELS: Record<string, string> = {
-  created: "Preserved",
+  created: "Record opened",
+  version_added: "Version captured",
+  content_deleted: "Original deleted",
   decided: "Decided",
   viewed: "Opened",
   file_viewed: "Viewed file",
@@ -166,7 +171,7 @@ export default function EvidenceDetailPage() {
 
   if (authLoading || !user) return null;
 
-  const snapshot = (detail?.content ?? null) as Snapshot | null;
+  const firstAuthor = (detail?.versions[0]?.content as Snapshot | undefined)?.author ?? null;
   const isCsam = detail?.reasons.includes("csam") ?? false;
 
   return (
@@ -219,8 +224,11 @@ export default function EvidenceDetailPage() {
             <Section title="Record">
               <Field label="Type"><span className="capitalize">{detail.target_type}</span></Field>
               <Field label="Reasons">{detail.reasons.map((r) => REASON_LABELS[r] ?? r).join(", ")}</Field>
-              <Field label="Preserved">
-                {new Date(detail.created_at).toLocaleString()} · {TRIGGER_LABELS[detail.trigger]}
+              <Field label="Opened">{new Date(detail.created_at).toLocaleString()}</Field>
+              <Field label="Original">
+                {detail.content_deleted_at && detail.deletion_trigger
+                  ? `${TRIGGER_LABELS[detail.deletion_trigger]} on ${new Date(detail.content_deleted_at).toLocaleString()}`
+                  : "Still online"}
               </Field>
               {detail.decided_at && (
                 <Field label="Decision">
@@ -237,83 +245,83 @@ export default function EvidenceDetailPage() {
               {detail.purged_at && <Field label="Purged">{new Date(detail.purged_at).toLocaleString()}</Field>}
             </Section>
 
-            {snapshot && (
-              <Section title="Content">
-                {snapshot.post && (
-                  <>
-                    <Field label="Caption"><span className="whitespace-pre-wrap">{snapshot.post.caption ?? "—"}</span></Field>
-                    <Field label="Posted">{new Date(snapshot.post.created_at).toLocaleString()}</Field>
-                    {snapshot.post.edited_at && <Field label="Edited">{new Date(snapshot.post.edited_at).toLocaleString()}</Field>}
-                  </>
-                )}
-                {snapshot.comment && (
-                  <>
-                    <Field label="Comment"><span className="whitespace-pre-wrap">{snapshot.comment.body}</span></Field>
-                    <Field label="Posted">{new Date(snapshot.comment.created_at).toLocaleString()}</Field>
-                    {snapshot.comment.edited_at && <Field label="Edited">{new Date(snapshot.comment.edited_at).toLocaleString()}</Field>}
-                    {snapshot.context?.parent_comment && (
-                      <Field label="In reply to">
-                        <span className="whitespace-pre-wrap text-muted-foreground">{snapshot.context.parent_comment.body}</span>
-                      </Field>
-                    )}
-                    {snapshot.context?.post && (
-                      <Field label="On post">
-                        <span className="whitespace-pre-wrap text-muted-foreground">{snapshot.context.post.caption ?? "(no caption)"}</span>
-                      </Field>
-                    )}
-                  </>
-                )}
-                {snapshot.profile && (
-                  <>
-                    <Field label="Display name">{snapshot.profile.display_name ?? "—"}</Field>
-                    <Field label="Bio"><span className="whitespace-pre-wrap">{snapshot.profile.bio ?? "—"}</span></Field>
-                  </>
-                )}
-              </Section>
-            )}
-
-            {snapshot?.author && (
-              <Section title="Author at the time">
-                <Field label="Username">{snapshot.author.username}</Field>
-                <Field label="Display name">{snapshot.author.display_name ?? "—"}</Field>
-                <Field label="Email">{snapshot.author.email}</Field>
-                <Field label="User ID"><code className="text-xs">{snapshot.author.id}</code></Field>
-                <Field label="Registered">{new Date(snapshot.author.created_at).toLocaleString()}</Field>
-              </Section>
-            )}
-
-            {detail.files.length > 0 && (
-              <Section title="Files">
-                {detail.files.map((file) => (
-                  <div key={file.id} className="rounded-md bg-muted/40 p-2">
-                    <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                      <span>{file.kind === "avatar" ? "Avatar" : "Image"} · {file.content_type}</span>
-                      {fileUrls[file.id] ? (
-                        <Button size="sm" variant="outline" onClick={() => hideFile(file.id)}>Hide</Button>
-                      ) : (
-                        <Button size="sm" variant="outline" onClick={() => showFile(file)} disabled={busy || !!detail.purged_at}>
-                          Show
-                        </Button>
+            {detail.versions.map((version, index) => {
+              const snap = version.content as Snapshot;
+              return (
+                <Section
+                  key={version.id}
+                  title={`${index + 1}. ${CAUSE_LABELS[version.cause]} · ${new Date(version.captured_at).toLocaleString()}`}
+                >
+                  {snap.post && (
+                    <>
+                      <Field label="Caption"><span className="whitespace-pre-wrap">{snap.post.caption ?? "—"}</span></Field>
+                      <Field label="Posted">{new Date(snap.post.created_at).toLocaleString()}</Field>
+                      {snap.post.edited_at && <Field label="Edited">{new Date(snap.post.edited_at).toLocaleString()}</Field>}
+                    </>
+                  )}
+                  {snap.comment && (
+                    <>
+                      <Field label="Comment"><span className="whitespace-pre-wrap">{snap.comment.body}</span></Field>
+                      <Field label="Posted">{new Date(snap.comment.created_at).toLocaleString()}</Field>
+                      {snap.comment.edited_at && <Field label="Edited">{new Date(snap.comment.edited_at).toLocaleString()}</Field>}
+                      {snap.context?.parent_comment && (
+                        <Field label="In reply to">
+                          <span className="whitespace-pre-wrap text-muted-foreground">{snap.context.parent_comment.body}</span>
+                        </Field>
+                      )}
+                      {snap.context?.post && (
+                        <Field label="On post">
+                          <span className="whitespace-pre-wrap text-muted-foreground">{snap.context.post.caption ?? "(no caption)"}</span>
+                        </Field>
+                      )}
+                    </>
+                  )}
+                  {snap.profile && (
+                    <>
+                      <Field label="Username">{snap.profile.username}</Field>
+                      <Field label="Display name">{snap.profile.display_name ?? "—"}</Field>
+                      <Field label="Bio"><span className="whitespace-pre-wrap">{snap.profile.bio ?? "—"}</span></Field>
+                    </>
+                  )}
+                  {version.files.map((file) => (
+                    <div key={file.id} className="rounded-md bg-muted/40 p-2">
+                      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                        <span>{file.kind === "avatar" ? "Avatar" : "Image"} · {file.content_type}</span>
+                        {fileUrls[file.id] ? (
+                          <Button size="sm" variant="outline" onClick={() => hideFile(file.id)}>Hide</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => showFile(file)} disabled={busy}>Show</Button>
+                        )}
+                      </div>
+                      <p className="break-all text-xs text-muted-foreground">
+                        {file.copied_at
+                          ? `SHA-256 ${file.sha256} · ${file.size_bytes} bytes`
+                          : "Copy into the evidence zone still pending — served from the original"}
+                      </p>
+                      {fileUrls[file.id] && (
+                        // A blob: URL for a file served with no-store; next/image can't load those.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={fileUrls[file.id]} alt="Preserved file" className="mt-2 max-h-96 rounded" />
                       )}
                     </div>
-                    <p className="break-all text-xs text-muted-foreground">
-                      {file.copied_at
-                        ? `SHA-256 ${file.sha256} · ${file.size_bytes} bytes`
-                        : "Copy into the evidence zone still pending — served from the original"}
-                    </p>
-                    {fileUrls[file.id] && (
-                      // A blob: URL for a file served with no-store; next/image can't load those.
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={fileUrls[file.id]} alt="Preserved file" className="mt-2 max-h-96 rounded" />
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </Section>
+              );
+            })}
+
+            {firstAuthor && (
+              <Section title="Author when reported">
+                <Field label="Username">{firstAuthor.username}</Field>
+                <Field label="Display name">{firstAuthor.display_name ?? "—"}</Field>
+                <Field label="Email">{firstAuthor.email}</Field>
+                <Field label="User ID"><code className="text-xs">{firstAuthor.id}</code></Field>
+                <Field label="Registered">{new Date(firstAuthor.created_at).toLocaleString()}</Field>
               </Section>
             )}
 
-            {snapshot?.reports && (
-              <Section title="Reports (as at preservation)">
-                {snapshot.reports.map((r) => (
+            {detail.reports.length > 0 && (
+              <Section title="Reports">
+                {detail.reports.map((r) => (
                   <div key={r.id} className="text-sm">
                     <span className="font-medium">{REASON_LABELS[r.reason] ?? r.reason}</span>
                     <span className="text-muted-foreground"> · {new Date(r.created_at).toLocaleString()} · {r.status}</span>
@@ -372,9 +380,11 @@ export default function EvidenceDetailPage() {
                   </span>
                   {ev.reason && (
                     <p className="text-muted-foreground">
-                      {ev.action === "created"
-                        ? TRIGGER_LABELS[ev.reason as EvidenceDetail["trigger"]] ?? ev.reason
-                        : <>&ldquo;{ev.reason}&rdquo;</>}
+                      {ev.action === "created" || ev.action === "version_added"
+                        ? CAUSE_TEXT[ev.reason] ?? ev.reason
+                        : ev.action === "content_deleted"
+                          ? TRIGGER_LABELS[ev.reason as keyof typeof TRIGGER_LABELS] ?? ev.reason
+                          : <>&ldquo;{ev.reason}&rdquo;</>}
                     </p>
                   )}
                   {ev.details && ev.action === "authority_report" && (

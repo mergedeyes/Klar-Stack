@@ -55,7 +55,7 @@ export default function AdminEvidencePage() {
 
       <main className="mx-auto max-w-2xl px-4 py-4">
         <p className="mb-4 text-sm text-muted-foreground">
-          Copies of reported content that was deleted while a report for a likely-illegal reason was pending.
+          Content reported for a likely-illegal reason, as it was when reported plus every edit since.
           Opening a record or file asks for a reason and is logged.
         </p>
 
@@ -91,7 +91,9 @@ export default function AdminEvidencePage() {
                     {record.reasons.map((r) => REASON_LABELS[r] ?? r).join(", ") || "—"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {TRIGGER_LABELS[record.trigger]} · {new Date(record.created_at).toLocaleString()}
+                    {record.deletion_trigger ? TRIGGER_LABELS[record.deletion_trigger] : "Still online"}
+                    {" · "}{new Date(record.created_at).toLocaleString()}
+                    {record.version_count > 1 && ` · ${record.version_count} versions`}
                     {record.file_count > 0 && ` · ${record.file_count} file${record.file_count === 1 ? "" : "s"}`}
                   </p>
                 </div>

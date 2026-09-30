@@ -14,7 +14,7 @@ export const REASON_LABELS: Record<string, string> = {
   other: "Something else",
 };
 
-export const TRIGGER_LABELS: Record<EvidenceSummary["trigger"], string> = {
+export const TRIGGER_LABELS: Record<NonNullable<EvidenceSummary["deletion_trigger"]>, string> = {
   moderation_removal: "Removed by moderation",
   user_deletion: "Deleted by the user",
   account_deletion: "Account deleted",

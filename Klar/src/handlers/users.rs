@@ -14,7 +14,7 @@ use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::evidence;
 use crate::media;
 use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
-use crate::utils::{delete_media, DbResultExt, ResolveMedia};
+use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{
     check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
 };
@@ -221,6 +221,8 @@ pub async fn update_profile(
         }
     }
 
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     // 3. Execute the unified COALESCE query
     let updated_user = sqlx::query_as::<_, UserRow>(
         r#"
@@ -240,7 +242,7 @@ pub async fn update_profile(
     .bind(&input.bio)
     .bind(auth.user_id)
     .bind(input.is_private)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         let msg = e.to_string();
@@ -251,6 +253,11 @@ pub async fn update_profile(
             AppError::internal("Failed to update profile")
         }
     })?;
+
+    // A profile under a likely-illegal report keeps a version per edit.
+    let preserved = evidence::capture(&mut tx, "user", auth.user_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    evidence::finish(&state, preserved, Vec::new()).await;
 
     Ok(Json(UserResponse::from(updated_user).resolve_media(&state.storage)))
 }
@@ -295,28 +302,34 @@ pub async fn upload_avatar(
     state.storage.save(&avatar_key, &processed.thumb).await
         .map_err(|e| AppError::internal(format!("Failed to save avatar: {:?}", e)))?;
 
-    // Delete old avatar file if one exists
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let old_avatar = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT avatar_url FROM users WHERE id = $1"
+        "SELECT avatar_url FROM users WHERE id = $1 FOR UPDATE"
     )
     .bind(auth.user_id)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Database error")?;
-
-    if let Some(old_url) = old_avatar {
-        let old_key = old_url.strip_prefix("/media/").unwrap_or(&old_url);
-        delete_media(&state, old_key).await;
-    }
 
     let user = sqlx::query_as::<_, UserRow>(
         "UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING *"
     )
     .bind(&avatar_key)
     .bind(auth.user_id)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Failed to update avatar")?;
+
+    // A profile under a likely-illegal report keeps the new picture as a
+    // version; the old one was captured when it was reported.
+    let preserved = evidence::capture(&mut tx, "user", auth.user_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    // The old file goes only after the new one is in place, and stays while
+    // a pending evidence copy still needs it (release_media).
+    let old_key = old_avatar.map(|url| url.strip_prefix("/media/").unwrap_or(&url).to_string());
+    evidence::finish(&state, preserved, old_key).await;
 
     tracing::info!("Avatar updated: {}", auth.user_id);
     Ok(Json(UserResponse::from(user).resolve_media(&state.storage)))

@@ -35,26 +35,33 @@ pub struct EvidenceSummary {
     pub id: Uuid,
     pub target_type: String,
     pub target_id: Uuid,
-    pub trigger: String,
     pub reasons: Vec<String>,
     pub created_at: DateTime<Utc>,
+    /// Set once the original was deleted, with what deleted it.
+    pub content_deleted_at: Option<DateTime<Utc>>,
+    pub deletion_trigger: Option<String>,
     pub decision: Option<String>,
     pub decided_at: Option<DateTime<Utc>>,
     pub retain_until: Option<DateTime<Utc>>,
     pub legal_hold: bool,
     pub purged_at: Option<DateTime<Utc>>,
+    pub version_count: i64,
     pub file_count: i64,
 }
 
 const SUMMARY_COLUMNS: &str = r#"
-    e.id, e.target_type::text AS target_type, e.target_id, e.trigger, e.reasons, e.created_at,
+    e.id, e.target_type::text AS target_type, e.target_id, e.reasons, e.created_at,
+    e.content_deleted_at, e.deletion_trigger,
     e.decision, e.decided_at, e.retain_until, e.legal_hold, e.purged_at,
+    (SELECT COUNT(*) FROM evidence_versions v WHERE v.evidence_id = e.id) AS version_count,
     (SELECT COUNT(*) FROM evidence_files f WHERE f.evidence_id = e.id) AS file_count
 "#;
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct EvidenceFile {
     pub id: Uuid,
+    #[serde(skip)]
+    pub version_id: Uuid,
     pub kind: String,
     pub content_type: String,
     pub size_bytes: Option<i64>,
@@ -75,14 +82,38 @@ pub struct EvidenceEvent {
     pub created_at: DateTime<Utc>,
 }
 
+/// One captured state of the item, with the files first captured in it.
+#[derive(Debug, Serialize)]
+pub struct EvidenceVersion {
+    pub id: Uuid,
+    pub captured_at: DateTime<Utc>,
+    /// "reported", "edited" or "deleted".
+    pub cause: String,
+    pub content: serde_json::Value,
+    pub files: Vec<EvidenceFile>,
+}
+
+/// A report on the target, read live from the reports table (reports are
+/// kept after the content and the reporter's account are gone).
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct EvidenceReport {
+    pub id: Uuid,
+    pub reason: String,
+    pub details: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub reporter_id: Option<Uuid>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct EvidenceDetail {
     #[serde(flatten)]
     pub summary: EvidenceSummary,
-    pub content: Option<serde_json::Value>,
     pub decided_by: Option<Uuid>,
     pub decision_note: Option<String>,
-    pub files: Vec<EvidenceFile>,
+    /// Oldest first; empty once purged.
+    pub versions: Vec<EvidenceVersion>,
+    pub reports: Vec<EvidenceReport>,
     pub events: Vec<EvidenceEvent>,
 }
 
@@ -181,21 +212,49 @@ pub async fn open_evidence(
     let mut conn = state.db.acquire().await.db_err("Database error")?;
     log_event(&mut conn, evidence_id, Some(auth.user_id), "viewed", Some(&reason), None).await?;
 
-    let (content, decided_by, decision_note) = sqlx::query_as::<_, (Option<serde_json::Value>, Option<Uuid>, Option<String>)>(
-        "SELECT content, decided_by, decision_note FROM evidence_records WHERE id = $1",
+    let (decided_by, decision_note) = sqlx::query_as::<_, (Option<Uuid>, Option<String>)>(
+        "SELECT decided_by, decision_note FROM evidence_records WHERE id = $1",
     )
     .bind(evidence_id)
     .fetch_one(&mut *conn)
     .await
     .db_err("Database error")?;
 
-    let files = sqlx::query_as::<_, EvidenceFile>(
+    let mut files = sqlx::query_as::<_, EvidenceFile>(
         r#"
-        SELECT id, kind, content_type, size_bytes, sha256, copied_at
+        SELECT id, version_id, kind, content_type, size_bytes, sha256, copied_at
         FROM evidence_files WHERE evidence_id = $1 ORDER BY kind, sort_order
         "#,
     )
     .bind(evidence_id)
+    .fetch_all(&mut *conn)
+    .await
+    .db_err("Database error")?;
+
+    let versions = sqlx::query_as::<_, (Uuid, DateTime<Utc>, String, serde_json::Value)>(
+        "SELECT id, captured_at, cause, content FROM evidence_versions WHERE evidence_id = $1 ORDER BY captured_at, id",
+    )
+    .bind(evidence_id)
+    .fetch_all(&mut *conn)
+    .await
+    .db_err("Database error")?
+    .into_iter()
+    .map(|(id, captured_at, cause, content)| {
+        let (own, rest): (Vec<_>, Vec<_>) = files.drain(..).partition(|f| f.version_id == id);
+        files = rest;
+        EvidenceVersion { id, captured_at, cause, content, files: own }
+    })
+    .collect();
+
+    let reports = sqlx::query_as::<_, EvidenceReport>(
+        r#"
+        SELECT id, reason::text, details, status::text, created_at, reporter_id
+        FROM reports WHERE target_type = $1::report_target_type AND target_id = $2
+        ORDER BY created_at
+        "#,
+    )
+    .bind(&summary.target_type)
+    .bind(summary.target_id)
     .fetch_all(&mut *conn)
     .await
     .db_err("Database error")?;
@@ -212,12 +271,13 @@ pub async fn open_evidence(
     .await
     .db_err("Database error")?;
 
-    Ok(Json(EvidenceDetail { summary, content, decided_by, decision_note, files, events }))
+    Ok(Json(EvidenceDetail { summary, decided_by, decision_note, versions, reports, events }))
 }
 
 /// POST /admin/evidence/:id/files/:file_id (admin only) -- the preserved
 /// file itself. Logged as 'file_viewed' with the reason. Before the copy
 /// into the evidence zone has succeeded, it's served from the original.
+/// Purged records have no file rows left, so they 404 here.
 pub async fn get_evidence_file(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -230,8 +290,8 @@ pub async fn get_evidence_file(
     let (source_key, storage_key, content_type, copied) = sqlx::query_as::<_, (String, String, String, bool)>(
         r#"
         SELECT f.source_key, f.storage_key, f.content_type, f.copied_at IS NOT NULL
-        FROM evidence_files f JOIN evidence_records e ON e.id = f.evidence_id
-        WHERE f.id = $1 AND f.evidence_id = $2 AND e.purged_at IS NULL
+        FROM evidence_files f
+        WHERE f.id = $1 AND f.evidence_id = $2
         "#,
     )
     .bind(file_id)

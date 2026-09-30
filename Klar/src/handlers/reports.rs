@@ -149,6 +149,10 @@ pub async fn create_report(
         _ => unreachable!("validated above"),
     }
 
+    // One transaction: the report, the auto-moderation and the evidence
+    // snapshot of the reported state commit together.
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+
     let report = sqlx::query_as::<_, ReportRow>(
         r#"
         INSERT INTO reports (reporter_id, target_type, target_id, reason, details)
@@ -161,54 +165,69 @@ pub async fn create_report(
     .bind(input.target_id)
     .bind(&input.reason)
     .bind(&input.details)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
     .db_err("Failed to submit report")?;
 
     // Auto-moderation: only posts/comments have a moderation_status to
     // update (a "user" report has no content to hide -- it just queues
     // for admin review at whatever priority its reason implies).
+    let mut newly_hidden = false;
     if input.target_type == "post" {
         if is_critical(&input.reason) {
             // Only the transition to hidden rotates the media keys, so a
             // second CSAM report on an already-hidden post doesn't move
             // the files again.
-            let newly_hidden = sqlx::query(
+            newly_hidden = sqlx::query(
                 "UPDATE posts SET moderation_status = 'hidden' WHERE id = $1 AND moderation_status != 'hidden'"
             )
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to auto-hide post", "Database error")?
                 .rows_affected() > 0;
-
-            // Runs in the background: the reporter shouldn't wait on (or
-            // see errors from) storage round-trips, and every failure is
-            // logged with the post ID for manual follow-up.
-            if newly_hidden {
-                let state = state.clone();
-                let post_id = input.target_id;
-                tokio::spawn(async move {
-                    if let Err(e) = rotate_post_media_keys(&state, post_id).await {
-                        tracing::error!("Media key rotation for hidden post {} failed: {}", post_id, e.message);
-                    }
-                });
-            }
         } else if is_high_severity(&input.reason) {
             // Never downgrade an already-hidden (CSAM) post back to
             // merely "flagged".
             sqlx::query("UPDATE posts SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to flag post", "Database error")?;
         }
     } else if input.target_type == "comment" {
         if is_critical(&input.reason) {
             sqlx::query("UPDATE comments SET moderation_status = 'hidden' WHERE id = $1")
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to auto-hide comment", "Database error")?;
         } else if is_high_severity(&input.reason) {
             sqlx::query("UPDATE comments SET moderation_status = 'flagged' WHERE id = $1 AND moderation_status = 'visible'")
-                .bind(input.target_id).execute(&state.db).await
+                .bind(input.target_id).execute(&mut *tx).await
                 .db_err_ctx("Failed to flag comment", "Database error")?;
         }
+    }
+
+    // Likely-illegal content is captured as reported, right away, so later
+    // edits or deletion can't destroy the evidence; see evidence.rs.
+    let preserved = if evidence::is_likely_illegal(&input.reason) {
+        evidence::capture(&mut tx, &input.target_type, input.target_id, evidence::Cause::Reported, Some(auth.user_id)).await?
+    } else {
+        evidence::Preserved::default()
+    };
+
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    // Runs in the background: the reporter shouldn't wait on (or see
+    // errors from) storage round-trips, and every failure is logged with
+    // the post ID for manual follow-up. The evidence copy goes first, so it
+    // reads the files before the key rotation moves them.
+    {
+        let state = state.clone();
+        let post_id = input.target_id;
+        tokio::spawn(async move {
+            evidence::finish(&state, preserved, Vec::new()).await;
+            if newly_hidden {
+                if let Err(e) = rotate_post_media_keys(&state, post_id).await {
+                    tracing::error!("Media key rotation for hidden post {} failed: {}", post_id, e.message);
+                }
+            }
+        });
     }
 
     tracing::info!(
@@ -290,6 +309,11 @@ async fn rotate_post_media_keys(state: &AppState, post_id: Uuid) -> Result<(), A
             }
         }
 
+        // A pending evidence copy of the old file now reads from the new one.
+        for (old, new) in old_keys.iter().zip(&new_keys) {
+            evidence::follow_moved_source(state, old, new).await?;
+        }
+
         // From here on a failure leaves the old file reachable; delete_media
         // logs each one with its key for manual cleanup.
         for old in &old_keys {
@@ -348,7 +372,8 @@ pub async fn get_reports(
                 WHEN 'comment' THEN u_comment.username
                 WHEN 'user' THEN u_target.username
             END as target_username,
-            ev.id as evidence_id
+            ev.id as evidence_id,
+            ev.content_deleted_at IS NOT NULL as evidence_content_deleted
         FROM reports r
         LEFT JOIN users u_reporter ON u_reporter.id = r.reporter_id
         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
@@ -358,7 +383,7 @@ pub async fn get_reports(
         LEFT JOIN users u_comment ON u_comment.id = c.user_id
         LEFT JOIN users u_target ON r.target_type = 'user' AND u_target.id = r.target_id
         LEFT JOIN LATERAL (
-            SELECT e.id FROM evidence_records e
+            SELECT e.id, e.content_deleted_at FROM evidence_records e
             WHERE e.target_type = r.target_type AND e.target_id = r.target_id AND e.purged_at IS NULL
             ORDER BY e.created_at DESC LIMIT 1
         ) ev ON true
