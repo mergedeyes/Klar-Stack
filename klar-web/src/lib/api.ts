@@ -520,6 +520,7 @@ export const followRequestsApi = {
 export type ReportReason =
   | 'spam' | 'harassment' | 'hate_speech' | 'violence'
   | 'self_harm' | 'sexual_content' | 'csam' | 'impersonation' | 'other'
+  | 'fraud' | 'ncii' | 'terrorism' | 'illegal_goods' | 'extremism'
   // Only on decisions from a rights claim; not a report reason users pick.
   | 'copyright';
 
@@ -567,12 +568,137 @@ export const adminReportsApi = {
       { method: "POST", body: JSON.stringify({ note: note || null }) },
       true
     ),
-  remove: (reportId: string, note?: string) =>
+  // violation: a catalog id (GET /admin/violations) or "none"; omitted, the
+  // backend uses the report reason's first type. justification is required
+  // for a type of another reason than the report's, and for "none".
+  remove: (reportId: string, note?: string, violation?: string, justification?: string) =>
     request<void>(
       `/admin/reports/${reportId}/remove`,
-      { method: "POST", body: JSON.stringify({ note: note || null }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ note: note || null, violation: violation ?? null, justification: justification || null }),
+      },
       true
     ),
+};
+
+// ── Account standing (strikes, warnings, suspensions) ────────────────────────
+
+export type StrikeSeverity = "none" | "minor" | "moderate" | "serious" | "severe";
+export type AccountMeasure = "warning" | "suspend_7d" | "suspend_30d" | "ban";
+
+// One entry of the violation catalog (Klar/src/standing.rs): what the
+// removed content was, with a written criterion and fixed points.
+export interface Violation {
+  id: string;
+  reason: ReportReason;
+  severity: StrikeSeverity;
+  label: string;
+  label_de: string;
+  criterion_de: string;
+}
+
+export interface Strike {
+  id: string;
+  decision_id: string;
+  violation: string;
+  violation_label: string;
+  violation_label_de: string;
+  severity: Exclude<StrikeSeverity, "none">;
+  // What the admin gave; points is higher when the repeat factor applied
+  // (third strike for the same reason within 30 days counts 1.5 times).
+  base_points: number;
+  points: number;
+  created_at: string;
+  // null: doesn't expire (severe violations).
+  expires_at: string | null;
+  reason: ReportReason;
+  target_type: ReportTargetType;
+  content_excerpt: string | null;
+}
+
+export interface Suspension {
+  // null for a permanent suspension.
+  until: string | null;
+  permanent: boolean;
+}
+
+export interface MyStanding {
+  score: number;
+  max_score: number;
+  suspension: Suspension | null;
+  strikes: Strike[];
+  thresholds: { score: number; measure: AccountMeasure }[];
+}
+
+export interface AccountMeasureRecord {
+  id: string;
+  restriction: "warning" | "suspended" | "banned";
+  reason: ReportReason;
+  suspension_days: number | null;
+  standing_score: number | null;
+  created_at: string;
+  lifted_at: string | null;
+  superseded: boolean;
+  delivered: boolean;
+  objection_status: "pending" | "rejected" | "accepted" | null;
+}
+
+export interface AdminStanding extends MyStanding {
+  user_id: string;
+  username: string;
+  // What the score suggests next; the admin decides.
+  suggestion: AccountMeasure | null;
+  measures: AccountMeasureRecord[];
+}
+
+export const standingApi = {
+  mine: () => request<MyStanding>("/users/me/standing", {}, true),
+};
+
+// What an admin sees when opening a strike: the removed content as it was,
+// its context and the reports on it. Opening is logged.
+export interface StrikeDetail extends Strike {
+  username: string;
+  snapshot: {
+    content: {
+      type: "post" | "comment";
+      text: string | null;
+      created_at: string;
+      edited_at: string | null;
+      image_count?: number;
+    } | null;
+    context: {
+      post: { id: string; text: string | null; author: string; created_at: string } | null;
+      parent_comment: { text: string; author: string; created_at: string } | null;
+    } | null;
+    reports: { reason: ReportReason; details: string | null; created_at: string }[];
+    removed_at: string;
+  };
+  criterion_de: string | null;
+  // Set when the admin classified it under another reason than the report's.
+  reported_reason: ReportReason | null;
+  justification: string | null;
+  decided_by: string | null;
+  decided_at: string;
+  evidence_id: string | null;
+}
+
+export const adminStandingApi = {
+  list: () => request<AdminStanding[]>("/admin/standing", {}, true),
+  violations: () => request<Violation[]>("/admin/violations", {}, true),
+  openStrike: (id: string) =>
+    request<StrikeDetail>(`/admin/strikes/${id}/open`, { method: "POST", body: "{}" }, true),
+  get: (username: string) =>
+    request<AdminStanding>(`/admin/users/${encodeURIComponent(username)}/standing`, {}, true),
+  apply: (username: string, measure: AccountMeasure, reason: ReportReason) =>
+    request<AdminStanding>(
+      `/admin/users/${encodeURIComponent(username)}/measures`,
+      { method: "POST", body: JSON.stringify({ measure, reason }) },
+      true
+    ),
+  lift: (username: string) =>
+    request<void>(`/admin/users/${encodeURIComponent(username)}/lift-suspension`, { method: "POST", body: "{}" }, true),
 };
 
 // ── Evidence (admin) ──────────────────────────────────────────────────────────
@@ -693,14 +819,17 @@ export interface ModerationDecision {
   id: string;
   target_type: "post" | "comment" | "user";
   // removed: deleted by the moderation team; hidden / flagged: automatic,
-  // after a report, until reviewed.
-  restriction: "removed" | "hidden" | "flagged";
+  // after a report, until reviewed. warning / suspended / banned: account
+  // measures (target_type "user").
+  restriction: "removed" | "hidden" | "flagged" | "warning" | "suspended" | "banned";
   automated: boolean;
   reason: ReportReason;
   ground_type: "illegal" | "terms";
   ground: string;
   explanation: string;
   content_excerpt: string | null;
+  // Length of a temporary suspension.
+  suspension_days: number | null;
   created_at: string;
   lifted_at: string | null;
   superseded: boolean;

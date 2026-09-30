@@ -54,7 +54,8 @@ pub async fn search_users(
     let users = sqlx::query_as::<_, UserRow>(
         r#"
         SELECT * FROM users
-        WHERE username ILIKE $1 OR display_name ILIKE $1
+        WHERE (username ILIKE $1 OR display_name ILIKE $1)
+          AND (suspended_until IS NULL OR suspended_until <= NOW())
         ORDER BY
             CASE WHEN username ILIKE $2 THEN 0 ELSE 1 END,
             username
@@ -84,10 +85,17 @@ pub async fn get_user(
     auth: OptionalAuthUser,
     Path(username): Path<String>,
 ) -> Result<Json<UserPublicResponse>, AppError> {
+    // A suspended account's profile is hidden from everyone but itself
+    // (standing.rs); to others it looks like it doesn't exist.
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE LOWER(username) = LOWER($1)"
+        r#"
+        SELECT * FROM users
+        WHERE LOWER(username) = LOWER($1)
+          AND (id = $2 OR suspended_until IS NULL OR suspended_until <= NOW())
+        "#
     )
     .bind(&username)
+    .bind(auth.user_id)
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?

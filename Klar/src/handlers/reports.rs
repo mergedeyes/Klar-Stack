@@ -37,22 +37,26 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::evidence;
 use crate::moderation::{self, NewDecision, PendingNotices, Restriction};
+use crate::standing;
 use crate::handlers::auth::AppState;
 use crate::handlers::posts::delete_post_with_media;
 use crate::models::{AdminReportRow, CreateReportRequest, ReportRow};
 use crate::utils::{delete_media, is_admin_email, DbResultExt, ResolveMedia};
 
-const VALID_REASONS: &[&str] = &[
+pub const VALID_REASONS: &[&str] = &[
     "spam", "harassment", "hate_speech", "violence",
     "self_harm", "sexual_content", "csam", "impersonation", "other",
+    "fraud", "ncii", "terrorism", "illegal_goods", "extremism",
 ];
 const VALID_TARGET_TYPES: &[&str] = &["post", "comment", "user"];
 
 /// CSAM gets zero tolerance: a single report hides the content
 /// immediately, with no "view anyway" interstitial and no waiting for a
-/// second corroborating report.
+/// second corroborating report. Non-consensual intimate images too: every
+/// further view repeats the harm to the person shown, which outweighs the
+/// risk of a false report hiding a post until review.
 fn is_critical(reason: &str) -> bool {
-    reason == "csam"
+    matches!(reason, "csam" | "ncii")
 }
 
 /// Serious enough to warn readers, not serious enough to let one report
@@ -60,7 +64,7 @@ fn is_critical(reason: &str) -> bool {
 /// a real abuse vector, so these get an interstitial ("may violate our
 /// guidelines, pending review") rather than outright hiding.
 fn is_high_severity(reason: &str) -> bool {
-    matches!(reason, "violence" | "self_harm" | "sexual_content")
+    matches!(reason, "violence" | "self_harm" | "sexual_content" | "terrorism")
 }
 
 pub async fn require_admin(db: &sqlx::PgPool, auth: &AuthUser) -> Result<(), AppError> {
@@ -233,6 +237,7 @@ pub async fn create_report(
             report_id: Some(report.id),
             rights_claim_id: None,
             detail: None,
+            classification: None,
         }).await?,
         None => PendingNotices::default(),
     };
@@ -427,8 +432,8 @@ pub async fn get_reports(
         ORDER BY
             r.created_at < NOW() - INTERVAL '30 days' DESC,
             CASE
-                WHEN r.reason = 'csam' THEN 0
-                WHEN r.reason IN ('violence', 'self_harm', 'sexual_content') THEN 1
+                WHEN r.reason IN ('csam', 'ncii') THEN 0
+                WHEN r.reason IN ('violence', 'self_harm', 'sexual_content', 'terrorism') THEN 1
                 ELSE 2
             END,
             r.created_at DESC
@@ -449,6 +454,13 @@ pub async fn get_reports(
 #[derive(Debug, Deserialize, Default)]
 pub struct ReviewNote {
     pub note: Option<String>,
+    /// Only for a removal: the violation type from the catalog (or "none"),
+    /// which sets the author's strike (standing.rs). Defaults to the
+    /// report reason's first type.
+    pub violation: Option<String>,
+    /// Required when `violation` belongs to another reason than the
+    /// report's, or is "none". Internal.
+    pub justification: Option<String>,
 }
 
 /// POST /admin/reports/:id/dismiss (admin only) -- clears the report and,
@@ -562,6 +574,11 @@ pub async fn remove_reported_content(
 
     let (target_type, target_id, reason) = report;
 
+    let classification = standing::classify(&reason, input.violation.as_deref(), input.justification.as_deref())?;
+    // The statement cites the ground of what the team found, which can
+    // differ from what the reporter picked.
+    let decided_reason = classification.violation.map(|v| v.reason).unwrap_or(reason.as_str()).to_string();
+
     // The statement of reasons for the author, recorded before the delete
     // (it reads the author and an excerpt from the content).
     let mut notices = moderation::record_decision(&mut tx, NewDecision {
@@ -569,11 +586,12 @@ pub async fn remove_reported_content(
         target_id,
         restriction: Restriction::Removed,
         automated: false,
-        reason: &reason,
+        reason: &decided_reason,
         decided_by: Some(auth.user_id),
         report_id: Some(report_id),
         rights_claim_id: None,
         detail: None,
+        classification: Some(classification),
     }).await?;
 
     // Storage objects can't take part in the transaction, so their keys

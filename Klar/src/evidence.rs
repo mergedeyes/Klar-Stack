@@ -41,6 +41,7 @@ use crate::utils::{delete_media, DbResultExt};
 /// list so a lawyer's answer is a one-line change.
 pub const LIKELY_ILLEGAL_REASONS: &[&str] = &[
     "csam", "violence", "hate_speech", "harassment", "sexual_content", "self_harm",
+    "fraud", "ncii", "terrorism", "illegal_goods", "extremism",
 ];
 
 pub fn is_likely_illegal(reason: &str) -> bool {

@@ -76,6 +76,14 @@ loads more as you scroll.
 - [ ] Dismissing the last report on preserved content purges the record at the next sweep; a legal hold stops the purge
 - [ ] A removal, automatic hide or warning gives the author a "Klar" notice in the bell and an email linking to the statement; a CSAM statement only arrives after an admin sends it from `/admin/moderation`
 - [ ] The author can object once from the statement page; the admin's answer shows up there and in the bell; the reporter sees the outcome under Settings → Moderation
+- [ ] Removing a report shows "If removed, classify as" with the report's own reason first and the criterion below; picking a type of another reason, or "No strike", asks for a justification and keeps Remove disabled until it's filled
+- [ ] After removal the author's statement names the type, its criterion and the points (not the justification); Settings → Moderation shows the strike and its expiry date
+- [ ] A third removal for the same reason within 30 days shows "(repeat, ×1.5)" and the statement explains it
+- [ ] In `/admin/standing`, "Show content" on a strike shows the removed text, the post / replied-to comment, the reports and who removed it; the evidence link appears for likely-illegal reasons
+- [ ] The report dialog offers the new reasons (extremism, intimate images, terrorism, scam, illegal goods); an "intimate images" report hides the post at once, a "terrorism" report shows it behind a warning
+- [ ] `/admin/standing` lists accounts from 25 points on, with a suggestion: a warning first, a suspension only once the account was warned
+- [ ] A suspended account gets a statement and a red notice under Settings → Moderation; posting, commenting, liking, following, chatting and editing the profile fail with a "suspended until" message; reading, objecting, exporting, deleting own posts and deleting the account still work
+- [ ] While suspended, the profile, posts and comments are gone for another account (profile 404, not in search, feed or discovery); "Lift suspension" or an accepted objection brings everything back
 
 ## Feedback
 

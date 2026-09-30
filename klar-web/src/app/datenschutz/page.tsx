@@ -225,6 +225,29 @@ export default function DatenschutzPage() {
             Inhaltsauszug und die Verknüpfung mit dir.
           </p>
           <p className="mt-2">
+            <strong>Punkte und Kontomaßnahmen:</strong> Entfernt unser Team
+            einen Inhalt von dir wegen eines Verstoßes, vermerken wir je nach
+            Schwere Punkte an deinem Konto (Art. 6 Abs. 1 lit. f DSGVO; unser
+            berechtigtes Interesse ist eine sichere Plattform und eine
+            einheitliche, nachvollziehbare Moderation). Die Punkte verfallen
+            je nach Schwere nach 90 Tagen, 180 Tagen oder einem Jahr und
+            werden dann gelöscht; nur bei schwersten Verstößen verfallen sie
+            nicht. Die Summe dient unserem Team als Anhaltspunkt für
+            Verwarnungen und Sperrungen — entschieden wird immer von einem
+            Menschen, nie automatisch (Art. 22 DSGVO). Deinen Punktestand und
+            die zugrunde liegenden Entscheidungen siehst du unter
+            „Moderation“ in den Einstellungen; sie sind auch in deinem
+            Datenexport enthalten. Damit unser Team später nachvollziehen
+            kann, worum es ging, speichern wir zu jedem Punkteeintrag den
+            entfernten Text mit Zeitpunkten, bei Kommentaren den Beitrag und
+            den Kommentar, auf den du geantwortet hast, sowie Grund,
+            Beschreibung und Zeitpunkt der Meldungen (nicht, wer gemeldet
+            hat); Bilder werden dafür nicht kopiert. Jeder Abruf durch unser
+            Team wird protokolliert, das Protokoll nach einem Jahr gelöscht.
+            Diese Kopie wird zusammen mit den Punkten gelöscht, also wenn sie
+            verfallen, dein Widerspruch Erfolg hat oder du dein Konto löschst.
+          </p>
+          <p className="mt-2">
             <strong>Meldungen von Rechteverletzungen:</strong> Wer über das
             Formular „Rechteverletzung melden“ geltend macht, dass ein Beitrag
             ein Urheber-, Marken- oder anderes Recht verletzt — auch ohne

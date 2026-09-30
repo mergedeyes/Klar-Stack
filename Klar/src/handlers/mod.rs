@@ -17,4 +17,5 @@ pub mod feed;
 pub mod feedback;
 pub mod reports;
 pub mod rights;
+pub mod standing;
 pub mod test_phase;

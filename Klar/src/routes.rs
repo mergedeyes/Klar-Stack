@@ -123,6 +123,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/me/avatar", post(handlers::users::upload_avatar))
         .route("/users/me/blocked", get(handlers::blocks::get_blocked_users))
         .route("/users/me/export", get(handlers::users::export_my_data))
+        .route("/users/me/standing", get(handlers::standing::my_standing))
         .route("/users/me/keep-account", get(handlers::test_phase::get_keep_account)
             .patch(handlers::test_phase::set_keep_account))
         .route("/users/me/follow-requests", get(handlers::follows::get_follow_requests))
@@ -209,6 +210,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/rights-claims/{claim_id}/request-evidence", post(handlers::rights::request_evidence))
         .route("/admin/rights-claims/{claim_id}/accept", post(handlers::rights::accept_claim))
         .route("/admin/rights-claims/{claim_id}/decline", post(handlers::rights::decline_claim))
+        .route("/admin/standing", get(handlers::standing::list_standing))
+        .route("/admin/violations", get(handlers::standing::list_violations))
+        .route("/admin/strikes/{strike_id}/open", post(handlers::standing::open_strike))
+        .route("/admin/users/{username}/standing", get(handlers::standing::get_user_standing))
+        .route("/admin/users/{username}/measures", post(handlers::standing::apply_measure))
+        .route("/admin/users/{username}/lift-suspension", post(handlers::standing::lift_suspension))
         .route("/admin/evidence", get(handlers::evidence::list_evidence))
         .route("/admin/evidence/{evidence_id}/open", post(handlers::evidence::open_evidence))
         .route("/admin/evidence/{evidence_id}/files/{file_id}", post(handlers::evidence::get_evidence_file))
@@ -216,6 +223,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/evidence/{evidence_id}/authority-report", post(handlers::evidence::record_authority_report))
         // ────────────────────────────────────────────────────────────
 
+        // Suspended accounts are read-only (standing.rs). A route_layer, so
+        // it sees the matched route template, and runs after the rate limit.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::standing::enforce_suspension,
+        ))
         .route_layer(middleware::from_fn_with_state(
             general_limiter,
             rate_limit::rate_limit_middleware,

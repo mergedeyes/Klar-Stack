@@ -58,7 +58,8 @@ pub async fn require_visible_post(
 ) -> Result<Uuid, AppError> {
     let (owner_id, owner_is_private, is_hidden) = sqlx::query_as::<_, (Uuid, bool, bool)>(
         r#"
-        SELECT p.user_id, u.is_private, p.moderation_status = 'hidden'
+        SELECT p.user_id, u.is_private,
+               p.moderation_status = 'hidden' OR COALESCE(u.suspended_until > NOW(), FALSE)
         FROM posts p
         JOIN users u ON u.id = p.user_id
         WHERE p.id = $1
@@ -72,6 +73,7 @@ pub async fn require_visible_post(
 
     let is_owner = viewer_id == Some(owner_id);
 
+    // A suspended author's posts are hidden the same way (standing.rs).
     if is_hidden && !is_owner {
         return Err(AppError::not_found("Post not found"));
     }
@@ -104,6 +106,7 @@ pub async fn preview_image(
         JOIN users u ON u.id = p.user_id
         JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
         WHERE p.id = $1 AND NOT u.is_private AND p.moderation_status = 'visible'
+          AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
         "#,
     )
     .bind(post_id)
@@ -416,10 +419,16 @@ pub async fn get_user_posts(
 
     // Not routed through utils::find_user_id_by_username: this lookup also
     // needs is_private, which that helper doesn't fetch.
+    // A suspended account's profile doesn't exist for anyone but itself.
     let owner = sqlx::query_as::<_, (Uuid, bool)>(
-        "SELECT id, is_private FROM users WHERE LOWER(username) = LOWER($1)"
+        r#"
+        SELECT id, is_private FROM users
+        WHERE LOWER(username) = LOWER($1)
+          AND (id = $2 OR suspended_until IS NULL OR suspended_until <= NOW())
+        "#
     )
     .bind(&username)
+    .bind(auth.user_id)
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?
@@ -521,6 +530,7 @@ pub async fn get_feed(
         WHERE fi.user_id = $1
             AND (fi.created_at, fi.post_id) < ($2, $3)
             AND p.moderation_status != 'hidden'
+            AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
         ORDER BY fi.created_at DESC, fi.post_id DESC
         LIMIT $4
         "#

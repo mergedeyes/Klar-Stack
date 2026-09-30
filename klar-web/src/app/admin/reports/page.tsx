@@ -4,16 +4,16 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Archive, Clock, FileWarning, Scale, ShieldAlert, Trash2, X } from "lucide-react";
+import { Archive, Clock, FileWarning, Gauge, Scale, ShieldAlert, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { adminReportsApi, type AdminReport } from "@/lib/api";
+import { adminReportsApi, adminStandingApi, type AdminReport, type Violation } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import { getMediaUrl } from "@/lib/utils/media";
-import { REASON_LABELS } from "@/lib/moderation";
+import { REASON_LABELS, SEVERITY_LABELS } from "@/lib/moderation";
 
-const CRITICAL_REASONS = new Set(["csam"]);
-const HIGH_REASONS = new Set(["violence", "self_harm", "sexual_content"]);
+const CRITICAL_REASONS = new Set(["csam", "ncii"]);
+const HIGH_REASONS = new Set(["violence", "self_harm", "sexual_content", "terrorism"]);
 
 function SeverityBadge({ reason }: { reason: string }) {
   if (CRITICAL_REASONS.has(reason)) {
@@ -36,6 +36,21 @@ export default function AdminReportsPage() {
   // Which report currently has its note field open, and what's typed in
   // it -- keyed by report id so multiple rows don't fight over one input.
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  // The violation catalog, and per report the type picked for a removal
+  // (unset: the report reason's first type) and the justification.
+  const [violations, setViolations] = useState<Violation[]>([]);
+  const [picks, setPicks] = useState<Record<string, string>>({});
+  const [justifications, setJustifications] = useState<Record<string, string>>({});
+
+  // The type a removal would be classified as, and whether it needs a
+  // justification: another reason than the reporter's, or no strike at all.
+  const pickFor = (report: AdminReport) =>
+    picks[report.id] ?? violations.find((v) => v.reason === report.reason)?.id ?? "none";
+  const needsJustification = (report: AdminReport) => {
+    const pick = pickFor(report);
+    if (pick === "none") return true;
+    return violations.find((v) => v.id === pick)?.reason !== report.reason;
+  };
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
@@ -43,6 +58,7 @@ export default function AdminReportsPage() {
 
   useEffect(() => {
     if (!user) return;
+    adminStandingApi.violations().then(setViolations).catch(() => {});
     adminReportsApi.list()
       .then(setReports)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load reports"))
@@ -68,7 +84,13 @@ export default function AdminReportsPage() {
     if (!window.confirm(prompt)) return;
     setBusyId(report.id);
     try {
-      await adminReportsApi.remove(report.id, noteDrafts[report.id]);
+      const classify = report.target_type !== "user" && !report.evidence_content_deleted && violations.length > 0;
+      await adminReportsApi.remove(
+        report.id,
+        noteDrafts[report.id],
+        classify ? pickFor(report) : undefined,
+        classify ? justifications[report.id] : undefined,
+      );
       setReports((prev) => prev.filter((r) => r.id !== report.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove content");
@@ -89,6 +111,9 @@ export default function AdminReportsPage() {
         </Link>
         <Link href="/admin/moderation" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <Scale size={16} /> Objections
+        </Link>
+        <Link href="/admin/standing" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Gauge size={16} /> Standing
         </Link>
         <Link href="/admin/evidence" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <Archive size={16} /> Evidence
@@ -193,6 +218,58 @@ export default function AdminReportsPage() {
                 disabled={busyId === report.id}
               />
 
+              {/* What the content was, if it is removed: a type from the
+                  catalog, each with a written criterion and fixed points,
+                  so the choice is "which described case is this", not "how
+                  many points". Departing from the reporter's reason or
+                  giving no strike needs a justification. */}
+              {report.target_type !== "user" && !report.evidence_content_deleted && violations.length > 0 && (() => {
+                const pick = pickFor(report);
+                const chosen = violations.find((v) => v.id === pick);
+                const reasons = [...new Set(violations.map((v) => v.reason))];
+                return (
+                  <div className="mb-2 space-y-1.5 text-sm">
+                    <label className="flex flex-wrap items-center gap-2">
+                      <span className="text-muted-foreground">If removed, classify as:</span>
+                      <select
+                        value={pick}
+                        onChange={(e) => setPicks((prev) => ({ ...prev, [report.id]: e.target.value }))}
+                        disabled={busyId === report.id}
+                        className="min-w-0 max-w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+                      >
+                        {/* The report's own reason first. */}
+                        {[report.reason, ...reasons.filter((r) => r !== report.reason)].map((reason) => (
+                          <optgroup key={reason} label={REASON_LABELS[reason] ?? reason}>
+                            {violations.filter((v) => v.reason === reason).map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.label} · {SEVERITY_LABELS[v.severity]}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                        <option value="none">No strike (needs a justification)</option>
+                      </select>
+                    </label>
+                    {chosen && <p className="text-xs text-muted-foreground">{chosen.criterion_de}</p>}
+                    {needsJustification(report) && (
+                      <input
+                        value={justifications[report.id] ?? ""}
+                        onChange={(e) => setJustifications((prev) => ({ ...prev, [report.id]: e.target.value }))}
+                        placeholder={
+                          pick === "none"
+                            ? "Why no strike? (required, internal)"
+                            : "Why another reason than the report's? (required, internal)"
+                        }
+                        maxLength={1000}
+                        disabled={busyId === report.id}
+                        aria-label="Justification"
+                        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
+                      />
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -207,7 +284,11 @@ export default function AdminReportsPage() {
                     size="sm"
                     variant="destructive"
                     onClick={() => handleRemove(report)}
-                    disabled={busyId === report.id}
+                    disabled={
+                      busyId === report.id ||
+                      (!report.evidence_content_deleted && violations.length > 0 &&
+                        needsJustification(report) && !justifications[report.id]?.trim())
+                    }
                   >
                     {/* Already deleted and preserved: nothing left to
                         remove, but confirming keeps the evidence. */}
