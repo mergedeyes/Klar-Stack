@@ -14,7 +14,7 @@ test.describe("post modal", () => {
   test.skip(({ isMobile }) => isMobile, "desktop only");
 
   test("opening gives the post its address; back, Escape and close restore it", async ({ page, request }) => {
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const caption = uniqueName("caption");
     const post = await upload(request, alice, caption);
     await signIn(page, alice);
@@ -35,7 +35,7 @@ test.describe("post modal", () => {
   });
 
   test("links inside the modal leave its history entry", async ({ page, request }) => {
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const caption = uniqueName("caption");
     await upload(request, alice, caption);
     await signIn(page, alice);
@@ -51,7 +51,7 @@ test.describe("post modal", () => {
 
   test("share copies the post's link", async ({ page, request, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const caption = uniqueName("caption");
     const post = await upload(request, alice, caption);
     await signIn(page, alice);
@@ -64,7 +64,7 @@ test.describe("post modal", () => {
   });
 
   test("reloading an open post shows the post page", async ({ page, request }) => {
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const caption = uniqueName("caption");
     await upload(request, alice, caption);
     await signIn(page, alice);
@@ -81,7 +81,7 @@ test.describe("post modal", () => {
 
 test.describe("post page", () => {
   test("fits the layout to the screen size", async ({ page, request, isMobile }) => {
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const post = await upload(request, alice, "A portrait photo", "portrait");
     await signIn(page, alice);
     await page.goto(`/posts/${post}`);
@@ -101,7 +101,7 @@ test.describe("post page", () => {
   });
 
   test("likes and comments work on the page", async ({ page, request }) => {
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const post = await upload(request, alice, "Comment on me");
     await signIn(page, alice);
     await page.goto(`/posts/${post}`);
@@ -119,7 +119,7 @@ test.describe("post page", () => {
   });
 
   test("deleting from the page returns to the profile", async ({ page, request }) => {
-    const alice = await signUp(request, "alice");
+    const alice = await signUp("alice");
     const post = await upload(request, alice, "Delete me");
     await signIn(page, alice);
     await page.goto(`/posts/${post}`);
@@ -130,7 +130,7 @@ test.describe("post page", () => {
   });
 
   test("a private account's post needs a follow", async ({ page, request }) => {
-    const bob = await signUp(request, "bob");
+    const bob = await signUp("bob");
     const post = await upload(request, bob, "Private post");
     await apiCall(request, bob, "PATCH", "/users/me", { is_private: true });
     await page.goto(`/posts/${post}`);
