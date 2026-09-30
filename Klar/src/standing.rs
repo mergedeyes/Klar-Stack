@@ -151,7 +151,9 @@ pub const VIOLATIONS: &[Violation] = &[
       "Glorifying Nazism/fascism, extremist symbols", "Verherrlichung von NS/Faschismus, extremistische Symbole",
       "Verherrlichung, Verharmlosung oder Rechtfertigung des Nationalsozialismus, des Faschismus oder ihrer \
        Verbrechen, oder Verwenden extremistischer Symbole oder Parolen, ohne Werbung für eine Organisation."),
-    v("extremism_promotion", "extremism", Severity::Serious,
+    // Severe: recruiting for an extremist organisation and Holocaust denial
+    // (§ 130(3) StGB) suggest a permanent suspension on the first case.
+    v("extremism_promotion", "extremism", Severity::Severe,
       "Promoting an extremist organisation, Holocaust denial",
       "Werbung für eine extremistische Organisation, Holocaustleugnung",
       "Werbung für, Unterstützung von oder Anwerbung für eine extremistische Organisation im Sinne von \
@@ -161,7 +163,10 @@ pub const VIOLATIONS: &[Violation] = &[
       "Verstörende Darstellung von Gewalt oder Verletzungen ohne dokumentarischen oder aufklärenden Zusammenhang."),
     v("violence_glorifying", "violence", Severity::Moderate, "Glorifying violence", "Verherrlichung von Gewalt",
       "Gewalt gegen Menschen oder Tiere wird gefeiert, verherrlicht oder als nachahmenswert dargestellt."),
-    v("terror_propaganda", "terrorism", Severity::Serious, "Terrorist propaganda", "Terroristische Propaganda",
+    // Severe, like a concrete threat: terrorist content is a crime (§§ 89a,
+    // 91, 129a StGB) and has to go within an hour of a removal order (EU
+    // Regulation 2021/784). The criterion is promoting, not reporting on it.
+    v("terror_propaganda", "terrorism", Severity::Severe, "Terrorist propaganda", "Terroristische Propaganda",
       "Inhalte terroristischer Organisationen oder deren Verherrlichung, ohne konkrete Drohung."),
     v("terror_threat", "terrorism", Severity::Severe, "Concrete threat of an attack or serious violence",
       "Konkrete Androhung eines Anschlags oder schwerer Gewalt",
@@ -715,7 +720,9 @@ mod tests {
         assert_eq!(ids.len(), VIOLATIONS.len());
         assert!(violation("none").is_none(), "'none' means no strike");
         assert_eq!(violation("bot_account").unwrap().severity, Severity::Severe);
-        assert_eq!(suggest(violation("bot_account").unwrap().severity.points(), true, false), Some(Measure::Ban));
+        for id in ["bot_account", "terror_propaganda", "terror_threat", "extremism_promotion"] {
+            assert_eq!(suggest(violation(id).unwrap().severity.points(), true, false), Some(Measure::Ban), "{id}");
+        }
     }
 
     #[test]

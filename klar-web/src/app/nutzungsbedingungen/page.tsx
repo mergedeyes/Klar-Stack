@@ -194,13 +194,13 @@ export default function NutzungsbedingungenPage() {
                 <strong>Hassrede:</strong> Abwertende Verallgemeinerung über eine Gruppe (20); Entmenschlichung oder Hetze gegen eine Gruppe (40)
               </li>
               <li>
-                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, extremistische Symbole (20); Werbung für eine extremistische Organisation, Holocaustleugnung (40)
+                <strong>Extremismus:</strong> Verherrlichung von NS/Faschismus, extremistische Symbole (20); Werbung für eine extremistische Organisation, Holocaustleugnung (100)
               </li>
               <li>
                 <strong>Gewalt:</strong> Drastische Gewaltdarstellung ohne Einordnung (5); Verherrlichung von Gewalt (20)
               </li>
               <li>
-                <strong>Terrorismus:</strong> Terroristische Propaganda (40); Konkrete Androhung eines Anschlags oder schwerer Gewalt (100)
+                <strong>Terrorismus:</strong> Terroristische Propaganda (100); Konkrete Androhung eines Anschlags oder schwerer Gewalt (100)
               </li>
               <li>
                 <strong>Selbstverletzung:</strong> Eigene Krise (0); Aufforderung oder Anleitung zu Selbstverletzung (40)
@@ -235,7 +235,10 @@ export default function NutzungsbedingungenPage() {
             zählen die Punkte eineinhalbfach. Ab 25 Punkten kommt eine
             Verwarnung in Betracht, ab 50 eine Sperrung für 7 Tage, ab 75 für
             30 Tage und bei 100 Punkten eine dauerhafte Sperrung; einer
-            Sperrung geht in der Regel eine Verwarnung voraus. Die Punkte
+            Sperrung geht in der Regel eine Verwarnung voraus. Verstöße mit
+            100 Punkten, etwa terroristische Inhalte oder Werbung für
+            extremistische Organisationen, können auch ohne vorherige
+            Verwarnung zur dauerhaften Sperrung führen. Die Punkte
             sind ein Anhaltspunkt: Jede Verwarnung und Sperrung entscheidet ein
             Mitglied unseres Teams im Einzelfall, unter Berücksichtigung von
             Anzahl, Schwere und Umständen der Verstöße. Während einer Sperrung

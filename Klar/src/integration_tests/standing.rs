@@ -97,7 +97,9 @@ async fn the_catalog_sets_points_and_departing_from_the_report_needs_a_justifica
         "another reason than the report's needs a justification"
     );
     app.post(&admin, &remove, json!({ "violation": "terror_propaganda", "justification": "Shares IS videos" })).await.ok();
-    assert_eq!(standing(&app, &admin, "alice").await["score"], 80);
+    let s = standing(&app, &admin, "alice").await;
+    assert_eq!(s["score"], 100, "40 + 100, capped");
+    assert_eq!(s["suggestion"], "ban", "terrorist propaganda suggests a permanent suspension at once");
 
     // The statement names the type, its criterion and the points, and
     // cites the ground of what the team found; the justification stays
@@ -107,7 +109,7 @@ async fn the_catalog_sets_points_and_departing_from_the_report_needs_a_justifica
     assert_eq!(d["reason"], "terrorism");
     let explanation = d["explanation"].as_str().unwrap();
     assert!(explanation.contains("Eingestuft als „Terroristische Propaganda“"), "{explanation}");
-    assert!(explanation.contains("40 Punkte"), "{explanation}");
+    assert!(explanation.contains("100 Punkte"), "{explanation}");
     assert!(!d.to_string().contains("IS videos"));
     assert_eq!(
         app.scalar(&format!("SELECT violation_note FROM moderation_decisions WHERE id = '{}'", d["id"].as_str().unwrap())).await.as_deref(),
