@@ -17,8 +17,8 @@ for (const path of ["/login", "/register"]) {
 }
 
 for (const path of ["/settings", "/chats", "/moderation"]) {
-  test(`${path} (signed in) fits the screen`, async ({ page, request }) => {
-    await signIn(page, await signUp(request));
+  test(`${path} (signed in) fits the screen`, async ({ page }) => {
+    await signIn(page, await signUp());
     await page.goto(path);
     await expect(page.locator("footer")).toBeVisible();
     const m = await measure(page);

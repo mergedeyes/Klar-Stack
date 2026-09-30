@@ -18,7 +18,7 @@ async function metaTags(request: APIRequestContext, url: string) {
 }
 
 test("a public post has title, caption, image and noindex", async ({ request, baseURL }) => {
-  const alice = await signUp(request, "alice");
+  const alice = await signUp("alice");
   const post = await upload(request, alice, "Sunset over the Elbe", "portrait");
   const { tags, title } = await metaTags(request, `${baseURL}/posts/${post}`);
 
@@ -35,7 +35,7 @@ test("a public post has title, caption, image and noindex", async ({ request, ba
 });
 
 test("a private account's post reveals nothing", async ({ request, baseURL }) => {
-  const bob = await signUp(request, "bob");
+  const bob = await signUp("bob");
   const post = await upload(request, bob, "Private stuff");
   await apiCall(request, bob, "PATCH", "/users/me", { is_private: true });
   const { tags, title } = await metaTags(request, `${baseURL}/posts/${post}`);

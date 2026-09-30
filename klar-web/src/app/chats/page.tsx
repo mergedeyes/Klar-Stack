@@ -180,11 +180,14 @@ return (
         <TopNav active="chats" />
       </div>
 
-      {/* 3. Main: flex-1 nimmt sich den restlichen Platz. overflow-hidden verhindert Scrollen. */}
-      <main className="flex-1 w-full flex overflow-hidden px-[50px] min-h-0">
+      {/* 3. Main: flex-1 nimmt sich den restlichen Platz. overflow-hidden verhindert Scrollen.
+         Phones have no room for two columns, so below md the page shows
+         either the list or the open chat, never both, and the side
+         padding would only waste the narrow width. */}
+      <main className="flex-1 w-full flex overflow-hidden md:px-[50px] min-h-0">
         
         {/* Linke Sidebar: Chat-Liste */}
-        <div className="w-full md:w-1/3 border-r border-border flex flex-col bg-muted/10 min-h-0">
+        <div className={`${activeChat ? "hidden md:flex" : "flex"} w-full md:w-1/3 md:border-r border-border flex-col bg-muted/10 min-h-0`}>
           <div className="h-20 p-4 border-b border-border flex items-center justify-between bg-background">
             <h1 className="text-xl font-bold">Chats</h1>
             <Button variant="ghost" size="icon" onClick={() => setShowNewChat(true)}>
@@ -250,7 +253,7 @@ return (
         </div>
 
         {/* Rechte Hauptfläche: Chat-Fenster */}
-        <div className="hidden md:flex flex-1 flex-col bg-background border-r border-border overflow-hidden min-h-0">
+        <div className={`${activeChat ? "flex" : "hidden md:flex"} flex-1 flex-col bg-background md:border-r border-border overflow-hidden min-h-0`}>
           {activeChat ? (
             <ChatWindow 
               // Ein key erzwingt einen kompletten Rerender des ChatWindows, wenn der User wechselt
@@ -260,6 +263,7 @@ return (
               receiverUsername={activeChat.un}
               receiverAvatar={activeChat.av}
               onMessageSent={handleMessageSent}
+              onBack={() => setActiveChat(null)}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
