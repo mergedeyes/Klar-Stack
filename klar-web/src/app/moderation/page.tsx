@@ -74,6 +74,13 @@ export default function ModerationPage() {
                     : `Your account is suspended until ${new Date(standing.suspension.until).toLocaleString()}.`}{" "}
                   You can still read, object to the decision below, export your data and delete your account. Your
                   profile and content are hidden from others.
+                  {standing.suspension.deletion_at && (
+                    <>
+                      {" "}Unless you object, your account and everything in it will be deleted on{" "}
+                      <strong>{new Date(standing.suspension.deletion_at).toLocaleDateString()}</strong>. Export your data
+                      before then if you want to keep it.
+                    </>
+                  )}
                 </p>
               </div>
             )}

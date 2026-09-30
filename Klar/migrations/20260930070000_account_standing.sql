@@ -79,3 +79,9 @@ ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS standing_score INT;
 -- user; the statement shows the type and its criterion.
 ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS violation_type TEXT;
 ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS violation_note TEXT;
+-- A permanently suspended account is deleted once the objection window
+-- (six months) has passed without a pending objection, after a reminder
+-- two weeks before (standing::sweep_bans). Both steps are recorded on the
+-- ban decision, which stays as the audit trail after the account is gone.
+ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS deletion_notified_at TIMESTAMPTZ;
+ALTER TABLE moderation_decisions ADD COLUMN IF NOT EXISTS account_deleted_at TIMESTAMPTZ;

@@ -426,10 +426,14 @@ fn measure_text(measure: Measure, score: i32) -> String {
              und dieser Entscheidung widersprechen kannst du weiterhin.",
             measure.suspension_days().unwrap_or_default()
         ),
-        Measure::Ban => "Dein Konto ist dauerhaft gesperrt. Du kannst Klar nur noch lesen, und dein \
-             Profil und deine Inhalte sind für andere nicht sichtbar. Deine Daten exportieren, dein \
-             Konto löschen und dieser Entscheidung widersprechen kannst du weiterhin."
-            .to_string(),
+        Measure::Ban => format!(
+            "Dein Konto ist dauerhaft gesperrt. Du kannst Klar nur noch lesen, und dein Profil und deine \
+             Inhalte sind für andere nicht sichtbar. Deine Daten exportieren, dein Konto löschen und dieser \
+             Entscheidung widersprechen kannst du weiterhin. Nach Ablauf der Widerspruchsfrist von {} Tagen \
+             löschen wir dein Konto mit allen Inhalten, solange kein Widerspruch offen ist; zwei Wochen \
+             vorher erinnern wir dich per E-Mail.",
+            standing::BAN_DELETION_DAYS
+        ),
     };
     format!("{} {}", history, effect)
 }

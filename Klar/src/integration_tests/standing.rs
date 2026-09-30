@@ -328,3 +328,50 @@ async fn held_back_strikes_are_hidden_from_the_user(pool: PgPool) {
     assert_eq!(mine["score"], 0, "not revealed before the statement is released");
     assert!(mine["strikes"].as_array().unwrap().is_empty());
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_permanently_suspended_account_is_deleted_after_the_objection_window(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, carol, bob, admin) =
+        (app.register("alice").await, app.register("carol").await, app.register("bob").await, app.admin().await);
+
+    removed_comment(&app, &alice, &bob, &admin, Some("harassment_targeted")).await;
+    removed_comment(&app, &carol, &bob, &admin, Some("harassment_targeted")).await;
+    for name in ["alice", "carol"] {
+        app.post(&admin, &format!("/admin/users/{name}/measures"), json!({ "measure": "ban", "reason": "harassment" })).await.ok();
+    }
+    let mine = app.get(&alice, "/users/me/standing").await.ok().json();
+    assert!(!mine["suspension"]["deletion_at"].is_null(), "the user sees when");
+    let ban = |name: &str| format!(
+        "SELECT d.id FROM moderation_decisions d JOIN users u ON u.suspension_decision_id = d.id WHERE u.username = '{name}'"
+    );
+    let (alice_ban, carol_ban) = (app.scalar(&ban("alice")).await.unwrap(), app.scalar(&ban("carol")).await.unwrap());
+
+    // Carol objects: her deletion waits for the outcome.
+    app.post(&carol, &format!("/moderation/decisions/{carol_ban}/objection"), json!({ "text": "Please look at this again." })).await.ok();
+    assert!(app.get(&carol, "/users/me/standing").await.ok().json()["suspension"]["deletion_at"].is_null());
+
+    // Not yet due: nothing happens.
+    crate::standing::sweep_bans(&app.state).await;
+    assert!(app.scalar(&format!("SELECT deletion_notified_at FROM moderation_decisions WHERE id = '{alice_ban}'")).await.is_none());
+
+    // Two weeks before: the reminder, but no deletion yet.
+    app.exec("UPDATE moderation_decisions SET created_at = NOW() - INTERVAL '170 days' WHERE restriction = 'banned'").await;
+    crate::standing::sweep_bans(&app.state).await;
+    assert!(app.scalar(&format!("SELECT deletion_notified_at FROM moderation_decisions WHERE id = '{alice_ban}'")).await.is_some());
+    assert!(app.scalar(&format!("SELECT deletion_notified_at FROM moderation_decisions WHERE id = '{carol_ban}'")).await.is_none());
+    app.get(&alice, "/users/me").await.ok();
+
+    // Past the window, but the reminder is only a day old: still waits.
+    app.exec("UPDATE moderation_decisions SET created_at = NOW() - INTERVAL '190 days' WHERE restriction = 'banned'").await;
+    crate::standing::sweep_bans(&app.state).await;
+    app.get(&alice, "/users/me").await.ok();
+
+    // Reminder two weeks old: the account goes, the decision stays.
+    app.exec("UPDATE moderation_decisions SET deletion_notified_at = NOW() - INTERVAL '15 days' WHERE deletion_notified_at IS NOT NULL").await;
+    crate::standing::sweep_bans(&app.state).await;
+    assert_eq!(app.count("SELECT 1 FROM users WHERE username = 'alice'").await, 0);
+    assert!(app.scalar(&format!("SELECT account_deleted_at FROM moderation_decisions WHERE id = '{alice_ban}'")).await.is_some());
+    assert!(app.scalar(&format!("SELECT affected_user_id FROM moderation_decisions WHERE id = '{alice_ban}'")).await.is_none());
+    assert_eq!(app.count("SELECT 1 FROM users WHERE username = 'carol'").await, 1, "objection pending");
+}

@@ -186,7 +186,9 @@ function StandingCard({ initial, onError }: { initial: AdminStanding; onError: (
         <p className="mb-2 flex items-center gap-1.5 text-sm text-destructive">
           <Ban size={14} />
           {s.suspension.permanent || !s.suspension.until
-            ? "Suspended permanently"
+            ? `Suspended permanently${s.suspension.deletion_at
+                ? ` · account deleted on ${new Date(s.suspension.deletion_at).toLocaleDateString()}`
+                : " · deletion waits for the objection"}`
             : `Suspended until ${new Date(s.suspension.until).toLocaleString()}`}
         </p>
       )}

@@ -621,6 +621,9 @@ export interface Suspension {
   // null for a permanent suspension.
   until: string | null;
   permanent: boolean;
+  // Permanent suspensions: when the account is deleted (null while an
+  // objection is pending, since deletion waits for its outcome).
+  deletion_at: string | null;
 }
 
 export interface MyStanding {

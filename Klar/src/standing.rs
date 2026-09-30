@@ -465,23 +465,134 @@ pub struct Suspension {
     /// None for a permanent suspension.
     pub until: Option<DateTime<Utc>>,
     pub permanent: bool,
+    /// For a permanent suspension: when the account is deleted (see
+    /// sweep_bans). None while an objection is pending, since deletion
+    /// waits for its outcome.
+    pub deletion_at: Option<DateTime<Utc>>,
 }
 
 /// 'infinity' can't be decoded into a DateTime, so it's mapped to
 /// `permanent` in SQL.
 pub async fn suspension(conn: &mut PgConnection, user_id: Uuid) -> Result<Option<Suspension>, AppError> {
-    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, bool)>(
+    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, bool, Option<DateTime<Utc>>)>(
         r#"
-        SELECT CASE WHEN suspended_until = 'infinity' THEN NULL ELSE suspended_until END,
-               suspended_until = 'infinity'
-        FROM users WHERE id = $1 AND suspended_until > NOW()
+        SELECT CASE WHEN u.suspended_until = 'infinity' THEN NULL ELSE u.suspended_until END,
+               u.suspended_until = 'infinity',
+               CASE WHEN u.suspended_until = 'infinity' AND d.restriction = 'banned'
+                         AND d.objection_status IS DISTINCT FROM 'pending'
+                    THEN d.created_at + make_interval(days => $2) END
+        FROM users u LEFT JOIN moderation_decisions d ON d.id = u.suspension_decision_id
+        WHERE u.id = $1 AND u.suspended_until > NOW()
         "#,
     )
     .bind(user_id)
+    .bind(BAN_DELETION_DAYS)
     .fetch_optional(&mut *conn)
     .await
     .db_err("Database error")?;
-    Ok(row.map(|(until, permanent)| Suspension { until, permanent }))
+    Ok(row.map(|(until, permanent, deletion_at)| Suspension { until, permanent, deletion_at }))
+}
+
+/// A permanently suspended account is deleted when the objection window
+/// (DSA Art. 20(1): at least six months) has passed: keeping a banned
+/// account's data with no purpose left would break storage limitation
+/// (Art. 5(1)(e) GDPR). Not while an objection is pending, and not while
+/// the statement is still held back (CSAM), so nobody is deleted without
+/// having been told why. Likely-illegal content goes to the evidence store
+/// first, as with any account deletion.
+pub const BAN_DELETION_DAYS: i32 = 183;
+/// The reminder email goes out this many days before the deletion.
+pub const BAN_DELETION_NOTICE_DAYS: i32 = 14;
+
+/// Bans whose account is still there, not lifted, delivered, and without a
+/// pending objection. `$1` = days since the ban.
+const DUE_BANS: &str = r#"
+    SELECT d.id, u.id, u.email, d.created_at, d.deletion_notified_at
+    FROM users u JOIN moderation_decisions d ON d.id = u.suspension_decision_id
+    WHERE u.suspended_until = 'infinity' AND d.restriction = 'banned'
+      AND d.lifted_at IS NULL AND d.delivered_at IS NOT NULL
+      AND d.objection_status IS DISTINCT FROM 'pending'
+      AND d.account_deleted_at IS NULL
+      AND d.created_at <= NOW() - make_interval(days => $1)
+"#;
+
+type DueBan = (Uuid, Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>);
+
+/// Sends due reminders and deletes due accounts. Each step claims its
+/// decision row first (UPDATE ... WHERE ... IS NULL), so replicas running
+/// the sweep at once don't send twice or delete twice.
+pub(crate) async fn sweep_bans(state: &AppState) {
+    let reminders = sqlx::query_as::<_, DueBan>(DUE_BANS)
+        .bind(BAN_DELETION_DAYS - BAN_DELETION_NOTICE_DAYS)
+        .fetch_all(&state.db)
+        .await;
+    match reminders {
+        Ok(rows) => {
+            for (decision_id, _, email, banned_at, notified) in rows {
+                if notified.is_some() {
+                    continue;
+                }
+                let claimed = sqlx::query(
+                    "UPDATE moderation_decisions SET deletion_notified_at = NOW() WHERE id = $1 AND deletion_notified_at IS NULL",
+                )
+                .bind(decision_id)
+                .execute(&state.db)
+                .await
+                .map(|r| r.rows_affected() > 0);
+                if !matches!(claimed, Ok(true)) {
+                    continue;
+                }
+                // The date shown is the planned one, at least 14 days out;
+                // deletion also waits 14 days after the reminder itself.
+                let planned = banned_at + chrono::Duration::days(BAN_DELETION_DAYS as i64);
+                let earliest = Utc::now() + chrono::Duration::days(BAN_DELETION_NOTICE_DAYS as i64);
+                let on = planned.max(earliest).format("%d.%m.%Y").to_string();
+                if let Err(e) = state.email.send_ban_deletion_notice(&email, decision_id, &on).await {
+                    tracing::error!("Ban deletion reminder for decision {} failed: {}", decision_id, e.0);
+                }
+            }
+        }
+        Err(e) => tracing::error!("Ban sweep: listing reminders failed: {}", e),
+    }
+
+    let due = sqlx::query_as::<_, DueBan>(DUE_BANS)
+        .bind(BAN_DELETION_DAYS)
+        .fetch_all(&state.db)
+        .await;
+    let due = match due {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!("Ban sweep: listing due deletions failed: {}", e);
+            return;
+        }
+    };
+    let reminder_cutoff = Utc::now() - chrono::Duration::days(BAN_DELETION_NOTICE_DAYS as i64);
+    for (decision_id, user_id, _, _, notified) in due {
+        // Only once the reminder is at least two weeks old.
+        if notified.is_none_or(|n| n > reminder_cutoff) {
+            continue;
+        }
+        let claimed = sqlx::query(
+            "UPDATE moderation_decisions SET account_deleted_at = NOW() WHERE id = $1 AND account_deleted_at IS NULL",
+        )
+        .bind(decision_id)
+        .execute(&state.db)
+        .await
+        .map(|r| r.rows_affected() > 0);
+        if !matches!(claimed, Ok(true)) {
+            continue;
+        }
+        match crate::handlers::users::delete_user(state, user_id, None).await {
+            Ok(()) => tracing::info!("Deleted permanently suspended account {} (decision {})", user_id, decision_id),
+            Err(e) => {
+                tracing::error!("Deleting permanently suspended account {} failed: {}", user_id, e.message);
+                let _ = sqlx::query("UPDATE moderation_decisions SET account_deleted_at = NULL WHERE id = $1")
+                    .bind(decision_id)
+                    .execute(&state.db)
+                    .await;
+            }
+        }
+    }
 }
 
 /// Requests a suspended account may still make: reading, deleting its own
@@ -551,11 +662,13 @@ fn suspended_error(s: &Suspension) -> AppError {
 }
 
 /// Runs once an hour: deletes expired strikes (with their snapshots) and
-/// snapshot view logs older than a year. Idempotent, so every replica can
-/// run it.
-pub fn spawn_sweeper(db: sqlx::PgPool) {
+/// snapshot view logs older than a year, and handles due bans
+/// (sweep_bans). Safe on every replica.
+pub fn spawn_sweeper(state: AppState) {
     tokio::spawn(async move {
+        let db = state.db.clone();
         loop {
+            sweep_bans(&state).await;
             match sqlx::query("DELETE FROM account_strikes WHERE expires_at <= NOW()").execute(&db).await {
                 Ok(r) if r.rows_affected() > 0 => tracing::info!("Deleted {} expired strike(s)", r.rows_affected()),
                 Ok(_) => {}

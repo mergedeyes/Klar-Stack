@@ -83,6 +83,7 @@ loads more as you scroll.
 - [ ] The report dialog offers the new reasons (extremism, intimate images, terrorism, scam, illegal goods); an "intimate images" report hides the post at once, a "terrorism" report shows it behind a warning
 - [ ] `/admin/standing` lists accounts from 25 points on, with a suggestion: a warning first, a suspension only once the account was warned
 - [ ] A suspended account gets a statement and a red notice under Settings → Moderation; posting, commenting, liking, following, chatting and editing the profile fail with a "suspended until" message; reading, objecting, exporting, deleting own posts and deleting the account still work
+- [ ] A permanent suspension shows the deletion date under Settings → Moderation (and "deletion waits for the objection" in `/admin/standing` while one is pending); two weeks before, a reminder email arrives
 - [ ] While suspended, the profile, posts and comments are gone for another account (profile 404, not in search, feed or discovery); "Lift suspension" or an accepted objection brings everything back
 
 ## Feedback

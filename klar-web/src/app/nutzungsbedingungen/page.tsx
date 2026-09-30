@@ -241,9 +241,12 @@ export default function NutzungsbedingungenPage() {
             Anzahl, Schwere und Umständen der Verstöße. Während einer Sperrung
             kannst du Klar nur lesen; dein Profil und deine Inhalte sind für
             andere nicht sichtbar. Deine Daten exportieren, dein Konto löschen
-            und der Entscheidung widersprechen kannst du weiterhin. Deinen
-            Punktestand siehst du jederzeit unter „Moderation“ in den
-            Einstellungen.
+            und der Entscheidung widersprechen kannst du weiterhin. Ein
+            dauerhaft gesperrtes Konto löschen wir nach Ablauf der
+            Widerspruchsfrist von sechs Monaten mit allen Inhalten, solange
+            kein Widerspruch offen ist; zwei Wochen vorher erinnern wir dich
+            per E-Mail. Deinen Punktestand siehst du jederzeit unter
+            „Moderation“ in den Einstellungen.
           </p>
         </section>
 

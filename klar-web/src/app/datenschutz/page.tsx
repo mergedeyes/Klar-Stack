@@ -246,6 +246,10 @@ export default function DatenschutzPage() {
             Team wird protokolliert, das Protokoll nach einem Jahr gelöscht.
             Diese Kopie wird zusammen mit den Punkten gelöscht, also wenn sie
             verfallen, dein Widerspruch Erfolg hat oder du dein Konto löschst.
+            Ein dauerhaft gesperrtes Konto löschen wir sechs Monate nach der
+            Sperrung, sobald kein Widerspruch mehr offen ist, nach einer
+            Erinnerung per E-Mail zwei Wochen vorher; die Entscheidung selbst
+            bleibt ohne Verknüpfung mit dir als Nachweis bestehen.
           </p>
           <p className="mt-2">
             <strong>Meldungen von Rechteverletzungen:</strong> Wer über das

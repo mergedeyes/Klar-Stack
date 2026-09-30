@@ -409,16 +409,24 @@ pub async fn change_password(
 }
 
 /// DELETE /users/me — delete account and all associated data (auth required)
+pub async fn delete_account(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<StatusCode, AppError> {
+    delete_user(&state, auth.user_id, Some(auth.user_id)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Deletes an account and all associated data: by its owner (DELETE
+/// /users/me), or by the standing sweeper once a permanent suspension's
+/// objection window has passed (`actor` None, standing.rs).
 ///
 /// Deletion order:
 /// 1. Fetch all media file keys for this user's posts (before CASCADE removes them)
 /// 2. Fetch avatar key
 /// 3. Delete the user record (CASCADE handles all DB relations)
 /// 4. Delete media files from disk
-pub async fn delete_account(
-    State(state): State<AppState>,
-    auth: AuthUser,
-) -> Result<StatusCode, AppError> {
+pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -> Result<(), AppError> {
 
     // Collect all media file keys for this user's posts
     let media_keys = sqlx::query_as::<_, (String, String, String)>(
@@ -429,7 +437,7 @@ pub async fn delete_account(
         WHERE p.user_id = $1
         "#
     )
-    .bind(auth.user_id)
+    .bind(user_id)
     .fetch_all(&state.db)
     .await
     .db_err("Database error")?;
@@ -438,7 +446,7 @@ pub async fn delete_account(
     let avatar_url = sqlx::query_scalar::<_, Option<String>>(
         "SELECT avatar_url FROM users WHERE id = $1"
     )
-    .bind(auth.user_id)
+    .bind(user_id)
     .fetch_one(&state.db)
     .await
     .db_err("Database error")?;
@@ -451,26 +459,26 @@ pub async fn delete_account(
     // evidence first (Art. 17(3)(e)); see evidence.rs.
     let scope = evidence::Scope {
         posts: sqlx::query_scalar::<_, Uuid>("SELECT id FROM posts WHERE user_id = $1")
-            .bind(auth.user_id)
+            .bind(user_id)
             .fetch_all(&mut *tx)
             .await
             .db_err_ctx("Failed to list posts", "Failed to delete account")?,
         comments: sqlx::query_scalar::<_, Uuid>("SELECT id FROM comments WHERE user_id = $1")
-            .bind(auth.user_id)
+            .bind(user_id)
             .fetch_all(&mut *tx)
             .await
             .db_err_ctx("Failed to list comments", "Failed to delete account")?,
-        user: Some(auth.user_id),
+        user: Some(user_id),
     };
-    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::AccountDeletion, Some(auth.user_id)).await?;
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::AccountDeletion, actor).await?;
 
     // Decision records about this account stay as the moderation audit
     // trail, without the content excerpt.
-    moderation::forget_user(&mut tx, auth.user_id).await?;
+    moderation::forget_user(&mut tx, user_id).await?;
 
     // Feedback text stays (it's about the app, see the feedback migration),
     // but screenshots may show this person, so they go with the account.
-    let screenshot_keys = crate::handlers::feedback::forget_screenshots(&mut tx, auth.user_id).await?;
+    let screenshot_keys = crate::handlers::feedback::forget_screenshots(&mut tx, user_id).await?;
 
     // Conversations whose other participant already deleted their account
     // would be left with nobody in them once this user goes too -- remove
@@ -481,7 +489,7 @@ pub async fn delete_account(
     sqlx::query(
         "DELETE FROM conversations WHERE (user1_id = $1 AND user2_id IS NULL) OR (user2_id = $1 AND user1_id IS NULL)"
     )
-    .bind(auth.user_id)
+    .bind(user_id)
     .execute(&mut *tx)
     .await
     .db_err_ctx("Failed to delete orphaned conversations", "Failed to delete account")?;
@@ -489,7 +497,7 @@ pub async fn delete_account(
     // Delete user — CASCADE removes posts, comments, likes, follows, blocks,
     // sent messages, refresh_tokens, email_tokens, media_asset rows
     sqlx::query("DELETE FROM users WHERE id = $1")
-        .bind(auth.user_id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await
         .db_err("Failed to delete account")?;
@@ -505,10 +513,10 @@ pub async fn delete_account(
         .flat_map(|(thumb, medium, full)| [thumb, medium, full])
         .chain(avatar_key)
         .chain(screenshot_keys);
-    evidence::finish(&state, preserved, keys).await;
+    evidence::finish(state, preserved, keys).await;
 
-    tracing::info!("Account deleted: {}", auth.user_id);
-    Ok(StatusCode::NO_CONTENT)
+    tracing::info!("Account deleted: {}{}", user_id, if actor.is_none() { " (after a permanent suspension)" } else { "" });
+    Ok(())
 }
 
 /// GET /users/me/export — self-service data export (Art. 15 + Art. 20 DSGVO:

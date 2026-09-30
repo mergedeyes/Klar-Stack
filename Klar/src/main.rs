@@ -178,7 +178,7 @@ async fn main() {
 
     handlers::rights::spawn_cleanup(state.db.clone());
     evidence::spawn_sweeper(state.clone());
-    standing::spawn_sweeper(state.db.clone());
+    standing::spawn_sweeper(state.clone());
     handlers::feedback::spawn_cleanup(state.clone());
     uptime::spawn(state.clone());
 
