@@ -94,7 +94,7 @@ docs/        manual-checks.md: what to test by hand before merging
 
 **Evidence.** A separate storage zone without a public URL; files encrypted with AES-256-GCM, the key only in the backend's environment; every access and change in an append-only audit log; an hourly sweeper retries copies and purges expired records.
 
-**Operations.** Daily database backups to a private storage zone, caught up after missed slots, with dead-man's-switch alerting. Per-route rate limits, stricter on sign-in and public forms. A health-check endpoint.
+**Operations.** Daily database backups to a private storage zone, caught up after missed slots, with dead-man's-switch alerting. Per-route rate limits, stricter on sign-in and public forms. Backend and frontend each ping their own healthchecks.io check every 5 minutes after checking themselves (database and Redis; the rendered `/welcome` page), so an outage alerts at once or after 10 minutes of silence (`UPTIME_HEALTHCHECK_URL`).
 
 </details>
 
@@ -140,7 +140,6 @@ Pushing to `main` builds Docker images for the backend and the frontend and depl
 - Rights claims for comments and profiles (posts only for now); UrhDaG-specific obligations.
 - Handling people who repeatedly file unfounded reports (DSA Art. 23); account suspension from the report queue.
 - Age verification at sign-up.
-- Uptime monitoring for the app itself (only backups are monitored).
 - End-to-end encryption for direct messages.
 - A written guide for testers in the repo.
 

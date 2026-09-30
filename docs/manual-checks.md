@@ -43,6 +43,7 @@ loads more as you scroll.
 
 - [ ] A like, comment, follow or follow request from the other account shows up without reloading
 - [ ] Chat messages, edits, deletions and reactions appear on the other side live
+- [ ] On a phone, /chats shows the list full width; tapping a chat opens it full screen with the input above the footer, reply/react buttons are visible without hovering, and the back arrow returns to the list
 - [ ] The unread badges clear when the conversation or dropdown is opened
 - [ ] After the laptop sleeps or the network drops briefly, the stream reconnects and events arrive again
 

@@ -7,8 +7,8 @@ import { signIn, signUp } from "./helpers";
 
 const shot = (name: "landscape" | "portrait") => path.join(__dirname, "fixtures", `${name}.png`);
 
-test("feedback can carry up to three screenshots", async ({ page, request }) => {
-  await signIn(page, await signUp(request, "tester"));
+test("feedback can carry up to three screenshots", async ({ page }) => {
+  await signIn(page, await signUp("tester"));
   await page.goto("/feedback?from=/chats");
 
   await page.getByLabel("Your feedback").fill("The footer covers the send button");

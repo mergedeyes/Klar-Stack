@@ -148,12 +148,14 @@ export default function DatenschutzPage() {
             </li>
           </ul>
           <p className="mt-2">
-            Zur Überwachung unserer nächtlichen Datenbank-Sicherungen nutzen
-            wir außerdem <strong>Healthchecks.io</strong> (Anbieter mit Sitz
-            in Lettland, EU). Nach jeder Sicherung sendet unser Server dorthin
-            lediglich eine inhaltsleere Erfolgs- oder Fehlermeldung, damit wir
-            bei einem Ausfall sofort benachrichtigt werden. Dabei wird nur die
-            IP-Adresse unseres Servers übermittelt — Daten von Nutzer:innen
+            Zur Überwachung unserer nächtlichen Datenbank-Sicherungen und der
+            Erreichbarkeit von Klar nutzen wir außerdem{" "}
+            <strong>Healthchecks.io</strong> (Anbieter mit Sitz in Lettland,
+            EU). Nach jeder Sicherung und alle paar Minuten während des
+            Betriebs senden unsere Server dorthin lediglich eine inhaltsleere
+            Erfolgs- oder Fehlermeldung, damit wir bei einem Ausfall sofort
+            benachrichtigt werden. Dabei wird nur die
+            IP-Adresse unserer Server übermittelt — Daten von Nutzer:innen
             werden nicht übertragen.
           </p>
         </section>

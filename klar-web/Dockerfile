@@ -49,6 +49,9 @@ RUN useradd --system --create-home --shell /usr/sbin/nologin appuser \
 USER appuser
 
 ENV PORT=3000
+# Declared empty so Bunny lists it in the dashboard; filled in there
+# (see src/lib/server/uptime.ts).
+ENV UPTIME_HEALTHCHECK_URL=""
 EXPOSE 3000
 
 CMD ["node", "server.js"]

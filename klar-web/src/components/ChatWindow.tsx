@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/hooks/use-notifications";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Reply, Edit2, Trash2, X, Smile } from "lucide-react";
+import { Reply, Edit2, Trash2, X, Smile, ArrowLeft } from "lucide-react";
 import { getMediaUrl } from "@/lib/utils/media";
 
 interface ChatWindowProps {
@@ -23,6 +23,9 @@ interface ChatWindowProps {
    * (the conversation list in /chats) can update that conversation's
    * preview text instantly instead of waiting for a refetch. */
   onMessageSent?: (message: ChatMessage) => void;
+  /** Returns to the conversation list. On phones /chats shows the list
+   * or this window, not both, so this is the only way back. */
+  onBack?: () => void;
 }
 
 const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", "🎉"];
@@ -53,7 +56,7 @@ function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (e
   );
 }
 
-export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent }: ChatWindowProps) {
+export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent, onBack }: ChatWindowProps) {
   const receiverDeleted = receiverId === null;
   const displayName = receiverUsername ?? DELETED_USER_LABEL;
   const { user } = useAuth();
@@ -187,7 +190,8 @@ return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
       
       {/* Header -- clickable through to the other person's profile
-          (plain, unlinked header for a deleted account) */}
+          (plain, unlinked header for a deleted account). The back arrow
+          sits outside the link and only shows on phones. */}
       {(() => {
         const headerContent = (
           <>
@@ -203,13 +207,22 @@ return (
             </div>
           </>
         );
-        const headerClass = "h-20 flex-none p-4 border-b flex items-center gap-3 bg-background/95 backdrop-blur";
-        return receiverDeleted ? (
-          <div className={headerClass}>{headerContent}</div>
-        ) : (
-          <Link href={`/users/${receiverUsername}`} className={`${headerClass} hover:bg-muted/40 transition-colors`}>
-            {headerContent}
-          </Link>
+        const headerClass = "flex-1 min-w-0 self-stretch p-4 flex items-center gap-3";
+        return (
+          <div className="h-20 flex-none border-b flex items-center bg-background/95 backdrop-blur">
+            {onBack && (
+              <Button variant="ghost" size="icon" className="md:hidden ml-2 -mr-2" onClick={onBack} aria-label="Back to chats">
+                <ArrowLeft size={20} />
+              </Button>
+            )}
+            {receiverDeleted ? (
+              <div className={headerClass}>{headerContent}</div>
+            ) : (
+              <Link href={`/users/${receiverUsername}`} className={`${headerClass} hover:bg-muted/40 transition-colors`}>
+                {headerContent}
+              </Link>
+            )}
+          </div>
         );
       })()}
 
@@ -230,14 +243,16 @@ return (
               )}
 
               <div className="flex items-center gap-2">
-                {/* Hover Actions (Left for me, Right for them) */}
+                {/* Hover Actions (Left for me, Right for them). Touch screens
+                    can't hover, so there they stay visible. */}
                 {isMe && (
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button onClick={() => setEditingMessage(msg)} className="p-1 hover:bg-muted rounded text-muted-foreground"><Edit2 size={14} /></button>
-                    <button onClick={() => handleDelete(msg.id)} className="p-1 hover:bg-destructive/10 rounded text-destructive"><Trash2 size={14} /></button>
+                  <div className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-1">
+                    <button onClick={() => setEditingMessage(msg)} aria-label="Edit message" className="p-1 hover:bg-muted rounded text-muted-foreground"><Edit2 size={14} /></button>
+                    <button onClick={() => handleDelete(msg.id)} aria-label="Delete message" className="p-1 hover:bg-destructive/10 rounded text-destructive"><Trash2 size={14} /></button>
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
+                        aria-label="React"
                         className="p-1 hover:bg-muted rounded text-muted-foreground"
                       >
                         <Smile size={14} />
@@ -258,11 +273,12 @@ return (
                 </div>
 
                 {!isMe && (
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button onClick={() => handleReply(msg)} className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
+                  <div className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-1">
+                    <button onClick={() => handleReply(msg)} aria-label="Reply" className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
+                        aria-label="React"
                         className="p-1 hover:bg-muted rounded text-muted-foreground"
                       >
                         <Smile size={14} />

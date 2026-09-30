@@ -28,6 +28,7 @@ mod models;
 mod rate_limit;
 mod routes;
 mod storage;
+mod uptime;
 mod utils;
 mod validation;
 
@@ -177,6 +178,7 @@ async fn main() {
     handlers::rights::spawn_cleanup(state.db.clone());
     evidence::spawn_sweeper(state.clone());
     handlers::feedback::spawn_cleanup(state.clone());
+    uptime::spawn(state.clone());
 
     let app = routes::create_router(state);
     tracing::info!("Server running on http://{}", addr);
