@@ -70,13 +70,13 @@ loads more as you scroll.
 - [ ] A removal, automatic hide or warning gives the author a "Klar" notice in the bell and an email linking to the statement; a CSAM statement only arrives after an admin sends it from `/admin/moderation`
 - [ ] The author can object once from the statement page; the admin's answer shows up there and in the bell; the reporter sees the outcome under Settings → Moderation
 
+## Legal pages and passcode gate
+
+- [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
+- [ ] If the change adds a sub-processor or changes what data is kept, the Datenschutz and Transparenz pages say so
+
 ## Rights claims
 
 - [ ] Signed out, "Rechteverletzung melden" in the footer opens the form (not the passcode gate) and a claim can be submitted; the confirmation email arrives with a working status link
 - [ ] An evidence request reaches the claimant by email and can be answered on the status page
 - [ ] Accepting hides the post; its author gets a statement naming the work, not the claimant; a successful objection makes the post visible again and emails the claimant
-
-## Legal pages and passcode gate
-
-- [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
-- [ ] If the change adds a sub-processor or changes what data is kept, the Datenschutz and Transparenz pages say so
