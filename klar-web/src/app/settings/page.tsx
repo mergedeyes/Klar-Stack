@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Archive, ChevronRight, Download, KeyRound, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
+import { MessageSquareText } from "lucide-react";
 import { SmartBackButton } from '@/components/SmartBackButton';
 
 const sections = [
@@ -66,6 +67,12 @@ export default function SettingsPage() {
           icon: Archive,
           label: "Evidence",
           description: "Preserved copies of deleted, likely-illegal content",
+        },
+        {
+          href: "/admin/feedback",
+          icon: MessageSquareText,
+          label: "Feedback",
+          description: "Bug reports and ideas from testers",
         },
       ]
     : sections;

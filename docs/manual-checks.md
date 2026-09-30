@@ -70,6 +70,12 @@ loads more as you scroll.
 - [ ] A removal, automatic hide or warning gives the author a "Klar" notice in the bell and an email linking to the statement; a CSAM statement only arrives after an admin sends it from `/admin/moderation`
 - [ ] The author can object once from the statement page; the admin's answer shows up there and in the bell; the reporter sees the outcome under Settings → Moderation
 
+## Feedback
+
+- [ ] Signed in, the footer shows "Feedback"; signed out it doesn't
+- [ ] Sending from a page records that page (without its query string); unticking "Include technical details" sends no page, browser or screen size
+- [ ] The entry appears in `/admin/feedback`; "Done" hides it from the open list and "Show done" brings it back
+
 ## Legal pages and passcode gate
 
 - [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode

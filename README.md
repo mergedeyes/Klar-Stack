@@ -88,6 +88,7 @@
 - Documented sub-processors: Bunny.net (hosting/CDN/storage and self-hosted Postgres, German DC), Scaleway (transactional email, EU), Upstash (real-time notification relay, US — SCCs apply)
 
 ## Pre-Launch
+- In-app feedback for testers: a "Feedback" link in the footer (signed-in users) opens a form for bugs, ideas or anything else, optionally with the page, screen size and browser; admins triage it at `/admin/feedback`. Capped at 20 per user per day, deleted after a year
 - Site-wide passcode gate (`/welcome`) via Next.js `proxy.ts` — blocks the whole site except the gate page, legal pages and email-link landing pages until a shared passcode is entered; attempts are rate-limited; disabled automatically if no passcode is configured (e.g. local dev)
 
 ## Frontend/UX Details

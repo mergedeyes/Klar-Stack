@@ -945,3 +945,41 @@ export const chatsApi = {
   markConversationRead: (conversationId: string) =>
     request<void>(`/chats/${conversationId}/read`, { method: "PATCH" }, true),
 };
+
+// ── Feedback ──────────────────────────────────────────────────────────────────
+
+export type FeedbackCategory = "bug" | "idea" | "other";
+
+export interface FeedbackEntry {
+  id: string;
+  // null once the sender's account is deleted.
+  username: string | null;
+  category: FeedbackCategory;
+  message: string;
+  page_path: string | null;
+  user_agent: string | null;
+  viewport: string | null;
+  status: "new" | "seen" | "done";
+  admin_note: string | null;
+  created_at: string;
+}
+
+export const feedbackApi = {
+  send: (
+    category: FeedbackCategory,
+    message: string,
+    context: { page_path: string; user_agent: string; viewport: string } | null
+  ) =>
+    request<void>(
+      "/feedback",
+      { method: "POST", body: JSON.stringify({ category, message, ...(context ?? {}) }) },
+      true
+    ),
+  list: (all = false) => request<FeedbackEntry[]>(`/admin/feedback?filter=${all ? "all" : "open"}`, {}, true),
+  update: (id: string, status: FeedbackEntry["status"], adminNote: string | null) =>
+    request<void>(
+      `/admin/feedback/${id}`,
+      { method: "PATCH", body: JSON.stringify({ status, admin_note: adminNote }) },
+      true
+    ),
+};

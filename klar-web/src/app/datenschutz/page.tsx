@@ -64,6 +64,18 @@ export default function DatenschutzPage() {
             Ende-zu-Ende-verschlüsselt (E2EE) sind. Die Plattform und die Datenbank 
             sind jedoch durch strenge Zugangskontrollen abgesichert.
           </p>
+          <p className="mt-2">
+            <strong>Feedback:</strong> Wenn du uns über das Feedback-Formular
+            einen Fehler oder eine Idee schickst, speichern wir deine Nachricht,
+            die gewählte Kategorie und die Verknüpfung mit deinem Konto. Nur
+            wenn du die Option „Include technical details“ aktiviert lässt, speichern
+            wir außerdem die Seite, von der du gekommen bist, deine
+            Bildschirmgröße und die Kennung deines Browsers — das Formular
+            zeigt dir diese Angaben vor dem Absenden an. Wir nutzen das
+            Feedback nur, um Klar zu verbessern (Art. 6 Abs. 1 lit. f DSGVO),
+            und löschen es nach einem Jahr; löschst du dein Konto vorher,
+            entfällt die Verknüpfung mit dir.
+          </p>
         </section>
 
         <section className="mb-6">
