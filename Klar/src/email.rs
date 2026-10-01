@@ -78,204 +78,91 @@ impl std::str::FromStr for EmailProvider {
     }
 }
 
+/// Escapes text for the HTML body. Usernames are already limited to
+/// letters, digits and underscores, but the template shouldn't depend on it.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// The footer line of most emails. Mails that must not look like something
+/// the user could opt out of bring their own (see `send_legal_update`).
+const DEFAULT_FOOTER: &str = "Diese E-Mail wurde automatisch von Klar versendet.";
+
 /// Wraps email content in the shared HTML template (adapted from the
 /// well-known htmlemail.io transactional template). Keeps a single place
-/// for the CSS/layout so verification and password-reset emails stay
-/// visually consistent.
-// The template itself is plain HTML/CSS below; the only Rust part is the
-// five {placeholder} slots filled in via format! at the bottom of the function.
+/// for the CSS/layout so all emails stay visually consistent.
+// Every style is inline: the Gmail app ignores <style> blocks for non-Google
+// accounts (IMAP, GMX, …), which left those users with an unstyled mail that
+// looked like plain text. The <style> block only carries the mobile media
+// query as a progressive enhancement for clients that do support it.
 fn render_html_email(preheader: &str, intro: &str, button_label: &str, button_url: &str, note: &str) -> String {
+    render_html_email_with_footer(preheader, intro, button_label, button_url, note, DEFAULT_FOOTER)
+}
+
+fn render_html_email_with_footer(
+    preheader: &str,
+    intro: &str,
+    button_label: &str,
+    button_url: &str,
+    note: &str,
+    footer: &str,
+) -> String {
+    const FONT: &str = "font-family: Helvetica, Arial, sans-serif;";
     format!(
-        r#"<!doctype html>
+        r##"<!doctype html>
 <html lang="de">
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <title>Klar</title>
-    <style media="all" type="text/css">
-    body {{
-      font-family: Helvetica, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      font-size: 16px;
-      line-height: 1.3;
-      -ms-text-size-adjust: 100%;
-      -webkit-text-size-adjust: 100%;
-      background-color: #f4f5f6;
-      margin: 0;
-      padding: 0;
-    }}
-    table {{
-      border-collapse: separate;
-      mso-table-lspace: 0pt;
-      mso-table-rspace: 0pt;
-      width: 100%;
-    }}
-    table td {{
-      font-family: Helvetica, sans-serif;
-      font-size: 16px;
-      vertical-align: top;
-    }}
-    .body {{
-      background-color: #f4f5f6;
-      width: 100%;
-    }}
-    .container {{
-      margin: 0 auto !important;
-      max-width: 600px;
-      padding: 0;
-      padding-top: 24px;
-      width: 600px;
-    }}
-    .content {{
-      box-sizing: border-box;
-      display: block;
-      margin: 0 auto;
-      max-width: 600px;
-      padding: 0;
-    }}
-    .main {{
-      background: #ffffff;
-      border: 1px solid #eaebed;
-      border-radius: 16px;
-      width: 100%;
-    }}
-    .wrapper {{
-      box-sizing: border-box;
-      padding: 24px;
-    }}
-    .footer {{
-      clear: both;
-      padding-top: 24px;
-      text-align: center;
-      width: 100%;
-    }}
-    .footer td, .footer p, .footer span, .footer a {{
-      color: #9a9ea6;
-      font-size: 14px;
-      text-align: center;
-    }}
-    p {{
-      font-family: Helvetica, sans-serif;
-      font-size: 16px;
-      font-weight: normal;
-      margin: 0;
-      margin-bottom: 16px;
-    }}
-    a {{
-      color: #0867ec;
-      text-decoration: underline;
-    }}
-    .btn {{
-      box-sizing: border-box;
-      min-width: 100% !important;
-      width: 100%;
-    }}
-    .btn > tbody > tr > td {{
-      padding-bottom: 16px;
-    }}
-    .btn table {{
-      width: auto;
-    }}
-    .btn table td {{
-      background-color: #ffffff;
-      border-radius: 4px;
-      text-align: center;
-    }}
-    .btn a {{
-      background-color: #ffffff;
-      border: solid 2px #0867ec;
-      border-radius: 4px;
-      box-sizing: border-box;
-      color: #0867ec;
-      cursor: pointer;
-      display: inline-block;
-      font-size: 16px;
-      font-weight: bold;
-      margin: 0;
-      padding: 12px 24px;
-      text-decoration: none;
-      text-transform: capitalize;
-    }}
-    .btn-primary table td {{
-      background-color: #0867ec;
-    }}
-    .btn-primary a {{
-      background-color: #0867ec;
-      border-color: #0867ec;
-      color: #ffffff;
-    }}
-    .preheader {{
-      color: transparent;
-      display: none;
-      height: 0;
-      max-height: 0;
-      max-width: 0;
-      opacity: 0;
-      overflow: hidden;
-      mso-hide: all;
-      visibility: hidden;
-      width: 0;
-    }}
+    <style type="text/css">
     @media only screen and (max-width: 640px) {{
-      .wrapper {{ padding: 8px !important; }}
-      .content {{ padding: 0 !important; }}
-      .container {{ padding: 0 !important; padding-top: 8px !important; width: 100% !important; }}
+      .wrapper {{ padding: 16px !important; }}
+      .container {{ padding-top: 8px !important; }}
       .main {{ border-left-width: 0 !important; border-radius: 0 !important; border-right-width: 0 !important; }}
-      .btn table, .btn a {{ max-width: 100% !important; width: 100% !important; }}
+      .btn-table, .btn-link {{ width: 100% !important; }}
     }}
     </style>
   </head>
-  <body>
-    <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="body">
+  <body style="{font} font-size: 16px; line-height: 1.4; background-color: #f4f5f6; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    <span style="color: transparent; display: none; height: 0; max-height: 0; max-width: 0; opacity: 0; overflow: hidden; mso-hide: all; visibility: hidden; width: 0;">{preheader}</span>
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; width: 100%; background-color: #f4f5f6;">
       <tr>
-        <td>&nbsp;</td>
-        <td class="container">
-          <div class="content">
-            <span class="preheader">{preheader}</span>
-            <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="main">
-              <tr>
-                <td class="wrapper">
-                  <p>{intro}</p>
-                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
-                    <tbody>
-                      <tr>
-                        <td align="left">
-                          <table role="presentation" border="0" cellpadding="0" cellspacing="0">
-                            <tbody>
-                              <tr>
-                                <td> <a href="{button_url}" target="_blank">{button_label}</a> </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <p>{note}</p>
-                </td>
-              </tr>
-            </table>
-            <div class="footer">
-              <table role="presentation" border="0" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td class="content-block">
-                    Diese E-Mail wurde automatisch von Klar versendet.
-                  </td>
-                </tr>
-              </table>
-            </div>
-          </div>
+        <td align="center" class="container" style="{font} padding: 24px 0 0 0; vertical-align: top;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="main" style="border-collapse: separate; width: 100%; max-width: 600px; background-color: #ffffff; border: 1px solid #eaebed; border-radius: 16px;">
+            <tr>
+              <td class="wrapper" style="{font} font-size: 16px; line-height: 1.4; color: #1f2328; padding: 24px; vertical-align: top;">
+                <p style="{font} font-size: 16px; font-weight: normal; margin: 0 0 16px 0;">{intro}</p>
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn-table" style="border-collapse: separate; margin: 0 0 16px 0;">
+                  <tr>
+                    <td align="center" bgcolor="#0867ec" style="background-color: #0867ec; border-radius: 4px;">
+                      <a href="{button_url}" target="_blank" class="btn-link" style="{font} background-color: #0867ec; border: solid 2px #0867ec; border-radius: 4px; box-sizing: border-box; color: #ffffff; display: inline-block; font-size: 16px; font-weight: bold; margin: 0; padding: 12px 24px; text-align: center; text-decoration: none;">{button_label}</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="{font} font-size: 16px; font-weight: normal; margin: 0;">{note}</p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; width: 100%; max-width: 600px;">
+            <tr>
+              <td align="center" style="{font} color: #9a9ea6; font-size: 14px; line-height: 1.4; padding: 24px 16px; text-align: center;">
+                {footer}
+              </td>
+            </tr>
+          </table>
         </td>
-        <td>&nbsp;</td>
       </tr>
     </table>
   </body>
-</html>"#,
+</html>"##,
+        font = FONT,
         preheader = preheader,
         intro = intro,
         button_url = button_url,
         button_label = button_label,
         note = note,
+        footer = footer,
     )
 }
 
@@ -369,24 +256,27 @@ impl EmailService {
     }
 
     /// Send email verification link
-    pub async fn send_verification(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
+    pub async fn send_verification(&self, to_email: &str, username: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to verify their address.
         let verify_url = format!("{}/verify-email?token={}", self.base_url, token);
 
         // Plain-text fallback body, for mail clients that don't render HTML.
         let text = format!(
-            "Willkommen bei Klar!\n\n\
-             Bitte bestaetige deine E-Mail-Adresse:\n\n\
+            "Hallo {},\n\n\
+             willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse:\n\n\
              {}\n\n\
              Der Link ist 24 Stunden gueltig.\n\n\
              Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
-            verify_url
+            username, verify_url
         );
 
         // HTML body, built from the shared template above.
         let html = render_html_email(
             "Bestaetige deine E-Mail-Adresse bei Klar",
-            "Willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse, um loszulegen.",
+            &format!(
+                "Hallo {},<br><br>willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse, um loszulegen.",
+                escape_html(username)
+            ),
             "E-Mail bestaetigen",
             &verify_url,
             "Der Link ist 24 Stunden gueltig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
@@ -514,12 +404,13 @@ impl EmailService {
     /// the reset link that unlocks it. Replies go to the contact address,
     /// for owners who can't use the link (e.g. their inbox was taken over
     /// too).
-    pub async fn send_account_locked(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
+    pub async fn send_account_locked(&self, to_email: &str, username: &str, token: &str) -> Result<(), EmailError> {
         let reset_url = format!("{}/reset-password?token={}", self.base_url, token);
         let contact = self.reply_to.as_deref().unwrap_or("kontakt@klarsocial.eu");
 
         let text = format!(
-            "Wir haben dein Klar-Konto vorsorglich gesperrt\n\n\
+            "Hallo {},\n\n\
+             wir haben dein Klar-Konto vorsorglich gesperrt.\n\n\
              Auf deinem Konto gab es Aktivitaet, die darauf hindeutet, dass jemand anderes es benutzt. \
              Wir haben dich deshalb auf allen Geraeten abgemeldet und das Konto gesperrt.\n\n\
              Mit einem neuen Passwort entsperrst du es wieder:\n\n\
@@ -527,12 +418,15 @@ impl EmailService {
              Der Link ist 24 Stunden gueltig; danach kannst du beim Anmelden einen neuen anfordern. \
              Nimm ein Passwort, das du nirgends sonst verwendest.\n\n\
              Kommst du nicht weiter oder hast du Fragen, antworte auf diese E-Mail oder schreib an {}.",
-            reset_url, contact
+            username, reset_url, contact
         );
 
         let html = render_html_email(
             "Wir haben dein Klar-Konto vorsorglich gesperrt",
-            "Auf deinem Konto gab es Aktivität, die darauf hindeutet, dass jemand anderes es benutzt. Wir haben dich deshalb auf allen Geräten abgemeldet und das Konto gesperrt. Mit einem neuen Passwort entsperrst du es wieder.",
+            &format!(
+                "Hallo {},<br><br>auf deinem Konto gab es Aktivität, die darauf hindeutet, dass jemand anderes es benutzt. Wir haben dich deshalb auf allen Geräten abgemeldet und das Konto gesperrt. Mit einem neuen Passwort entsperrst du es wieder.",
+                escape_html(username)
+            ),
             "Neues Passwort festlegen",
             &reset_url,
             &format!(
@@ -550,6 +444,7 @@ impl EmailService {
     pub async fn send_legal_update(
         &self,
         to_email: &str,
+        username: &str,
         documents: &[String],
         summary: &str,
         requires_acceptance: bool,
@@ -574,23 +469,34 @@ impl EmailService {
             "Du musst nichts tun."
         };
 
+        // These notices are a legal duty (DSA Art. 14(2), GDPR transparency),
+        // not marketing, so they have no unsubscribe link. The footer says so,
+        // so that users don't report the mail as spam for lacking one.
+        let footer = "Du erhältst diese E-Mail, weil du ein Klar-Konto hast. Über Änderungen unserer \
+                      Nutzungsbedingungen und Datenschutzerklärung müssen wir dich informieren, deshalb \
+                      kannst du diese E-Mails nicht abbestellen.";
+
         let text = format!(
-            "Wir haben {} geändert\n\nDas ist neu:\n{}\n\n{}\n\nDie vollständige Fassung: {}",
-            what, summary, next, url
+            "Hallo {},\n\nwir haben {} geändert.\n\nDas ist neu:\n{}\n\n{}\n\nDie vollständige Fassung: {}\n\n--\n{}",
+            username, what, summary, next, url, footer
         );
         // Escaped, and its line breaks (the notice files are written as short
         // paragraphs and lists) kept.
-        let escaped = summary
-            .replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-            .replace('\n', "<br>");
-        let html = render_html_email(
-            &format!("Wir haben {} geändert", what),
-            &format!("Das ist neu: {}", escaped),
+        let escaped = escape_html(summary).replace('\n', "<br>");
+        let headline = format!("Wir haben {} geändert", what);
+        let html = render_html_email_with_footer(
+            &headline,
+            // The preheader is hidden, so the headline is repeated in the body.
+            &format!(
+                "Hallo {},<br><br><strong>wir haben {} geändert.</strong><br><br>Das ist neu:<br>{}",
+                escape_html(username),
+                what,
+                escaped
+            ),
             "Vollständige Fassung lesen",
             &url,
             next,
+            footer,
         );
 
         self.send(to_email, "Aktualisierte Bedingungen bei Klar", &text, &html).await

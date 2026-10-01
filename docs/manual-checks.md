@@ -62,6 +62,8 @@ loads more as you scroll.
 - [ ] "Review account" in the report queue opens `/admin/review/<name>` with the reason filled in; the review needs a reason, then shows signals, message counts (no message text), posts, comments, likes, follows, reports and history as expandable sections
 - [ ] Deciding "Lock as possibly hacked" locks the account (it lands in the incident log with the note); "Bot or spam-only account" suspends it permanently with a statement that says why; "No action" just closes the review
 - [ ] The verification email after sign-up has no Reply-To; other emails (password reset, moderation notice) reply to kontakt@klarsocial.eu
+- [ ] Emails show the styled layout with a blue button in the Gmail app on a phone, also for a non-Google address added to the app (IMAP, GMX, Ionos), and in Gmail on the web
+- [ ] The verification, account-locked and legal-update emails start with "Hallo <username>,"; the legal-update email's footer says it can't be unsubscribed from and why
 
 ## Posts and media
 
