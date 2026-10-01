@@ -61,6 +61,7 @@ loads more as you scroll.
 - [ ] An account that posts 10+ comments within a few minutes (or the same text 3+ times) shows up under "Needs review" in `/admin/security`, as does one with a pending spam report; a single post doesn't
 - [ ] "Review account" in the report queue opens `/admin/review/<name>` with the reason filled in; the review needs a reason, then shows signals, message counts (no message text), posts, comments, likes, follows, reports and history as expandable sections
 - [ ] Deciding "Lock as possibly hacked" locks the account (it lands in the incident log with the note); "Bot or spam-only account" suspends it permanently with a statement that says why; "No action" just closes the review
+- [ ] An account with a verified @klarsocial.eu address shows up under Settings → Official accounts (an unverified one doesn't); renaming it to a staff name like "Klar" needs a reason, works, appears in the rename log, and the profile opens at /users/klar; "me" or a taken name is refused
 - [ ] The verification email after sign-up has no Reply-To; other emails (password reset, moderation notice) reply to kontakt@klarsocial.eu
 - [ ] Emails show the styled layout with a blue button in the Gmail app on a phone, also for a non-Google address added to the app (IMAP, GMX, Ionos), and in Gmail on the web
 - [ ] The verification, account-locked and legal-update emails start with "Hallo <username>,"; the legal-update email's footer says it can't be unsubscribed from and why

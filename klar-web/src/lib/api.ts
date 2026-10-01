@@ -1016,6 +1016,41 @@ export const adminLegalUpdatesApi = {
   list: () => request<AdminLegalUpdate[]>("/admin/legal-updates", {}, true),
 };
 
+// ── Official accounts (admin) ────────────────────────────────────────────────
+
+// Accounts with a verified @klarsocial.eu address. Only an admin can rename
+// them, and only they may take staff names like "Klar"; every rename is
+// logged with its reason.
+export interface OfficialAccount {
+  id: string;
+  username: string;
+  email: string;
+  created_at: string;
+}
+
+export interface OfficialRename {
+  id: string;
+  // null once the account is deleted
+  user_id: string | null;
+  old_username: string;
+  new_username: string;
+  reason: string;
+  renamed_at: string;
+  // the admin's current username; null once their account is deleted
+  renamed_by: string | null;
+}
+
+export const adminOfficialAccountsApi = {
+  list: () =>
+    request<{ accounts: OfficialAccount[]; renames: OfficialRename[] }>("/admin/official-accounts", {}, true),
+  rename: (id: string, username: string, reason: string) =>
+    request<void>(
+      `/admin/official-accounts/${id}/username`,
+      { method: "POST", body: JSON.stringify({ username, reason }) },
+      true,
+    ),
+};
+
 // ── Account reviews (admin) ──────────────────────────────────────────────────
 
 // Signals computed from existing activity (no IPs or devices): the biggest
