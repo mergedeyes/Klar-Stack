@@ -33,13 +33,13 @@ export function clientIp(): string {
 /** Registers through a context of its own: sign-up sets auth cookies, and
  * the backend reads the cookie before the Authorization header, so a
  * shared context would make every later call act as the newest user. */
-export async function signUp(prefix = "user"): Promise<Session> {
+export async function signUp(prefix = "user", email?: string): Promise<Session> {
   const username = uniqueName(prefix);
   const context = await playwrightRequest.newContext();
   try {
     const res = await context.post(`${API}/auth/register`, {
       headers: { "X-Forwarded-For": clientIp() },
-      data: { username, email: `${username}@example.test`, password: "test-password-123", accept_terms: true },
+      data: { username, email: email ?? `${username}@example.test`, password: "test-password-123", accept_terms: true },
     });
     expect(res.ok(), await res.text()).toBeTruthy();
     const body = await res.json();
