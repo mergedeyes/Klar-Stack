@@ -741,6 +741,8 @@ fn allowed_while_suspended(method: &Method, path: &str) -> bool {
             | ("PATCH", "/users/me")
             | ("POST", "/moderation/reports/{report_id}/recheck")
             | ("PATCH", "/users/me/keep-account")
+            // Giving or withdrawing consent (Art. 7(3) GDPR).
+            | ("PATCH", "/users/me/personalization")
             | ("POST", "/legal-updates/{update_id}/acknowledge")
             | ("POST", "/users/{username}/block")
             | ("POST", "/users/me/follow-requests/{requester_username}/reject")

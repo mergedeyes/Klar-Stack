@@ -12,6 +12,7 @@ use crate::errors::AppError;
 use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
+use crate::handlers::events::{record_event, EventType};
 use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{insert_notification, publish_notification, NotificationKind};
 use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest};
@@ -94,6 +95,8 @@ pub async fn create_comment(
     if let Some(event) = pending_notification {
         publish_notification(&state, &event).await;
     }
+
+    record_event(&state.db, auth.user_id, post_id, EventType::Comment).await;
 
     Ok((StatusCode::CREATED, Json(comment.resolve_media(&state.storage))))
 }

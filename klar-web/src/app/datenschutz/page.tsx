@@ -128,6 +128,32 @@ export default function DatenschutzPage() {
             und löschen es nach einem Jahr; löschst du dein Konto vorher,
             entfällt die Verknüpfung mit dir.
           </p>
+          <p className="mt-2" id="discovery">
+            <strong>Personalisierte Entdecken-Seite:</strong> Dein Feed mit
+            den Beiträgen der Menschen, denen du folgst, ist und bleibt
+            chronologisch. Die Entdecken-Seite wollen wir künftig so ordnen,
+            dass sie dir Beiträge zeigt, die zu dir passen. Nur wenn du das in
+            den Einstellungen mit dem Schalter „Personalised Discovery“
+            einschaltest, speichern wir ab dann, welche Beiträge du likest,
+            nicht mehr likest oder kommentierst und welche Kommentare du
+            likest oder nicht mehr likest, jeweils mit dem Beitrag und dem
+            Zeitpunkt, sowie den Zeitpunkt deiner Einwilligung. Ohne deine
+            Einwilligung speichern wir nichts davon. Was du dir nur ansiehst,
+            speichern wir nie. Aus diesen Angaben leiten wir ab,
+            welche Beiträge dich interessieren könnten (Profiling, Art. 4 Nr.
+            4 DSGVO); Entscheidungen, die dir gegenüber rechtliche Wirkung
+            entfalten oder dich ähnlich erheblich beeinträchtigen, treffen wir
+            damit nicht (Art. 22 DSGVO). Rechtsgrundlage ist deine
+            Einwilligung (Art. 6 Abs. 1 lit. a DSGVO). Du kannst sie jederzeit
+            mit demselben Schalter widerrufen (Art. 7 Abs. 3 DSGVO): Dann
+            speichern wir nichts mehr und löschen sofort, was gespeichert war;
+            die Rechtmäßigkeit der Verarbeitung bis zum Widerruf bleibt davon
+            unberührt. Sonst löschen wir die Einträge monatsweise, sobald sie zwölf
+            Monate alt sind (ein Eintrag bleibt also höchstens 13 Monate
+            gespeichert), und sofort, wenn du dein Konto löschst; wird ein
+            Beitrag gelöscht, gehen die Einträge dazu mit. Wir nutzen diese
+            Angaben nicht für Werbung und geben sie nicht an Dritte weiter.
+          </p>
           <p className="mt-2">
             <strong>Benachrichtigungen:</strong> Benachrichtigungen (z. B. wer
             dir folgt oder deinen Beitrag kommentiert) löschen wir 90 Tage nach
@@ -423,7 +449,8 @@ export default function DatenschutzPage() {
             Du kannst dein Konto jederzeit in den Einstellungen löschen; zum
             Schutz vor versehentlichem oder fremdem Löschen fragen wir dabei
             nach deinem Passwort. Dein Profil, deine Beiträge, Kommentare und
-            Likes werden dabei
+            Likes sowie die Einträge für die Entdecken-Seite (Abschnitt 3)
+            werden dabei
             unmittelbar mit dem Klick auf den dazugehörigen Button aus unserer
             Datenbank entfernt — <strong>nicht</strong>, wie bei anderen
             Plattformen üblich, erst nach einer Wartefrist. Einzige Ausnahme

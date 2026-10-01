@@ -29,6 +29,7 @@ mod feedback;
 mod legal_updates;
 mod moderation;
 mod notices;
+mod post_events;
 mod official_accounts;
 mod previews;
 mod privacy;

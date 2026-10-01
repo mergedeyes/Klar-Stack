@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import KeepAccountCard from "@/components/settings/KeepAccountCard";
+import { Compass } from "lucide-react";
 
 interface SettingsSection {
   href: string;
@@ -28,6 +29,12 @@ const sections: SettingsSection[] = [
     icon: KeyRound,
     label: "Change password",
     description: "Update your password",
+  },
+  {
+    href: "/settings/discovery",
+    icon: Compass,
+    label: "Personalised Discovery",
+    description: "Off unless you switch it on",
   },
   {
     href: "/moderation",

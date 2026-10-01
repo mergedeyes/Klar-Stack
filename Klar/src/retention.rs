@@ -11,6 +11,9 @@
 //! - Accounts that never verified their address: 30 days after sign-up, a
 //!   week after a reminder with a fresh link.
 //! - Expired refresh tokens.
+//! - The interaction log for Discovery (post_events): whole months, once
+//!   all their entries are 12 months old, so an entry stays 12 to 13
+//!   months. The same step creates the coming months' partitions.
 //!
 //! ⚖️ All periods are pending legal review.
 //!
@@ -53,6 +56,21 @@ pub(crate) async fn sweep(state: &AppState) {
     purge_removed(state).await;
     sweep_unverified(state).await;
     delete_expired_records(state).await;
+    maintain_post_events(state).await;
+}
+
+pub const POST_EVENT_RETENTION_MONTHS: i32 = 12;
+
+/// Partitions for the coming months, and dropping the expired ones; see
+/// post_events_maintain in migrations/20261002100000_post_events.sql.
+pub(crate) async fn maintain_post_events(state: &AppState) {
+    if let Err(e) = sqlx::query("SELECT post_events_maintain(make_interval(months => $1))")
+        .bind(POST_EVENT_RETENTION_MONTHS)
+        .execute(&state.db)
+        .await
+    {
+        tracing::error!("Retention: maintaining post_events failed: {}", e);
+    }
 }
 
 pub const REPORT_RETENTION_DAYS: i32 = 183;

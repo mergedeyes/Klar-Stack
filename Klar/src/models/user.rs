@@ -41,6 +41,9 @@ pub struct UserRow {
     // runtime.
     #[allow(dead_code)]
     pub terms_accepted_at: Option<DateTime<Utc>>,
+    /// When the account consented to its interactions being logged for
+    /// ranking the Discovery page (handlers/events.rs); None: it didn't.
+    pub personalization_consented_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -83,6 +86,9 @@ pub struct UserPublicResponse {
     pub email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email_verified: Option<bool>,
+    /// The owner's own setting, like email above: only get_me sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub personalization_enabled: Option<bool>,
 }
 
 /// Public API response
@@ -103,6 +109,7 @@ pub struct UserResponse {
     pub created_at: DateTime<Utc>,
     pub username_changed_at: Option<DateTime<Utc>>,
     pub is_private: bool,
+    pub personalization_enabled: bool,
 }
 
 impl From<UserRow> for UserResponse {
@@ -118,6 +125,7 @@ impl From<UserRow> for UserResponse {
             created_at: row.created_at,
             username_changed_at: row.username_changed_at,
             is_private: row.is_private,
+            personalization_enabled: row.personalization_consented_at.is_some(),
         }
     }
 }
@@ -160,6 +168,7 @@ impl From<UserRow> for UserPublicResponse {
             is_admin: false,
             email: None,
             email_verified: None,
+            personalization_enabled: None,
         }
     }
 }

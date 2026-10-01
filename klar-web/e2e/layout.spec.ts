@@ -16,7 +16,7 @@ for (const path of ["/login", "/register"]) {
   });
 }
 
-for (const path of ["/settings", "/chats", "/moderation"]) {
+for (const path of ["/settings", "/settings/discovery", "/chats", "/moderation"]) {
   test(`${path} (signed in) fits the screen`, async ({ page }) => {
     await signIn(page, await signUp());
     await page.goto(path);

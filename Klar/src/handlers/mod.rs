@@ -5,6 +5,7 @@ pub mod blocks;
 pub mod comment_likes;
 pub mod comments;
 pub mod evidence;
+pub mod events;
 pub mod follows;
 pub mod legal_updates;
 pub mod health;
