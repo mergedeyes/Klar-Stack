@@ -9,7 +9,7 @@ import { adminModerationApi, users, type AdminAttention } from "@/lib/api";
 import { MessageSquareText } from "lucide-react";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import KeepAccountCard from "@/components/settings/KeepAccountCard";
-import PersonalizationCard from "@/components/settings/PersonalizationCard";
+import { Compass } from "lucide-react";
 
 interface SettingsSection {
   href: string;
@@ -35,6 +35,12 @@ const sections: SettingsSection[] = [
     icon: KeyRound,
     label: "Change password",
     description: "Update your password",
+  },
+  {
+    href: "/settings/discovery",
+    icon: Compass,
+    label: "Personalised Discovery",
+    description: "Off unless you switch it on",
   },
   {
     href: "/moderation",
@@ -230,7 +236,6 @@ export default function SettingsPage() {
           <p className="mt-2 px-1 text-xs text-destructive">{exportError}</p>
         )}
 
-        <PersonalizationCard />
         <KeepAccountCard />
       </main>
     </div>
