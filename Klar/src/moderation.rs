@@ -915,11 +915,21 @@ pub async fn close_obsolete_reports(
 /// explanation, the strikes behind it if there are any, and whether a
 /// report led to it. Only an account that has strikes is told about its
 /// score.
-fn measure_text(measure: Measure, score: i32, has_strikes: bool, basis: Option<&str>, from_report: bool) -> String {
+fn measure_text(measure: Measure, score: i32, has_strikes: bool, basis: Option<&str>, source: &Source) -> String {
     let mut parts: Vec<String> = Vec::new();
-    if from_report {
-        parts.push("Die Entscheidung folgt auf eine Meldung deines Kontos.".to_string());
-    }
+    parts.push(match source {
+        Source::Notice | Source::RightsClaim => "Die Entscheidung folgt auf eine Meldung deines Kontos.".to_string(),
+        Source::OwnInitiative => {
+            "Unser Team ist bei einer eigenen Prüfung auf dein Konto gestoßen; die Entscheidung beruht nicht auf einer Meldung."
+                .to_string()
+        }
+        Source::AuthorityOrder { authority, reference } => format!(
+            "Wir haben eine Anordnung von {}{} erhalten, gegen dein Konto vorzugehen. Gegen die Anordnung selbst \
+             kannst du dich bei der anordnenden Stelle oder vor Gericht wehren.",
+            authority,
+            reference.as_deref().map(|r| format!(" (Aktenzeichen {})", r)).unwrap_or_default()
+        ),
+    });
     if let Some(basis) = basis.map(str::trim).filter(|b| !b.is_empty()) {
         parts.push(basis.to_string());
     }
@@ -977,13 +987,17 @@ pub struct NewMeasure<'a> {
 /// and applies a suspension. A new suspension replaces the current one.
 /// Returns the decision id and the notices to send after commit.
 pub async fn record_account_measure(tx: &mut PgConnection, m: NewMeasure<'_>) -> Result<(Uuid, PendingNotices), AppError> {
-    let (ground_type, ground, _) = ground_for(m.reason);
+    // Like a content decision's: the reports it rests on decide whether it
+    // followed a notice or an authority's order; without any, the team
+    // acted on its own initiative. Recorded and named in the statement
+    // either way (Art. 17(3)(b) DSA).
+    let source = if m.report_ids.is_empty() { Source::OwnInitiative } else { source_of_reports(tx, &m.report_ids).await? };
+    let (ground_type, ground) = ground_with_source(&source, m.reason);
     let ground = format!("{}; Nutzungsbedingungen Abschnitt 8 (Sperrung von Konten)", ground);
     // ⚖️ Held back like the content decision for CSAM, so a suspect isn't
     // alerted before a report to the authorities. The suspension itself
     // still applies. Pending legal review.
     let deliver = !held_back(m.reason);
-    let source = if m.report_ids.is_empty() { None } else { Some("notice") };
 
     let decision_id = sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -1000,13 +1014,13 @@ pub async fn record_account_measure(tx: &mut PgConnection, m: NewMeasure<'_>) ->
     .bind(m.reason)
     .bind(ground_type)
     .bind(&ground)
-    .bind(measure_text(m.measure, m.score, m.has_strikes, m.basis, !m.report_ids.is_empty()))
+    .bind(measure_text(m.measure, m.score, m.has_strikes, m.basis, &source))
     .bind(m.decided_by)
     .bind(deliver)
     .bind(m.measure.suspension_days())
     .bind(m.score)
     .bind(&m.report_ids)
-    .bind(source)
+    .bind(source.as_db())
     .fetch_one(&mut *tx)
     .await
     .db_err_ctx("Failed to record account measure", "Database error")?;
@@ -1288,11 +1302,22 @@ mod tests {
 
     #[test]
     fn measures_only_cite_a_score_when_there_are_strikes() {
-        let without = measure_text(Measure::Warning, 0, false, Some("Gibt sich als jemand anderes aus."), true);
+        let without = measure_text(Measure::Warning, 0, false, Some("Gibt sich als jemand anderes aus."), &Source::Notice);
         assert!(!without.contains("Punkten"), "{without}");
         assert!(without.contains("Gibt sich als jemand anderes aus."));
         assert!(without.contains("Meldung deines Kontos"));
-        let with = measure_text(Measure::Suspend7, 68, true, None, false);
+        let with = measure_text(Measure::Suspend7, 68, true, None, &Source::OwnInitiative);
         assert!(with.contains("68 von 100"));
+    }
+
+    #[test]
+    fn measures_name_their_source() {
+        let own = measure_text(Measure::Warning, 0, false, None, &Source::OwnInitiative);
+        assert!(own.contains("eigenen Prüfung auf dein Konto"), "{own}");
+        assert!(!own.contains("Meldung deines Kontos"));
+        let order = Source::AuthorityOrder { authority: "BKA".into(), reference: Some("ST-1".into()) };
+        let ordered = measure_text(Measure::Ban, 0, false, None, &order);
+        assert!(ordered.contains("Anordnung von BKA (Aktenzeichen ST-1)"), "{ordered}");
+        assert!(ordered.contains("gegen dein Konto"));
     }
 }

@@ -488,3 +488,47 @@ async fn measures_say_why_and_close_the_reports_behind_them(pool: PgPool) {
     assert_eq!(outcomes.as_array().unwrap().iter().filter(|n| n["type_name"] == "report_outcome").count(), 1);
     assert_eq!(app.scalar(&format!("SELECT status FROM reports WHERE id = '{elsewhere}'")).await.as_deref(), Some("pending"));
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn account_measures_record_their_source_and_the_log_filters_by_it(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (carol, dave, admin) = (app.register("carol").await, app.register("dave").await, app.admin().await);
+
+    // Decided from the standing page without a report: the team's own
+    // initiative, and the statement says so.
+    let own = json!({ "measure": "warning", "reason": "impersonation", "explanation": "Gibt sich als Klar aus." });
+    app.post(&admin, "/admin/users/carol/measures", own).await.ok();
+    let d = app.get(&carol, "/moderation/decisions").await.ok().json()[0].clone();
+    assert_eq!(d["source"], "own_initiative");
+    let explanation = d["explanation"].as_str().unwrap();
+    assert!(explanation.contains("eigenen Prüfung auf dein Konto"), "{explanation}");
+    assert!(!explanation.contains("Meldung deines Kontos"), "{explanation}");
+
+    // Resting on an authority's order opened as a case on the account: the
+    // order is the source, named with its reference.
+    let order = json!({
+        "target_type": "user", "target_id": dave.id, "reason": "terrorism", "source": "authority_order",
+        "authority": "Bundeskriminalamt", "order_reference": "TCO-2026-18",
+    });
+    let report = app.post(&admin, "/admin/cases", order).await.ok().json()["report_id"].as_str().unwrap().to_string();
+    let measure = json!({ "measure": "ban", "reason": "terrorism", "explanation": "Verbreitet Terrorpropaganda.", "report_ids": [report] });
+    app.post(&admin, "/admin/users/dave/measures", measure).await.ok();
+    let d = app.get(&dave, "/moderation/decisions").await.ok().json()[0].clone();
+    assert_eq!(d["source"], "authority_order");
+    let explanation = d["explanation"].as_str().unwrap();
+    assert!(explanation.contains("Anordnung von Bundeskriminalamt (Aktenzeichen TCO-2026-18)"), "{explanation}");
+    assert!(d["ground"].as_str().unwrap().starts_with("Behördliche Anordnung"), "{}", d["ground"]);
+
+    // Every decision has a source, so each filter finds its own.
+    let log = |source: &str| {
+        let (app, admin, source) = (&app, admin.clone(), source.to_string());
+        async move {
+            let rows = app.get(&admin, &format!("/admin/decisions?source={source}")).await.ok().json();
+            rows.as_array().unwrap().iter().map(|d| d["affected_username"].as_str().unwrap().to_string()).collect::<Vec<_>>()
+        }
+    };
+    assert_eq!(log("own_initiative").await, ["carol"]);
+    assert_eq!(log("authority_order").await, ["dave"]);
+    assert!(log("notice").await.is_empty());
+    assert_eq!(app.count("SELECT 1 FROM moderation_decisions WHERE source IS NULL").await, 0);
+}
