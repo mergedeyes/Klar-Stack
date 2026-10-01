@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
@@ -20,9 +20,15 @@ function VerifyEmailContent() {
   // from the effect.
   const state: State = token ? requestState : "invalid";
   const { refreshUser } = useAuth();
+  // The link works once. In development React runs every effect twice
+  // (StrictMode), and the second request would find the token used and show
+  // "Link expired" over the success; the ref keeps it to one request per
+  // token. It survives that second run, unlike state set from the first.
+  const sentFor = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || sentFor.current === token) return;
+    sentFor.current = token;
 
     auth.verifyEmail(token)
       .then(() => {
