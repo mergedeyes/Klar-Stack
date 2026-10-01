@@ -141,6 +141,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/me/avatar", post(handlers::users::upload_avatar).delete(handlers::users::delete_avatar))
         .route("/users/me/blocked", get(handlers::blocks::get_blocked_users))
         .route("/users/me/export", get(handlers::users::export_my_data))
+        .route("/users/me/personalization", patch(handlers::events::set_personalization))
         .route("/users/me/standing", get(handlers::standing::my_standing))
         .route("/legal-updates/pending", get(handlers::legal_updates::pending))
         .route("/legal-updates/{update_id}/acknowledge", post(handlers::legal_updates::acknowledge))

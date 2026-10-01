@@ -155,11 +155,13 @@ pub async fn get_me(
             // item and the real server-side check never disagree).
             let is_admin = user.email_verified && crate::utils::is_admin_email(&user.email);
             let (email, email_verified) = (user.email.clone(), user.email_verified);
+            let personalization_enabled = user.personalization_enabled;
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
             response.is_admin = is_admin;
             response.email = Some(email);
             response.email_verified = Some(email_verified);
+            response.personalization_enabled = Some(personalization_enabled);
             Ok(Json(response.resolve_media(&state.storage)))
         }
         None => Err(AppError::not_found("User not found")),
@@ -715,8 +717,8 @@ pub async fn export_my_data(
     // proof of when ToS/privacy consent was given is squarely personal
     // data about the account, even though it's never shown in the app UI.
     #[allow(clippy::type_complexity)]
-    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
-        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at FROM users WHERE id = $1"
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, bool)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_enabled FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_one(&state.db)
@@ -807,6 +809,15 @@ pub async fn export_my_data(
     // --- Likes given (comments) ---
     let comment_likes = sqlx::query_as::<_, (Uuid, DateTime<Utc>)>(
         "SELECT comment_id, created_at FROM comment_likes WHERE user_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .db_err_ctx("Data export query failed", "Database error")?;
+
+    // --- Interaction log for ranking Discovery (handlers/events.rs) ---
+    let post_events = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>)>(
+        "SELECT post_id, event_type, created_at FROM post_events WHERE user_id = $1 ORDER BY created_at DESC"
     )
     .bind(auth.user_id)
     .fetch_all(&state.db)
@@ -1021,6 +1032,7 @@ pub async fn export_my_data(
             "created_at": profile.6,
             "terms_accepted_at": profile.7,
             "keep_after_test_at": profile.8,
+            "personalization_enabled": profile.9,
         },
         "posts": posts_json,
         "comments": comments_json,
@@ -1028,6 +1040,7 @@ pub async fn export_my_data(
             "posts": post_likes.into_iter().map(|(post_id, created_at)| serde_json::json!({"post_id": post_id, "created_at": created_at})).collect::<Vec<_>>(),
             "comments": comment_likes.into_iter().map(|(comment_id, created_at)| serde_json::json!({"comment_id": comment_id, "created_at": created_at})).collect::<Vec<_>>(),
         },
+        "discovery_interactions": post_events.into_iter().map(|(post_id, event_type, created_at)| serde_json::json!({"post_id": post_id, "event": event_type, "created_at": created_at})).collect::<Vec<_>>(),
         "following": following.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "followers": followers.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "blocked_users": blocked.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),

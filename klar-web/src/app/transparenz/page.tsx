@@ -30,10 +30,17 @@ export default function TransparenzPage() {
         <section className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">So funktioniert Klar</h2>
           <p className="mb-2">
-            Klar ist ein chronologischer Feed — bewusst ohne Algorithmus. Du
-            siehst Beiträge der Menschen, denen du folgst, in der Reihenfolge,
-            in der sie gepostet wurden. Kein Beitrag wird nach oben sortiert,
-            weil er mehr Interaktionen bekommt.
+            Dein Feed ist chronologisch — bewusst ohne Algorithmus. Du siehst
+            Beiträge der Menschen, denen du folgst, in der Reihenfolge, in der
+            sie gepostet wurden. Kein Beitrag wird dort nach oben sortiert,
+            weil er mehr Interaktionen bekommt, und daran ändert sich nichts.
+          </p>
+          <p className="mb-2">
+            Nur die Entdecken-Seite, auf der du Beiträge von Menschen findest,
+            denen du noch nicht folgst, soll künftig zu dir passende Beiträge
+            weiter oben zeigen. Noch ist auch sie chronologisch. Wie das
+            funktioniert und welche Daten dafür anfallen, steht unten unter
+            „Einträge für die Entdecken-Seite“.
           </p>
           <p>
             Direktnachrichten sind nur zwischen Nutzern möglich, die sich
@@ -98,13 +105,21 @@ export default function TransparenzPage() {
           </div>
 
           <div className="mb-4">
-            <h3 className="mb-1 font-semibold">Keine Nutzungsprotokolle</h3>
+            <h3 className="mb-1 font-semibold">Einträge für die Entdecken-Seite</h3>
             <p>
-              Wir protokollieren nicht, welche Beiträge du ansiehst, likest
-              oder kommentierst. Ein solches Protokoll gab es bis Oktober 2026
-              für mögliche spätere Empfehlungen; es wurde nie genutzt, und wir
-              haben es mit allen Einträgen gelöscht, weil ein chronologischer
-              Feed es nicht braucht.
+              Damit die Entdecken-Seite dir künftig passende Beiträge zeigen
+              kann, speichern wir, welche Beiträge du likest, nicht mehr
+              likest oder kommentierst und welche Kommentare du likest oder
+              nicht mehr likest — mit
+              Zeitpunkt. Was du dir nur ansiehst, speichern wir nicht. Dein
+              Feed nutzt diese Einträge nie. In den Einstellungen kannst du das
+              mit „Personalised Discovery“ abschalten; dann löschen wir sofort
+              alles, was gespeichert war. Sonst löschen wir die Einträge
+              monatsweise, sobald sie zwölf Monate alt sind. Ein früheres
+              Protokoll dieser Art hatten wir im Oktober 2026 gelöscht, weil es
+              keinen Zweck hatte; dieses dient nur der Entdecken-Seite (Details
+              in der{" "}
+              <Link href="/datenschutz#discovery" className="underline">Datenschutzerklärung</Link>).
             </p>
           </div>
 

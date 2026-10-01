@@ -10,6 +10,7 @@ use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
+use crate::handlers::events::{record_event, EventType};
 use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{insert_notification, publish_notification, NotificationEvent, NotificationKind};
 use crate::models::LikeResponse;
@@ -103,6 +104,9 @@ pub async fn toggle_comment_like(
     if let Some(event) = pending_notification {
         publish_notification(&state, &event).await;
     }
+
+    let event = if liked { EventType::CommentLike } else { EventType::CommentUnlike };
+    record_event(&state.db, auth.user_id, post_id, event).await;
 
     Ok(Json(LikeResponse {
         liked,

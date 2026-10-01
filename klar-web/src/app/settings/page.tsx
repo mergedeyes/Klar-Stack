@@ -9,6 +9,7 @@ import { adminModerationApi, users, type AdminAttention } from "@/lib/api";
 import { MessageSquareText } from "lucide-react";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import KeepAccountCard from "@/components/settings/KeepAccountCard";
+import PersonalizationCard from "@/components/settings/PersonalizationCard";
 
 interface SettingsSection {
   href: string;
@@ -229,6 +230,7 @@ export default function SettingsPage() {
           <p className="mt-2 px-1 text-xs text-destructive">{exportError}</p>
         )}
 
+        <PersonalizationCard />
         <KeepAccountCard />
       </main>
     </div>

@@ -39,6 +39,8 @@ loads more as you scroll.
 - [ ] Content hidden by moderation is visible only to its owner, who sees "Hidden — only you can see this post" with a link to Moderation; content removed by moderation is gone for everyone, its owner included
 - [ ] Blocking hides each account's posts from the other's discovery feed, and removes pending follow requests both ways
 - [ ] Other users' email addresses never appear in any response (check the Network tab on profiles, follower lists, notifications and search)
+- [ ] Settings → "Personalised Discovery" is on for a new account; switching it off asks first, stays off after a reload, and the data download then has no `discovery_interactions`; likes and comments made while it's off don't appear there after switching it back on
+- [ ] The home feed's order never changes with likes or comments (newest first, whatever the setting)
 
 ## Real-time (notifications and chat)
 

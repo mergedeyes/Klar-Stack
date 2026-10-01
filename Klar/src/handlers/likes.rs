@@ -10,6 +10,7 @@ use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
+use crate::handlers::events::{record_event, EventType};
 use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{insert_notification, publish_notification, NotificationEvent, NotificationKind};
 use crate::models::LikeResponse;
@@ -97,6 +98,7 @@ pub async fn toggle_like(
         publish_notification(&state, &event).await;
     }
 
+    record_event(&state.db, auth.user_id, post_id, if liked { EventType::Like } else { EventType::Unlike }).await;
 
     Ok(Json(LikeResponse {
         liked,
