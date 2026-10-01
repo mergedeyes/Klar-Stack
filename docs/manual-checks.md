@@ -36,13 +36,14 @@ loads more as you scroll.
 
 - [ ] A private account's posts, profile grid and post permalinks are hidden from the other account until it's an accepted follower
 - [ ] After unfollowing or being blocked, the other account can no longer open the posts (reload the page; media links stop working once their signature expires)
-- [ ] Content hidden by moderation is visible only to its owner
+- [ ] Content hidden by moderation is visible only to its owner, who sees "Hidden — only you can see this post" with a link to Moderation; content removed by moderation is gone for everyone, its owner included
+- [ ] Blocking hides each account's posts from the other's discovery feed, and removes pending follow requests both ways
 - [ ] Other users' email addresses never appear in any response (check the Network tab on profiles, follower lists, notifications and search)
 
 ## Real-time (notifications and chat)
 
 - [ ] A like, comment, follow or follow request from the other account shows up without reloading
-- [ ] Chat messages, edits, deletions and reactions appear on the other side live
+- [ ] Chat messages, edits, deletions and reactions appear on the other side live; an edit or deletion doesn't light up the unread badge
 - [ ] On a phone, /chats shows the list full width; tapping a chat opens it full screen with the input above the footer, reply/react buttons are visible without hovering, and the back arrow returns to the list
 - [ ] The unread badges clear when the conversation or dropdown is opened
 - [ ] After the laptop sleeps or the network drops briefly, the stream reconnects and events arrive again
@@ -51,10 +52,16 @@ loads more as you scroll.
 
 - [ ] Settings → "Keep my account after the test" is off for a new account; ticking it shows "Requested on …" and stays ticked after a reload; unticking clears it
 - [ ] Register, verify the email via the link, log in, log out
+- [ ] Before verifying, the banner says posting, commenting, messaging and reporting need a verified address; trying any of them shows that message, liking and following work
+- [ ] An unverified account gets a reminder email a week before its deletion (move `users.created_at` back 24 days on a local stack and wait for the hourly sweep, or restart the backend)
 - [ ] Session survives an idle period longer than 15 minutes (the access token refreshes silently)
-- [ ] Password reset and change password work; changing the password logs out other sessions
+- [ ] Password reset and change password work; changing the password signs other devices out at once (their next click goes to the login page) while this device stays signed in
+- [ ] Asking for a reset link twice within five minutes sends one email
 - [ ] Data export downloads a ZIP whose `data.json` and images match the account
-- [ ] Account deletion removes the profile, posts and media; the chat partner sees the "account deleted" notice
+- [ ] Account deletion asks for the password (a wrong one is refused) and removes the profile, posts and media; the chat partner sees the "account deleted" notice; the like, comment and follower counts on other people's posts and profiles drop accordingly
+- [ ] A deleted or mistyped profile shows "Profil nicht gefunden" instead of jumping to the feed
+- [ ] Clearing the bio or display name in Edit profile and saving empties it; "Remove photo" removes the picture
+- [ ] Locking an account or changing its password closes an open notification stream on its other devices within half a minute (the bell stops updating there)
 - [ ] Locking an account in `/admin/security` signs it out within seconds on every device (next request goes to the login page) and sends an email whose link sets a new password; replying to that email goes to kontakt@klarsocial.eu
 - [ ] Logging in to a locked account with the right password shows "Your account is locked" (a wrong password shows the usual error); "Send the link again" works once, then asks to wait 15 minutes
 - [ ] Setting a new password through the link unlocks the account; the incident log shows "Unlocked by new password" and keeps the assessment
@@ -78,8 +85,20 @@ loads more as you scroll.
 
 ## Moderation
 
-- [ ] Reporting a post, comment or user from the other account works and appears in `/admin/reports`
-- [ ] Dismissing restores visibility; removing deletes the content and its media
+- [ ] Reporting a post, comment, user or chat message from the other account works and appears in `/admin/reports`, one card per item with all its reports; a second report on the same item by the same account is refused
+- [ ] The report dialog shows crisis lines for self-harm, "don't download or share" for CSAM and HateAid for intimate images, and after sending offers to block the author
+- [ ] A brand-new or unverified account's CSAM report doesn't hide the post (it tops the queue instead); an account older than a day does hide it; the sixth CSAM/intimate-image report in a day is refused
+- [ ] A CSAM, intimate-image or terrorism report sends every admin an alert email with a link and no content; a second report on the same item for the same reason sends none; CSAM and intimate-image cards in the queue show no thumbnail
+- [ ] "Dismiss all" closes every report on the item and lifts an automatic hide or warning only when no other report or rights claim holds it; "Dismiss only this report" leaves the others pending
+- [ ] Removing makes the post or comment disappear for everyone, its author included; a removed comment with replies shows "Removed by moderation" in its place; an accepted objection brings the content back as it was
+- [ ] A post reported as CSAM and deleted by its author still gets a strike when the admin confirms the violation from the evidence copy; a spam report on a post its author deleted closes as "Content no longer available"
+- [ ] A reported chat message appears in the queue without its text; its evidence record shows it with the ten messages before it; "Delete message" removes it for both sides; the evidence survives the sender deleting the message or the account
+- [ ] An objection to an automatic warning shows on the report card; dismissing asks for an answer and accepts the objection, removing marks it as replaced and the author can object to the removal
+- [ ] Settings → Moderation shows each report's outcome ("action was taken against the account", "content no longer available", …); a dismissed report can be sent back once with a note and comes back in the queue as "Re-check requested"
+- [ ] "Decide on the account" on an account report opens its standing page: a measure without strikes needs an explanation, which appears in the user's statement (with no score); the report closes as "action was taken against the account"
+- [ ] "Remove parts of the profile" removes the picture, bio, display name or username (replaced by user_…, changeable at once); the statement lists what went; an accepted objection puts them back
+- [ ] "Moderate" on a post or comment (admins) opens a case; with "An authority's order" the statement names the authority and the reference
+- [ ] Settings shows badges on the admin entries; the Decision log filters by decision, reason, source, admin and account and pages with "Load more"
 - [ ] A report for a likely-illegal reason immediately creates a record under `/admin/evidence` with the reported state (the report in the queue links to it); a spam report creates nothing
 - [ ] Editing the reported item (caption, comment, bio, avatar) adds a version to the timeline; deleting it (as admin, as its author, or with the account) keeps the record and marks it deleted
 - [ ] Opening an evidence record or one of its files asks for a reason, and the audit trail shows exactly one entry per action
@@ -108,6 +127,7 @@ loads more as you scroll.
 ## Legal pages and passcode gate
 
 - [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
+- [ ] Signed out, "Rechtswidrige Inhalte melden" in the footer opens the notice form (not the passcode gate); a notice about a post, a comment link ("Link" on the comment) or a profile goes into the queue as a public notice; the confirmation email's link shows the status, and the decision arrives by email; a CSAM notice works without name and email
 - [ ] If the change adds a sub-processor or changes what data is kept, the Datenschutz and Transparenz pages say so
 - [ ] After a deploy with a new file in `klar-web/legal-updates/` (once the page shows its new Stand date), `/admin/legal-updates` lists it and every older account sees a dialog with the summary on its next visit; it can only be accepted, the legal pages and Settings stay reachable, and accepting makes it disappear for good; accounts created afterwards never see it
 - [ ] `/admin/legal-updates` filters by a From/To date range (both days included) and sorts by latest/oldest, most/least accepted (share of accounts), most/least emails; Reset restores the default

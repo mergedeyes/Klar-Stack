@@ -41,6 +41,13 @@ export default function NutzungsbedingungenPage() {
             sein. Du bist für die Geheimhaltung deines Passworts und für alle
             Aktivitäten unter deinem Konto verantwortlich.
           </p>
+          <p className="mt-2">
+            Beiträge, Kommentare, Direktnachrichten und Meldungen in der App
+            sind möglich, sobald du deine E-Mail-Adresse über den Link in
+            unserer E-Mail bestätigt hast. Ein Konto, dessen Adresse 30 Tage
+            nach der Registrierung noch nicht bestätigt ist, löschen wir; eine
+            Woche vorher erinnern wir dich per E-Mail mit einem neuen Link.
+          </p>
         </section>
 
         <section className="mb-6">
@@ -138,28 +145,59 @@ export default function NutzungsbedingungenPage() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">5. Meldung von Inhalten und Maßnahmen</h2>
           <p>
-            Wenn du auf Beiträge, Kommentare oder Profile stößt, die gegen
-            diese Nutzungsbedingungen verstoßen, kannst du sie direkt in der
-            App über die Melden-Funktion melden und dabei einen passenden
-            Grund auswählen (u. a. Spam, Belästigung, Hassrede oder
+            Wenn du auf Beiträge, Kommentare, Direktnachrichten oder Profile
+            stößt, die gegen diese Nutzungsbedingungen verstoßen, kannst du sie
+            direkt in der App über die Melden-Funktion melden und dabei einen
+            passenden Grund auswählen (u. a. Spam, Belästigung, Hassrede oder
             Entmenschlichung, Extremismus, Gewaltdarstellung, Terrorismus oder
             Gewaltandrohung, Selbstverletzung, sexuelle Inhalte, intime
             Aufnahmen ohne Einwilligung, Darstellung sexuellen Missbrauchs von
             Minderjährigen, Betrug, illegale Waren, Identitätsdiebstahl oder
-            sonstige Verstöße). Je nach gewähltem Grund kann der gemeldete
-            Inhalt automatisch vorübergehend ausgeblendet oder mit einem
-            Warnhinweis versehen werden, bis unser Team die Meldung geprüft
-            hat. Wir behalten uns vor, Inhalte, die gegen diese
-            Nutzungsbedingungen verstoßen, zu entfernen und Konten zu sperren
-            oder zu löschen, soweit dies zur Wahrung berechtigter Interessen
-            oder zur Erfüllung rechtlicher Pflichten erforderlich ist. Über
-            jede solche Maßnahme informieren wir dich mit einer Begründung in
-            der App und per E-Mail; innerhalb von sechs Monaten kannst du dort
+            sonstige Verstöße). Meldest du eine Direktnachricht, kann unser
+            Team sie und die zehn Nachrichten davor lesen. Rechtswidrige
+            Inhalte kann jede Person, auch ohne Konto, über das Formular{" "}
+            <a href="/notices" className="underline">„Rechtswidrige Inhalte melden“</a>{" "}
+            melden.
+          </p>
+          <p className="mt-2">
+            Je nach gewähltem Grund kann ein gemeldeter Beitrag oder Kommentar
+            automatisch vorübergehend ausgeblendet oder mit einem Warnhinweis
+            versehen werden, bis unser Team die Meldung geprüft hat. Das gilt
+            für Meldungen von Konten mit bestätigter E-Mail-Adresse, die
+            mindestens einen Tag alt sind und deren Meldungen dieser Art nicht
+            wiederholt unbegründet waren; alle anderen Meldungen prüft unser
+            Team, bevor etwas geschieht. Du kannst bis zu 30 Meldungen am Tag
+            abgeben, davon bis zu fünf wegen Darstellungen sexuellen
+            Missbrauchs oder intimer Aufnahmen, und denselben Inhalt nur einmal
+            melden, solange deine Meldung offen ist. Haben wir keinen Verstoß
+            festgestellt, kannst du einmal um erneute Prüfung bitten.
+          </p>
+          <p className="mt-2">
+            Wir behalten uns vor, Inhalte, die gegen diese Nutzungsbedingungen
+            verstoßen, zu entfernen, Angaben aus Profilen (Profilbild,
+            Beschreibung, Anzeigename) zu entfernen, einen Benutzernamen, der
+            eine andere Person nachahmt oder gegen diese Bedingungen verstößt,
+            durch einen neutralen zu ersetzen, und Konten zu sperren oder zu
+            löschen, soweit dies zur Wahrung berechtigter Interessen oder zur
+            Erfüllung rechtlicher Pflichten erforderlich ist. Eine Maßnahme
+            kann auf einer Meldung, einer eigenen Prüfung unseres Teams oder
+            einer behördlichen Anordnung beruhen; die Begründung nennt den
+            Anlass. Entfernte Inhalte und Profilangaben bewahren wir unsichtbar
+            bis zum Ende der Widerspruchsfrist auf, damit wir sie
+            wiederherstellen können, wenn dein Widerspruch Erfolg hat; danach
+            löschen wir sie endgültig.
+          </p>
+          <p className="mt-2">
+            Über jede solche Maßnahme informieren wir dich mit einer Begründung
+            in der App und, bei bestätigter E-Mail-Adresse, per E-Mail. Betrifft
+            sie Darstellungen sexuellen Missbrauchs von Minderjährigen, senden
+            wir die Begründung erst, wenn wir den Inhalt geprüft und, soweit
+            erforderlich, den Strafverfolgungsbehörden gemeldet haben.
+            Innerhalb von sechs Monaten kannst du in der Begründung
             widersprechen, und ein Mitglied unseres Teams prüft den
             Widerspruch. Wer einen Inhalt meldet, erfährt, ob die Meldung zu
-            einer Maßnahme geführt hat. Für
-            Anliegen, die sich nicht über die Melden-Funktion abdecken lassen,
-            erreichst du uns unter{" "}
+            einer Maßnahme geführt hat. Für Anliegen, die sich nicht über die
+            Melden-Funktion abdecken lassen, erreichst du uns unter{" "}
             <a href="mailto:kontakt@klarsocial.eu" className="underline">
               kontakt@klarsocial.eu
             </a>
@@ -193,9 +231,9 @@ export default function NutzungsbedingungenPage() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">8. Kündigung</h2>
           <p>
-            Du kannst dein Konto jederzeit in den Einstellungen löschen. Wir
-            können Konten bei Verstößen gegen diese Nutzungsbedingungen
-            sperren oder löschen. Bei schwerwiegenden Verstößen kann dies ohne
+            Du kannst dein Konto jederzeit in den Einstellungen löschen; dazu
+            fragen wir nach deinem Passwort. Wir können Konten bei Verstößen
+            gegen diese Nutzungsbedingungen sperren oder löschen. Bei schwerwiegenden Verstößen kann dies ohne
             vorherige Ankündigung erfolgen.
           </p>
           <p className="mt-2">

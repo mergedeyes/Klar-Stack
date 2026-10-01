@@ -27,11 +27,14 @@ The defaults are those two addresses (`npm run dev`). The backend should allow
 many sign-ups and requests (`AUTH_RATE_LIMIT_PER_MIN=1000`,
 `GENERAL_RATE_LIMIT_PER_MIN=10000`) and have no passcode gate configured.
 
-The admin tests need an admin: start the backend with
-`ADMIN_EMAILS=e2e-admin@example.test` and pass the backend's database as
-`E2E_DATABASE_URL`. The global setup (`global-setup.ts`) registers that
-account and marks its email verified directly in the database, and a few
-tests read from it what the app only emails (a reset link) or move
-timestamps. Use a throwaway database for this, never a real one. Without
-`E2E_DATABASE_URL` the admin tests, and those that follow an emailed link, skip themselves. `--project desktop` or `--project phone` runs one screen size;
+Pass the backend's database as `E2E_DATABASE_URL`: posting, commenting,
+messaging and reporting need a verified email address, and `signUp` marks
+each test account verified directly in the database, since the link only
+goes to an inbox nobody reads. The admin tests also need an admin: start the
+backend with `ADMIN_EMAILS=e2e-admin@example.test`, and the global setup
+(`global-setup.ts`) registers that account and verifies it. A few tests read
+from the database what the app only emails (a reset link) or move timestamps
+(`trustedSignUp` makes an account a day old, so its reports hide content).
+Use a throwaway database for this, never a real one. Without
+`E2E_DATABASE_URL` every test that needs a verified account skips itself. `--project desktop` or `--project phone` runs one screen size;
 `--ui` opens Playwright's test browser.

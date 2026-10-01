@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { adminSession, apiCall, apiGet, pageFor, report, signIn, signUp, uniqueName, upload } from "./helpers";
+import { adminSession, apiCall, apiGet, pageFor, report, signIn, signUp, trustedSignUp, uniqueName, upload } from "./helpers";
 
 // Reporting posts and profiles from the app, the two reasons that hide a
 // post at once (CSAM, intimate images), the statement held back for CSAM
@@ -45,13 +45,15 @@ test("posts and profiles reported in the app reach the queue, and the reporter s
   // The reporter learns the outcome of each, nothing about the person.
   await page.goto("/moderation#reports");
   const reports = page.locator("#reports ~ div");
-  await expect(reports.getByText("Reviewed — action taken")).toHaveCount(1);
+  await expect(reports.getByText("Reviewed — the content was removed")).toHaveCount(1);
   await expect(reports.getByText("Reviewed — no violation found")).toHaveCount(1);
 });
 
 test("a CSAM report hides the post at once, and its statement waits until an admin sends it", async ({ page, browser, request }) => {
   const admin = await adminSession();
-  const [author, reporter, bystander] = await Promise.all([signUp("uploader"), signUp("reporter"), signUp("bystander")]);
+  // A reporter whose account is verified and older than a day: a brand-new
+  // account's report only queues.
+  const [author, reporter, bystander] = await Promise.all([signUp("uploader"), trustedSignUp("reporter"), signUp("bystander")]);
   const caption = `held back ${uniqueName("p")}`;
   const post = await upload(request, author, caption);
 
@@ -68,8 +70,8 @@ test("a CSAM report hides the post at once, and its statement waits until an adm
   await expect(own.getByText(caption)).toBeVisible();
 
   // Removed by the team: the author isn't told yet.
-  const queue = await apiGet<{ id: string; target_id: string }[]>(request, admin, "/admin/reports");
-  const reportId = queue.find((r) => r.target_id === post)!.id;
+  const queue = await apiGet<{ target_id: string; reports: { id: string }[] }[]>(request, admin, "/admin/reports");
+  const reportId = queue.find((g) => g.target_id === post)!.reports[0].id;
   await apiCall(request, admin, "POST", `/admin/reports/${reportId}/remove`, {});
   expect(await apiGet<unknown[]>(request, author, "/moderation/decisions")).toEqual([]);
 
@@ -87,7 +89,7 @@ test("a CSAM report hides the post at once, and its statement waits until an adm
 });
 
 test("an intimate-images report hides the post at once and tells its author right away", async ({ browser, request }) => {
-  const [author, reporter, bystander] = await Promise.all([signUp("poster"), signUp("reporter"), signUp("bystander")]);
+  const [author, reporter, bystander] = await Promise.all([signUp("poster"), trustedSignUp("reporter"), signUp("bystander")]);
   const caption = `ncii ${uniqueName("p")}`;
   const post = await upload(request, author, caption);
   await report(request, reporter, "post", post, "ncii");
@@ -135,4 +137,39 @@ test("the author objects to a removal and reads the team's answer", async ({ pag
   // The strike stays.
   const standing = await apiGet<{ score: number }>(request, author, "/users/me/standing");
   expect(standing.score).toBe(5);
+});
+
+test("the report dialog helps in a crisis, offers to block, and a dismissed report can be sent back once", async ({ page, browser, request }) => {
+  const admin = await adminSession();
+  const [author, reporter] = await Promise.all([signUp("sad"), signUp("worried")]);
+  const caption = `nothing matters ${uniqueName("p")}`;
+  const post = await upload(request, author, caption);
+
+  await signIn(page, reporter);
+  await page.goto(`/posts/${post}`);
+  await page.getByRole("button", { name: "Report post" }).click();
+  await page.getByLabel("Self-harm or suicide").check();
+  await expect(page.getByText(/0800 111 0 111/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Submit report" }).click();
+  await expect(page.getByText("Thanks — we'll review this.")).toBeVisible();
+  await page.getByRole("button", { name: `Block @${author.username}` }).click();
+  await expect(page.getByText(new RegExp(`blocked @${author.username}`))).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+
+  // Dismissed: the reporter asks once to look again, with a note.
+  const queue = await apiGet<{ target_id: string; reports: { id: string }[] }[]>(request, admin, "/admin/reports");
+  const reportId = queue.find((g) => g.target_id === post)!.reports[0].id;
+  await apiCall(request, admin, "POST", `/admin/reports/${reportId}/dismiss`, {});
+  await page.goto("/moderation#reports");
+  await page.getByRole("button", { name: "Ask us to check again" }).click();
+  await page.getByPlaceholder("What did we miss? (optional)").fill("Please look at the caption again.");
+  await page.getByRole("button", { name: /Send — you can ask once/ }).click();
+  await expect(page.getByText("Being checked again")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask us to check again" })).toHaveCount(0);
+
+  const adminPage = await pageFor(browser, admin);
+  await adminPage.goto("/admin/reports");
+  const card = adminPage.getByTestId("report-group").filter({ hasText: caption });
+  await expect(card.getByText("Re-check requested")).toBeVisible();
+  await expect(card).toContainText("Please look at the caption again.");
 });

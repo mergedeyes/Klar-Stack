@@ -8,8 +8,9 @@ import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/hooks/use-notifications";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Reply, Edit2, Trash2, X, Smile, ArrowLeft } from "lucide-react";
+import { Reply, Edit2, Trash2, X, Smile, ArrowLeft, Flag } from "lucide-react";
 import { getMediaUrl } from "@/lib/utils/media";
+import ReportModal from "@/components/ReportModal";
 
 interface ChatWindowProps {
   conversationId?: string;
@@ -71,6 +72,8 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   // Which message's reaction picker is currently open, if any.
   const [pickerForMessageId, setPickerForMessageId] = useState<string | null>(null);
+  // The other person's message being reported, if any.
+  const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -275,6 +278,7 @@ return (
                 {!isMe && (
                   <div className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-1">
                     <button onClick={() => handleReply(msg)} aria-label="Reply" className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
+                    <button onClick={() => setReportingMessageId(msg.id)} aria-label="Report message" className="p-1 hover:bg-muted rounded text-muted-foreground"><Flag size={14} /></button>
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
@@ -362,6 +366,15 @@ return (
           </Button>
         </form>
       </div>
+      )}
+
+      {reportingMessageId && (
+        <ReportModal
+          targetType="message"
+          targetId={reportingMessageId}
+          authorUsername={receiverUsername ?? undefined}
+          onClose={() => setReportingMessageId(null)}
+        />
       )}
     </div>
   );

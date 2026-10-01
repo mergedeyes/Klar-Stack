@@ -104,6 +104,7 @@ async fn changing_or_resetting_the_password_ends_other_sessions(pool: PgPool) {
     let unknown = app.anon_post("/auth/forgot-password", json!({ "email": "nobody@example.test" })).await.ok().json();
     let known = app.anon_post("/auth/forgot-password", json!({ "email": "alice@example.test" })).await.ok().json();
     assert_eq!(unknown, known);
+    eventually("reset link", || async { reset_tokens(&app, &alice).await == 1 }).await;
     let token = reset_token(&app, &alice).await;
     let reset = |token: &str| json!({ "token": token, "new_password": "third-password-3" });
     app.anon_post("/auth/reset-password", reset(&token)).await.ok();
@@ -111,11 +112,25 @@ async fn changing_or_resetting_the_password_ends_other_sessions(pool: PgPool) {
     assert_eq!(refresh(&app, phone["refresh_token"].as_str().unwrap()).await.status, StatusCode::UNAUTHORIZED);
     login(&app, "alice@example.test", "third-password-3").await.ok();
 
-    // Asking again invalidates the earlier link.
+    // One email per five minutes: asking again at once sends nothing, so
+    // a flood of requests can't keep invalidating the link.
+    app.exec("UPDATE email_tokens SET created_at = NOW() - INTERVAL '10 minutes'").await;
     app.anon_post("/auth/forgot-password", json!({ "email": "alice@example.test" })).await.ok();
+    eventually("second reset link", || async { reset_tokens(&app, &alice).await == 2 }).await;
     let older = reset_token(&app, &alice).await;
     app.anon_post("/auth/forgot-password", json!({ "email": "alice@example.test" })).await.ok();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(reset_tokens(&app, &alice).await, 2);
+
+    // After that, a new link invalidates the earlier one.
+    app.exec("UPDATE email_tokens SET created_at = NOW() - INTERVAL '10 minutes'").await;
+    app.anon_post("/auth/forgot-password", json!({ "email": "alice@example.test" })).await.ok();
+    eventually("third reset link", || async { reset_tokens(&app, &alice).await == 3 }).await;
     assert_eq!(app.anon_post("/auth/reset-password", reset(&older)).await.status, StatusCode::BAD_REQUEST);
+}
+
+async fn reset_tokens(app: &TestApp, user: &User) -> i64 {
+    app.count(&format!("SELECT 1 FROM email_tokens WHERE user_id = '{}' AND token_type = 'password_reset'", user.id)).await
 }
 
 async fn reset_token(app: &TestApp, user: &User) -> String {
@@ -131,7 +146,7 @@ async fn reset_token(app: &TestApp, user: &User) -> String {
 #[sqlx::test(migrations = "./migrations")]
 async fn verification_links_work_once_and_resending_reveals_nothing(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let alice = app.register("alice").await;
+    let alice = app.register_unverified("alice").await;
     assert_eq!(app.get(&alice, "/users/me").await.ok().json()["email_verified"], false);
 
     let token = app
@@ -143,7 +158,7 @@ async fn verification_links_work_once_and_resending_reveals_nothing(pool: PgPool
     assert_eq!(app.get(&alice, "/users/me").await.ok().json()["email_verified"], true);
 
     // The same answer for an unknown, a verified and an unverified address.
-    app.register("bob").await;
+    app.register_unverified("bob").await;
     let answers: Vec<Value> = resend_answers(&app, &["nobody@example.test", "alice@example.test", "bob@example.test"]).await;
     assert!(answers.windows(2).all(|w| w[0] == w[1]), "{answers:?}");
 }
@@ -154,4 +169,58 @@ async fn resend_answers(app: &TestApp, emails: &[&str]) -> Vec<Value> {
         out.push(app.anon_post("/auth/resend-verification", json!({ "email": email })).await.ok().json());
     }
     out
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_new_password_signs_other_devices_out_at_once_and_keeps_this_one(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let alice = app.register("alice").await;
+    let laptop = alice.with_token(login(&app, "alice@example.test", PASSWORD).await.ok().json()["access_token"].as_str().unwrap());
+
+    let change = json!({ "current_password": PASSWORD, "new_password": "another-password-2" });
+    let fresh = app.patch(&alice, "/users/me/password", change).await.ok().json();
+    // Not only once its 15 minutes are over: the laptop's access token
+    // stops working now.
+    assert_eq!(app.get(&laptop, "/users/me").await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(app.get(&alice, "/users/me").await.status, StatusCode::UNAUTHORIZED, "the old token of this device too");
+    // This device goes on with the tokens the change returned.
+    app.get(&alice.with_token(fresh["access_token"].as_str().unwrap()), "/users/me").await.ok();
+    refresh(&app, fresh["refresh_token"].as_str().unwrap()).await.ok();
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_refresh_token_turning_up_again_ends_its_login(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    app.register("alice").await;
+    let first = login(&app, "alice@example.test", PASSWORD).await.ok().json()["refresh_token"].as_str().unwrap().to_string();
+    let second = refresh(&app, &first).await.ok().json()["refresh_token"].as_str().unwrap().to_string();
+
+    // Presented again at once -- two tabs refreshing together: refused, but
+    // the login goes on.
+    assert_eq!(refresh(&app, &first).await.status, StatusCode::UNAUTHORIZED);
+    let third = refresh(&app, &second).await.ok().json()["refresh_token"].as_str().unwrap().to_string();
+
+    // Presented again later: someone else has a copy, so the whole login
+    // ends, its newest token included. Other logins aren't affected.
+    let other = login(&app, "alice@example.test", PASSWORD).await.ok().json()["refresh_token"].as_str().unwrap().to_string();
+    app.exec("UPDATE refresh_tokens SET rotated_at = rotated_at - INTERVAL '1 minute' WHERE rotated_at IS NOT NULL").await;
+    assert_eq!(refresh(&app, &first).await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(refresh(&app, &third).await.status, StatusCode::UNAUTHORIZED);
+    let other = refresh(&app, &other).await.ok().json()["refresh_token"].as_str().unwrap().to_string();
+
+    // Logging out ends that login, rotated tokens and all.
+    app.anon_post("/auth/logout", json!({ "refresh_token": other })).await.ok();
+    assert_eq!(refresh(&app, &other).await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(app.count("SELECT 1 FROM refresh_tokens").await, 1, "only the session from signing up is left");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_deleted_accounts_token_is_signed_out_cleanly(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let alice = app.register("alice").await;
+    let laptop = alice.with_token(login(&app, "alice@example.test", PASSWORD).await.ok().json()["access_token"].as_str().unwrap());
+    app.delete_account(&alice).await.ok();
+    // 401, like an expired session -- not a 404 or a 500 from a missing row.
+    assert_eq!(app.get(&laptop, "/users/me").await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(app.post(&laptop, "/posts", json!({ "caption": "x" })).await.status, StatusCode::UNAUTHORIZED);
 }

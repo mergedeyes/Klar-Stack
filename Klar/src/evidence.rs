@@ -3,7 +3,11 @@
 //! When content gets its first report for a likely-illegal reason, an
 //! evidence record is opened and the reported state is captured at once:
 //! the item itself (with its images), its author and, for comments, what it
-//! replied to -- nothing more, no likes, no other comments. From then on,
+//! replied to -- nothing more, no likes, no other comments. A reported
+//! direct message is preserved whatever the reason, with the ten messages
+//! before it as context: its sender can delete it, or their account, at any
+//! time, which erases it for the recipient too, and the team could otherwise
+//! never see what was reported. From then on,
 //! while the record is open, every edit of the item adds a version, and
 //! deleting it (by moderation, by its author or with the account) only
 //! marks the record, since the evidence is already safe. Reports for other
@@ -46,6 +50,13 @@ pub const LIKELY_ILLEGAL_REASONS: &[&str] = &[
 
 pub fn is_likely_illegal(reason: &str) -> bool {
     LIKELY_ILLEGAL_REASONS.contains(&reason)
+}
+
+/// Whether a report on this kind of item for this reason preserves it:
+/// likely-illegal reasons, and every report on a direct message (see the
+/// module doc).
+pub fn preserves(target_type: &str, reason: &str) -> bool {
+    target_type == "message" || is_likely_illegal(reason)
 }
 
 /// How long evidence is kept after a "removed" decision, unless a legal
@@ -95,6 +106,11 @@ pub enum Cause {
     /// captures a version for reports filed before capture-on-report
     /// existed, which have no record yet.
     Deleted(Trigger),
+    /// The moderation team removes the item. It stays, invisible, until the
+    /// objection window has passed, so the record isn't marked deleted yet
+    /// (`mark_deleted` does that later); a version is only captured when
+    /// there is none, e.g. a spam report the team found to be illegal.
+    Removed,
 }
 
 impl Cause {
@@ -102,7 +118,7 @@ impl Cause {
         match self {
             Cause::Reported => "reported",
             Cause::Edited => "edited",
-            Cause::Deleted(_) => "deleted",
+            Cause::Deleted(_) | Cause::Removed => "deleted",
         }
     }
 }
@@ -115,6 +131,7 @@ pub struct Scope {
     pub posts: Vec<Uuid>,
     /// Roots of the comment subtrees being deleted.
     pub comments: Vec<Uuid>,
+    pub messages: Vec<Uuid>,
     pub user: Option<Uuid>,
 }
 
@@ -173,6 +190,28 @@ fn snapshot_sql(target_type: &str) -> String {
             FROM comments c WHERE c.id = $1
             "#,
             author = author_json("c.user_id"),
+        ),
+        // The message, its sender, and the ten messages before it in the
+        // conversation (both sides), so whoever reviews it sees what it
+        // answered. Nothing else of the conversation is copied.
+        "message" => format!(
+            r#"
+            SELECT jsonb_build_object(
+                'message', jsonb_build_object('id', m.id, 'body', m.body, 'created_at', m.created_at,
+                    'edited_at', m.edited_at, 'conversation_id', m.conversation_id,
+                    'reply_to_message_id', m.reply_to_message_id),
+                'author', {author},
+                'recipient_id', (SELECT CASE WHEN c.user1_id = m.sender_id THEN c.user2_id ELSE c.user1_id END
+                                 FROM conversations c WHERE c.id = m.conversation_id),
+                'context', COALESCE((
+                    SELECT jsonb_agg(jsonb_build_object('id', x.id, 'sender_id', x.sender_id, 'body', x.body,
+                        'created_at', x.created_at, 'edited_at', x.edited_at) ORDER BY x.created_at, x.id)
+                    FROM (SELECT p.id, p.sender_id, p.body, p.created_at, p.edited_at FROM messages p
+                          WHERE p.conversation_id = m.conversation_id AND (p.created_at, p.id) < (m.created_at, m.id)
+                          ORDER BY p.created_at DESC, p.id DESC LIMIT 10) x), '[]'::jsonb))
+            FROM messages m WHERE m.id = $1
+            "#,
+            author = author_json("m.sender_id"),
         ),
         _ => format!(
             r#"
@@ -244,7 +283,8 @@ pub async fn capture(
         r#"
         UPDATE evidence_records SET reasons = (
             SELECT COALESCE(array_agg(DISTINCT r.reason::text), '{}') FROM reports r
-            WHERE r.target_type = $2::report_target_type AND r.target_id = $3 AND r.reason::text = ANY($4)
+            WHERE r.target_type = $2::report_target_type AND r.target_id = $3
+              AND (r.target_type = 'message' OR r.reason::text = ANY($4))
         )
         WHERE id = $1
         "#,
@@ -265,7 +305,7 @@ pub async fn capture(
     let add_version = match cause {
         Cause::Reported => created,
         Cause::Edited => true,
-        Cause::Deleted(_) => {
+        Cause::Deleted(_) | Cause::Removed => {
             sqlx::query_scalar::<_, bool>("SELECT NOT EXISTS(SELECT 1 FROM evidence_versions WHERE evidence_id = $1)")
                 .bind(evidence_id)
                 .fetch_one(&mut *tx)
@@ -429,6 +469,20 @@ pub async fn preserve(
     .await
     .db_err_ctx("Evidence: finding reported comments failed", "Database error")?;
 
+    // Every pending report on a message preserves it (see `preserves`).
+    let messages = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT m.id FROM messages m
+        WHERE m.id = ANY($1) AND EXISTS (
+            SELECT 1 FROM reports r WHERE r.target_type = 'message' AND r.target_id = m.id AND r.status = 'pending'
+        )
+        "#,
+    )
+    .bind(&scope.messages)
+    .fetch_all(&mut *tx)
+    .await
+    .db_err_ctx("Evidence: finding reported messages failed", "Database error")?;
+
     let user = match scope.user {
         Some(user_id) => sqlx::query_scalar::<_, bool>(
             r#"
@@ -455,6 +509,9 @@ pub async fn preserve(
     for comment_id in comments {
         preserved.extend(capture(tx, "comment", comment_id, cause, actor_id).await?);
     }
+    for message_id in messages {
+        preserved.extend(capture(tx, "message", message_id, cause, actor_id).await?);
+    }
     if let Some(user_id) = user {
         preserved.extend(capture(tx, "user", user_id, cause, actor_id).await?);
     }
@@ -463,10 +520,10 @@ pub async fn preserve(
 }
 
 /// On a removal: preserves the target when the team classified it as a
-/// likely-illegal violation, even if no report gave a likely-illegal
-/// reason, and sets the record's authority-report advice. Runs before the
-/// delete, after `preserve` (which already captured it if a report's
-/// reason was likely illegal; then this only adds the reason and advice).
+/// likely-illegal violation, even if no report gave a likely-illegal reason,
+/// and sets the record's authority-report advice. A record opened at report
+/// time already holds the reported state; then this only adds the reason
+/// and the advice.
 pub async fn preserve_classified(
     tx: &mut PgConnection,
     target_type: &str,
@@ -475,25 +532,10 @@ pub async fn preserve_classified(
     authority_report: Option<&str>,
     admin_id: Uuid,
 ) -> Result<Preserved, AppError> {
-    if !is_likely_illegal(reason) || !matches!(target_type, "post" | "comment") {
+    if !preserves(target_type, reason) || !matches!(target_type, "post" | "comment" | "message" | "user") {
         return Ok(Preserved::default());
     }
-    let already = sqlx::query_scalar::<_, bool>(
-        r#"
-        SELECT EXISTS(SELECT 1 FROM evidence_records WHERE target_type = $1::report_target_type AND target_id = $2
-                      AND decided_at IS NULL AND purged_at IS NULL AND content_deleted_at IS NOT NULL)
-        "#,
-    )
-    .bind(target_type)
-    .bind(target_id)
-    .fetch_one(&mut *tx)
-    .await
-    .db_err("Database error")?;
-    let preserved = if already {
-        Preserved::default()
-    } else {
-        capture(tx, target_type, target_id, Cause::Deleted(Trigger::ModerationRemoval), Some(admin_id)).await?
-    };
+    let preserved = capture(tx, target_type, target_id, Cause::Removed, Some(admin_id)).await?;
 
     // capture() derives `reasons` from the reports; add the classified one.
     let updated = sqlx::query_scalar::<_, Uuid>(
@@ -714,7 +756,7 @@ pub async fn decide(
           AND NOT EXISTS (
               SELECT 1 FROM reports r
               WHERE r.target_type = $1::report_target_type AND r.target_id = $2
-                AND r.status = 'pending' AND r.reason::text = ANY($6)
+                AND r.status = 'pending' AND (r.target_type = 'message' OR r.reason::text = ANY($6))
           )
         RETURNING e.id, e.decision
         "#,
@@ -731,6 +773,68 @@ pub async fn decide(
 
     for (evidence_id, decision) in rows {
         log_event(tx, evidence_id, Some(admin_id), "decided", note, Some(json!({ "decision": decision }))).await?;
+    }
+    Ok(())
+}
+
+/// After an accepted objection reversed a removal: the content wasn't a
+/// violation after all, so its evidence is purged at the next sweep like a
+/// dismissed report's -- unless a legal hold is set or a report to the
+/// authorities was recorded, which keep it whatever the objection says.
+pub async fn dismiss_after_objection(
+    tx: &mut PgConnection,
+    target_type: &str,
+    target_id: Uuid,
+    admin_id: Uuid,
+) -> Result<(), AppError> {
+    let rows = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        UPDATE evidence_records e
+        SET decision = 'dismissed', decided_at = COALESCE(decided_at, NOW()), decided_by = COALESCE(decided_by, $3),
+            retain_until = NOW()
+        WHERE e.target_type = $1::report_target_type AND e.target_id = $2 AND e.purged_at IS NULL
+          AND e.decision = 'removed' AND NOT e.legal_hold
+          AND NOT EXISTS (SELECT 1 FROM evidence_events ev WHERE ev.evidence_id = e.id AND ev.action = 'authority_report')
+        RETURNING e.id
+        "#,
+    )
+    .bind(target_type)
+    .bind(target_id)
+    .bind(admin_id)
+    .fetch_all(&mut *tx)
+    .await
+    .db_err_ctx("Evidence: recording the objection failed", "Database error")?;
+    for evidence_id in rows {
+        log_event(tx, evidence_id, Some(admin_id), "decided", Some("objection accepted"), Some(json!({ "decision": "dismissed" })))
+            .await?;
+    }
+    Ok(())
+}
+
+/// Removed content is kept, invisible, until the objection window has
+/// passed (see moderation::purge_removed); when it is finally deleted, its
+/// evidence record notes that, like any other deletion.
+pub async fn mark_deleted(
+    tx: &mut PgConnection,
+    target_type: &str,
+    target_id: Uuid,
+    trigger: Trigger,
+) -> Result<(), AppError> {
+    let rows = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        UPDATE evidence_records SET content_deleted_at = NOW(), deletion_trigger = $3
+        WHERE target_type = $1::report_target_type AND target_id = $2 AND purged_at IS NULL AND content_deleted_at IS NULL
+        RETURNING id
+        "#,
+    )
+    .bind(target_type)
+    .bind(target_id)
+    .bind(trigger.as_str())
+    .fetch_all(&mut *tx)
+    .await
+    .db_err_ctx("Evidence: marking deletion failed", "Database error")?;
+    for evidence_id in rows {
+        log_event(tx, evidence_id, None, "content_deleted", Some(trigger.as_str()), None).await?;
     }
     Ok(())
 }

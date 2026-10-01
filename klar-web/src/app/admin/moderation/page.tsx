@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { Clock, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { adminModerationApi, type AdminModerationDecision } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,12 @@ function DecisionSummary({ d }: { d: AdminModerationDecision }) {
         {d.superseded && " · superseded"}
         {d.lifted_at && " · lifted"}
       </p>
+      {d.overdue && (
+        <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-destructive">
+          <Clock size={12} /> Held back for over a week
+          {d.restriction === "banned" && " — the account's deletion waits for this statement"}
+        </p>
+      )}
       {d.content_excerpt && (
         <p className="mt-1 line-clamp-3 rounded bg-muted/50 p-2 text-sm">{d.content_excerpt}</p>
       )}
@@ -129,8 +136,10 @@ export default function AdminModerationPage() {
 
             <h2 className="mb-1 text-sm font-semibold">Objections</h2>
             <p className="mb-2 text-sm text-muted-foreground">
-              The response is shown to the user. Accepting lifts a hide or warning; removed content can&apos;t be
-              restored, so say so in the response.
+              The response is shown to the user. Accepting lifts the decision and restores what it restricted: a hidden
+              post, a removed post or comment kept for the objection window, removed parts of a profile, a suspended
+              account. An objection to an automatic hide or warning whose reports are still open is answered by
+              deciding those reports in the queue.
             </p>
             {objections.length === 0 ? (
               <div className="py-8 text-center">
@@ -146,22 +155,32 @@ export default function AdminModerationPage() {
                       Objection · {d.objected_at && new Date(d.objected_at).toLocaleString()}
                     </p>
                     <p className="mb-2 whitespace-pre-wrap text-sm">{d.objection}</p>
-                    <textarea
-                      value={responses[d.id] ?? ""}
-                      onChange={(e) => setResponses((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                      placeholder="Response to the user (required)"
-                      maxLength={2000}
-                      rows={3}
-                      className="mb-2 w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => resolve(d, true)} disabled={busyId === d.id || !responses[d.id]?.trim()}>
-                        Accept
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => resolve(d, false)} disabled={busyId === d.id || !responses[d.id]?.trim()}>
-                        Reject
-                      </Button>
-                    </div>
+                    {d.pending_reports > 0 ? (
+                      // Deciding the reports answers it: dismissing accepts
+                      // the objection, removing replaces the restriction.
+                      <Link href="/admin/reports" className="text-sm font-medium underline">
+                        Decide the {d.pending_reports === 1 ? "report" : `${d.pending_reports} reports`} behind it in the queue
+                      </Link>
+                    ) : (
+                      <>
+                        <textarea
+                          value={responses[d.id] ?? ""}
+                          onChange={(e) => setResponses((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                          placeholder="Response to the user (required)"
+                          maxLength={2000}
+                          rows={3}
+                          className="mb-2 w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => resolve(d, true)} disabled={busyId === d.id || !responses[d.id]?.trim()}>
+                            Accept
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => resolve(d, false)} disabled={busyId === d.id || !responses[d.id]?.trim()}>
+                            Reject
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>

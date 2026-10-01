@@ -273,6 +273,13 @@ function ReviewPage() {
             ) : (
               <div className="space-y-2 rounded-xl border border-border p-3">
                 <h2 className="text-sm font-semibold">Decision</h2>
+                {reportId && (
+                  <p className="text-xs text-muted-foreground">
+                    If the report this review came from is about the account itself, your decision answers it: a lock or
+                    a ban closes it as acted on, no action as no violation found. A report on a post, comment or message
+                    stays in the queue.
+                  </p>
+                )}
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}

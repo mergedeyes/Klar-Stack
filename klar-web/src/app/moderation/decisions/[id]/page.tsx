@@ -25,6 +25,15 @@ const TARGET_DE: Record<ModerationDecision["target_type"], string> = {
   post: "Beitrag",
   comment: "Kommentar",
   user: "Konto",
+  message: "Nachricht",
+};
+
+// What the decision followed (Art. 17(3)(b) DSA).
+const SOURCE_DE: Record<NonNullable<ModerationDecision["source"]>, string> = {
+  notice: "Eine Meldung",
+  own_initiative: "Eine eigene Prüfung unseres Teams, ohne Meldung",
+  authority_order: "Eine behördliche Anordnung",
+  rights_claim: "Eine Meldung wegen Verletzung von Rechten (Rechte-Meldung)",
 };
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -106,9 +115,20 @@ export default function DecisionPage() {
                     </span>
                   )}
                   {decision.superseded && (
-                    <span className="block text-muted-foreground">Durch eine spätere Entscheidung ersetzt</span>
+                    <span className="block text-muted-foreground">
+                      Durch eine spätere Entscheidung ersetzt
+                      {decision.superseded_by && (
+                        <>
+                          {" — "}
+                          <Link href={`/moderation/decisions/${decision.superseded_by}`} className="underline">
+                            zur neuen Begründung
+                          </Link>
+                        </>
+                      )}
+                    </span>
                   )}
                 </Row>
+                {decision.source && <Row label="Anlass">{SOURCE_DE[decision.source]}</Row>}
                 <Row label="Entschieden">
                   {decision.automated
                     ? "Automatisch, unmittelbar nach einer Meldung — noch ohne Prüfung durch unser Team"
@@ -136,11 +156,28 @@ export default function DecisionPage() {
                   <p className="whitespace-pre-wrap rounded bg-muted/50 p-2">{decision.objection}</p>
                   {decision.objection_status === "pending" ? (
                     <p>Unser Team prüft deinen Widerspruch und meldet sich hier bei dir.</p>
+                  ) : decision.objection_status === "superseded" ? (
+                    <>
+                      <p className="font-medium">
+                        Unser Team hat den Inhalt inzwischen geprüft; eine neue Entscheidung ersetzt die, gegen die du
+                        widersprochen hast.{" "}
+                        {decision.superseded_by && (
+                          <Link href={`/moderation/decisions/${decision.superseded_by}`} className="underline">
+                            Gegen die neue Entscheidung kannst du dort widersprechen.
+                          </Link>
+                        )}
+                      </p>
+                      {decision.objection_response && (
+                        <p className="whitespace-pre-wrap rounded bg-muted/50 p-2">{decision.objection_response}</p>
+                      )}
+                    </>
                   ) : (
                     <>
                       <p className="font-medium">
                         {decision.objection_status === "accepted"
-                          ? "Wir haben deinem Widerspruch stattgegeben."
+                          ? decision.restriction === "removed" && decision.content_purged
+                            ? "Wir haben deinem Widerspruch stattgegeben. Der Inhalt war zu diesem Zeitpunkt bereits endgültig gelöscht und konnte nicht wiederhergestellt werden."
+                            : "Wir haben deinem Widerspruch stattgegeben."
                           : "Wir haben deinen Widerspruch geprüft und halten an der Entscheidung fest."}
                       </p>
                       {decision.objection_response && (
@@ -167,6 +204,19 @@ export default function DecisionPage() {
                     Widerspruch senden
                   </Button>
                 </form>
+              ) : decision.lifted_at ? (
+                <p className="text-sm text-muted-foreground">
+                  Die Entscheidung ist aufgehoben; ein Widerspruch ist nicht mehr nötig.
+                </p>
+              ) : decision.superseded ? (
+                <p className="text-sm text-muted-foreground">
+                  Diese Entscheidung wurde durch eine spätere ersetzt.{" "}
+                  {decision.superseded_by && (
+                    <Link href={`/moderation/decisions/${decision.superseded_by}`} className="underline">
+                      Widersprechen kannst du der neuen Entscheidung.
+                    </Link>
+                  )}
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">Die Frist für einen Widerspruch ist abgelaufen.</p>
               )}

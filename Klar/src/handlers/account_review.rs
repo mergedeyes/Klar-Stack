@@ -25,10 +25,11 @@ use uuid::Uuid;
 
 use crate::auth::AuthUser;
 use crate::errors::AppError;
-use crate::handlers::account_lock::{checked_text, lock_user};
+use crate::evidence;
+use crate::handlers::account_lock::{checked_text, lock_in};
 use crate::handlers::auth::AppState;
 use crate::handlers::reports::require_admin;
-use crate::moderation;
+use crate::moderation::{self, NewMeasure, PendingNotices};
 use crate::standing::Measure;
 use crate::utils::DbResultExt;
 
@@ -481,7 +482,14 @@ const BOT_BASIS: &str = "Nach Prüfung deines Kontos gehen wir davon aus, dass e
     Massen-Registrierungen oder Bots).";
 
 /// POST /admin/reviews/:id/decide (admin only) -- closes a review with its
-/// outcome and carries it out.
+/// outcome and carries it out, in one transaction: a failed lock or ban
+/// leaves the review open, and deciding twice can't lock or ban twice.
+///
+/// A report on the account that the review was opened from is answered by
+/// it: closed as "account measure" after a lock or ban, as "no violation"
+/// otherwise. A report on a post, comment or message stays in the queue --
+/// the review is about the account, and the content is decided on its own
+/// (a hijacked account's spam still has to go).
 pub async fn decide_review(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -497,43 +505,81 @@ pub async fn decide_review(
         _ => return Err(AppError::bad_request("Invalid outcome")),
     };
 
-    let user_id = sqlx::query_scalar::<_, Option<Uuid>>(
-        "SELECT user_id FROM account_reviews WHERE id = $1 AND outcome IS NULL",
+    let mut tx = state.db.begin().await.db_err("Database error")?;
+    let (user_id, report_id) = sqlx::query_as::<_, (Option<Uuid>, Option<Uuid>)>(
+        "SELECT user_id, report_id FROM account_reviews WHERE id = $1 AND outcome IS NULL FOR UPDATE",
     )
     .bind(review_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .db_err("Database error")?
-    .ok_or_else(|| AppError::conflict("This review is already decided"))?
-    .ok_or_else(|| AppError::conflict("The account no longer exists"))?;
+    .ok_or_else(|| AppError::conflict("This review is already decided"))?;
+    let user_id = user_id.ok_or_else(|| AppError::conflict("The account no longer exists"))?;
 
-    // Carried out first: if the lock or ban fails, the review stays open.
+    let account_report = match report_id {
+        Some(report_id) => sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM reports WHERE id = $1 AND target_type = 'user' AND target_id = $2 AND status = 'pending' FOR UPDATE",
+        )
+        .bind(report_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .db_err("Database error")?,
+        None => None,
+    };
+    let account_reports: Vec<Uuid> = account_report.into_iter().collect();
+
+    let mut lock = None;
+    let mut notices = PendingNotices::default();
     match outcome {
-        "locked" => lock_user(&state, user_id, auth.user_id, &note).await?,
+        "locked" => lock = Some(lock_in(&mut tx, user_id, auth.user_id, &note).await?),
         "bot" => {
             if user_id == auth.user_id {
                 return Err(AppError::bad_request("You can't take a measure against your own account"));
             }
-            let mut tx = state.db.begin().await.db_err("Database error")?;
-            let (_, notices) =
-                moderation::record_account_measure(&mut tx, user_id, Measure::Ban, "spam", auth.user_id, 0, Some(BOT_BASIS))
-                    .await?;
-            tx.commit().await.db_err("Database error")?;
-            notices.send(&state).await;
+            // The ban rests on what the review found, not on the account's
+            // strikes, so its statement cites no score.
+            let (_, measure_notices) = moderation::record_account_measure(&mut tx, NewMeasure {
+                user_id,
+                measure: Measure::Ban,
+                reason: "spam",
+                decided_by: auth.user_id,
+                score: 0,
+                has_strikes: false,
+                basis: Some(BOT_BASIS),
+                report_ids: account_reports.clone(),
+            })
+            .await?;
+            notices.extend(measure_notices);
         }
         _ => {}
     }
 
-    sqlx::query(
-        "UPDATE account_reviews SET outcome = $2, outcome_note = $3, decided_at = NOW() WHERE id = $1 AND outcome IS NULL",
-    )
-    .bind(review_id)
-    .bind(outcome)
-    .bind(&note)
-    .execute(&state.db)
-    .await
-    .db_err("Database error")?;
+    if !account_reports.is_empty() {
+        let (status, report_outcome) = if outcome == "no_action" {
+            ("dismissed", "no_violation")
+        } else {
+            ("actioned", "account_measure")
+        };
+        notices.extend(moderation::close_reports(&mut tx, &account_reports, status, report_outcome, Some(auth.user_id), None).await?);
+        // A profile reported for a likely-illegal reason was preserved; the
+        // review decides that too.
+        evidence::decide(&mut tx, "user", user_id, auth.user_id, Some(&note)).await?;
+    }
 
+    sqlx::query("UPDATE account_reviews SET outcome = $2, outcome_note = $3, decided_at = NOW() WHERE id = $1")
+        .bind(review_id)
+        .bind(outcome)
+        .bind(&note)
+        .execute(&mut *tx)
+        .await
+        .db_err("Database error")?;
+    tx.commit().await.db_err("Database error")?;
+
+    if let Some(lock) = lock {
+        lock.notify(&state).await;
+    }
+    notices.send(&state).await;
     tracing::info!("Account review {} decided by admin {}: {}", review_id, auth.user_id, outcome);
     Ok(Json(serde_json::json!({ "outcome": outcome })))
 }

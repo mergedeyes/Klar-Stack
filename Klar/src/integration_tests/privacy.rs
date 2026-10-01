@@ -32,7 +32,9 @@ async fn other_users_never_see_an_email_address(pool: PgPool) {
         // Only a count, no list of who liked.
         (&carol, &format!("/posts/{post}/likes"), "like_count"),
         (&carol, &format!("/posts/{post}/comments"), "alice"),
-        (&carol, "/feed/discovery", "bob"),
+        // Not carol here: bob blocked her, which hides him from her
+        // discovery feed.
+        (&alice, "/feed/discovery", "bob"),
         (&bob, "/notifications", "alice"),
         (&bob, "/users/me/blocked", "carol"),
         (&bob, "/chats", "alice"),
@@ -108,7 +110,7 @@ async fn a_private_accounts_posts_need_an_accepted_follow(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn hidden_content_is_visible_only_to_its_owner(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let (alice, bob, carol) = (app.register("alice").await, app.register("bob").await, app.register("carol").await);
+    let (alice, bob, carol) = (app.register("alice").await, app.trusted("bob").await, app.register("carol").await);
     let post = app.upload(&alice, "reported post").await;
     let other_post = app.upload(&carol, "carol's post").await;
     let comment = app.comment(&alice, other_post, "reported comment").await;

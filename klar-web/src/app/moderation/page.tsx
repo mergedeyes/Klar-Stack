@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Ban, ChevronRight, Flag, ShieldCheck } from "lucide-react";
+import { Ban, ChevronRight, Flag, RotateCcw, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { moderationApi, standingApi, type ModerationDecision, type MyReport, type MyStanding } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
-import { REASON_LABELS } from "@/lib/moderation";
+import { OUTCOME_LABELS, REASON_LABELS } from "@/lib/moderation";
 import { StandingScore } from "@/components/moderation/StandingScore";
 
 const RESTRICTION_LABELS: Record<ModerationDecision["restriction"], string> = {
@@ -19,11 +20,62 @@ const RESTRICTION_LABELS: Record<ModerationDecision["restriction"], string> = {
   banned: "Suspended permanently",
 };
 
-const REPORT_STATUS: Record<MyReport["status"], string> = {
-  pending: "Under review",
-  dismissed: "Reviewed — no violation found",
-  actioned: "Reviewed — action taken",
+const TARGET_LABELS: Record<MyReport["target_type"], string> = {
+  post: "Post",
+  comment: "Comment",
+  user: "Account",
+  message: "Message",
 };
+
+// What came of a report: its outcome once reviewed (DSA Art. 16(5)).
+function reportStatus(r: MyReport): string {
+  if (r.status === "pending") return r.recheck_requested_at ? "Being checked again" : "Under review";
+  return r.outcome ? OUTCOME_LABELS[r.outcome] : "Reviewed";
+}
+
+// A dismissed report can be sent back once for another look, with a note.
+function Recheck({ report, onDone }: { report: MyReport; onDone: (r: MyReport) => void }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await moderationApi.recheck(report.id, note));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send");
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="mt-1 flex items-center gap-1 text-xs underline">
+        <RotateCcw size={12} /> Ask us to check again
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 space-y-2">
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="What did we miss? (optional)"
+        maxLength={2000}
+        rows={2}
+        className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" onClick={send} disabled={busy}>Send — you can ask once</Button>
+        <Button size="sm" variant="outline" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
 
 // Where you see your account status (score, strikes, suspension), the
 // moderation decisions about your content (statements of reasons) and what
@@ -133,7 +185,9 @@ export default function ModerationPage() {
                   <p className="text-sm font-medium">
                     {RESTRICTION_LABELS[d.restriction]}
                     {d.suspension_days && ` · ${d.suspension_days} days`} ·{" "}
-                    <span className="capitalize">{d.target_type === "user" ? "account" : d.target_type}</span>
+                    <span className="capitalize">
+                      {d.target_type === "user" ? "account" : d.target_type === "message" ? "message" : d.target_type}
+                    </span>
                     {d.lifted_at && <span className="text-muted-foreground"> · lifted</span>}
                     {d.objection_status === "pending" && <span className="text-muted-foreground"> · objection pending</span>}
                   </p>
@@ -157,13 +211,16 @@ export default function ModerationPage() {
             {reports?.map((r) => (
               <div key={r.id} className="rounded-xl border border-border p-3">
                 <p className="text-sm font-medium">
-                  <span className="capitalize">{r.target_type}</span> · {REASON_LABELS[r.reason] ?? r.reason}
+                  {TARGET_LABELS[r.target_type]} · {REASON_LABELS[r.reason] ?? r.reason}
                 </p>
-                <p className="text-sm text-muted-foreground">{REPORT_STATUS[r.status]}</p>
+                <p className="text-sm text-muted-foreground">{reportStatus(r)}</p>
                 <p className="text-xs text-muted-foreground">
                   Reported {new Date(r.created_at).toLocaleString()}
                   {r.reviewed_at && ` · reviewed ${new Date(r.reviewed_at).toLocaleString()}`}
                 </p>
+                {r.can_recheck && (
+                  <Recheck report={r} onDone={(updated) => setReports((prev) => prev?.map((x) => (x.id === updated.id ? updated : x)) ?? null)} />
+                )}
               </div>
             ))}
           </div>

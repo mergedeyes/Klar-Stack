@@ -314,6 +314,92 @@ impl EmailService {
         self.send(to_email, "Moderationsentscheidung zu deinem Inhalt bei Klar", &text, &html).await
     }
 
+    /// An alert for an admin (alerts.rs): what is waiting, with a link to the
+    /// admin page. Counts and kinds only, never content or names.
+    pub async fn send_admin_alert(&self, to_email: &str, subject: &str, message: &str, path: &str) -> Result<(), EmailError> {
+        let url = format!("{}{}", self.base_url, path);
+        let text = format!("{}\n\n{}\n\n{}", subject, message, url);
+        let html = render_html_email(
+            subject,
+            &escape_html(message).replace('\n', "<br>"),
+            "Öffnen",
+            &url,
+            "Du bekommst diese E-Mail, weil deine Adresse als Admin von Klar eingetragen ist.",
+        );
+        self.send(to_email, subject, &text, &html).await
+    }
+
+    /// Confirms receipt of a notice about illegal content (DSA Art. 16(4))
+    /// with the private status link. Like the rights-claim confirmation, the
+    /// token is in the URL fragment, which never reaches a server log.
+    pub async fn send_notice_received(&self, to_email: &str, notice_id: uuid::Uuid, token: &str) -> Result<(), EmailError> {
+        let url = format!("{}/notices/status/{}#{}", self.base_url, notice_id, token);
+        let text = format!(
+            "Deine Meldung ist bei Klar eingegangen\n\n\
+             Wir pruefen den gemeldeten Inhalt und informieren dich per E-Mail ueber unsere Entscheidung. \
+             Den Stand kannst du jederzeit hier ansehen:\n\n{}\n\n\
+             Bewahre diesen Link auf und gib ihn nicht weiter -- er ist dein Zugang zu dieser Meldung.",
+            url
+        );
+        let html = render_html_email(
+            "Deine Meldung ist bei Klar eingegangen",
+            "Wir prüfen den gemeldeten Inhalt und informieren dich per E-Mail über unsere Entscheidung. Den Stand kannst du jederzeit über den folgenden Link ansehen.",
+            "Stand ansehen",
+            &url,
+            "Bewahre diesen Link auf und gib ihn nicht weiter – er ist dein Zugang zu dieser Meldung.",
+        );
+        self.send(to_email, "Deine Meldung ist bei Klar eingegangen", &text, &html).await
+    }
+
+    /// Tells someone who used the public notice form what came of it (DSA
+    /// Art. 16(5)), without naming the person concerned.
+    pub async fn send_notice_outcome(&self, to_email: &str, notice_id: uuid::Uuid, outcome: &str) -> Result<(), EmailError> {
+        let url = format!("{}/notices/status/{}", self.base_url, notice_id);
+        let message = match outcome {
+            "removed" => "Wir haben den gemeldeten Inhalt geprüft und entfernt.",
+            "account_measure" => "Wir haben den gemeldeten Inhalt geprüft und Maßnahmen gegen das Konto ergriffen.",
+            "obsolete" => "Der gemeldete Inhalt wurde gelöscht, bevor wir ihn prüfen konnten. Er ist nicht mehr verfügbar.",
+            _ => "Wir haben den gemeldeten Inhalt geprüft und keinen Verstoß gegen das Gesetz oder unsere Nutzungsbedingungen festgestellt. Er bleibt deshalb sichtbar.",
+        };
+        let note = "Bist du mit der Entscheidung nicht einverstanden, schreib uns an kontakt@klarsocial.eu. Dir stehen \
+                    außerdem eine außergerichtliche Streitbeilegung (Art. 21 DSA) und der Rechtsweg offen.";
+        let text = format!("Entscheidung zu deiner Meldung bei Klar\n\n{}\n\n{}\n\n{}", message, note, url);
+        let html = render_html_email(
+            "Entscheidung zu deiner Meldung bei Klar",
+            message,
+            "Meldung ansehen",
+            &url,
+            note,
+        );
+        self.send(to_email, "Entscheidung zu deiner Meldung bei Klar", &text, &html).await
+    }
+
+    /// A week before an account that never verified its email address is
+    /// deleted: a fresh verification link, and the date.
+    pub async fn send_verification_reminder(&self, to_email: &str, username: &str, token: &str, deletion_on: &str) -> Result<(), EmailError> {
+        let verify_url = format!("{}/verify-email?token={}", self.base_url, token);
+        let text = format!(
+            "Hallo {},\n\n\
+             deine E-Mail-Adresse bei Klar ist noch nicht bestaetigt. Konten ohne bestaetigte Adresse loeschen wir \
+             nach 30 Tagen; deines am {}. Bestaetige sie hier, dann bleibt es bestehen:\n\n{}\n\n\
+             Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
+            username, deletion_on, verify_url
+        );
+        let html = render_html_email(
+            "Bestätige deine E-Mail-Adresse bei Klar",
+            &format!(
+                "Hallo {},<br><br>deine E-Mail-Adresse bei Klar ist noch nicht bestätigt. Konten ohne bestätigte Adresse löschen wir nach 30 Tagen; deines am {}. Bestätige sie, dann bleibt es bestehen.",
+                escape_html(username),
+                deletion_on
+            ),
+            "E-Mail bestätigen",
+            &verify_url,
+            "Der Link ist 7 Tage gültig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
+        );
+        // Like the verification email: no Reply-To.
+        self.send_with(to_email, "Dein Klar-Konto wird ohne Bestaetigung geloescht", &text, &html, None).await
+    }
+
     /// Two weeks before a permanently suspended account is deleted: when,
     /// and that the data can still be exported or the decision objected to.
     pub async fn send_ban_deletion_notice(

@@ -12,10 +12,10 @@ use crate::errors::AppError;
 use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
-use crate::handlers::events::record_event;
 use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{insert_notification, publish_notification, NotificationKind};
-use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest, EventType};
+use crate::models::{CommentResponse, CreateCommentRequest, EditCommentRequest};
+use crate::moderation;
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{required_text, COMMENT_MAX};
 
@@ -38,7 +38,7 @@ pub async fn create_comment(
 
     if let Some(parent_id) = input.parent_comment_id {
         let parent_exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM comments WHERE id = $1 AND post_id = $2)"
+            "SELECT EXISTS(SELECT 1 FROM comments WHERE id = $1 AND post_id = $2 AND moderation_status != 'removed')"
         )
         .bind(parent_id)
         .bind(post_id)
@@ -95,8 +95,6 @@ pub async fn create_comment(
         publish_notification(&state, &event).await;
     }
 
-    record_event(&state.db, Some(auth.user_id), post_id, EventType::Comment).await;
-
     Ok((StatusCode::CREATED, Json(comment.resolve_media(&state.storage))))
 }
 
@@ -107,7 +105,9 @@ pub async fn create_comment(
 /// posts::get_post -- so a hidden comment's content isn't distinguishable
 /// from simply not existing to anyone but the person who wrote it.
 /// "flagged" comments (lower-severity reports) still appear here; the
-/// interstitial warning is a frontend concern.
+/// interstitial warning is a frontend concern. A comment removed by the
+/// moderation team only appears when others replied to it, as an empty
+/// placeholder ("removed"), so their replies keep their place.
 pub async fn get_comments(
     State(state): State<AppState>,
     auth: OptionalAuthUser,
@@ -122,7 +122,9 @@ pub async fn get_comments(
         r#"
         SELECT
             c.id, c.post_id, c.user_id, u.username, u.avatar_url,
-            c.parent_comment_id, c.body, c.created_at, c.edited_at,
+            c.parent_comment_id,
+            CASE WHEN c.moderation_status = 'removed' THEN '' ELSE c.body END AS body,
+            c.created_at, c.edited_at,
             c.like_count,
             CASE
                 WHEN $2::uuid IS NULL THEN false
@@ -136,6 +138,8 @@ pub async fn get_comments(
         JOIN users u ON c.user_id = u.id
         WHERE c.post_id = $1
             AND (c.moderation_status != 'hidden' OR c.user_id = $2)
+            AND (c.moderation_status != 'removed'
+                 OR EXISTS (SELECT 1 FROM comments r WHERE r.parent_comment_id = c.id))
             -- A suspended author's comments are hidden (standing.rs).
             AND (c.user_id = $2 OR (u.suspended_until IS NULL OR u.suspended_until <= NOW()))
         ORDER BY c.created_at ASC
@@ -159,8 +163,10 @@ pub async fn edit_comment(
 
     let body = required_text(&input.body, "Comment", COMMENT_MAX)?;
 
+    // A removed comment is kept, unseen, only so that a successful
+    // objection can restore it as it was.
     let comment_author = sqlx::query_scalar::<_, Uuid>(
-        "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2"
+        "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2 AND moderation_status != 'removed'"
     )
     .bind(comment_id)
     .bind(post_id)
@@ -245,21 +251,26 @@ pub async fn delete_comment(
 
     // Replies cascade-delete with their parent (parent_comment_id ON DELETE
     // CASCADE), so comment_count must drop by the whole deleted subtree's
-    // size, not just 1 -- count it first via a recursive CTE.
-    let deleted_count = sqlx::query_scalar::<_, i64>(
+    // size, not just 1 -- minus comments removed by moderation, which no
+    // longer count.
+    let subtree = sqlx::query_as::<_, (Uuid, bool)>(
         r#"
         WITH RECURSIVE subtree AS (
             SELECT id FROM comments WHERE id = $1
             UNION ALL
             SELECT c.id FROM comments c JOIN subtree s ON c.parent_comment_id = s.id
         )
-        SELECT COUNT(*) FROM subtree
+        SELECT s.id, c.moderation_status != 'removed' FROM subtree s JOIN comments c ON c.id = s.id
         "#
     )
     .bind(comment_id)
-    .fetch_one(&mut *tx)
+    .fetch_all(&mut *tx)
     .await
     .db_err_ctx("Failed to count comment subtree", "Database error")?;
+    let deleted_count = subtree.iter().filter(|(_, counted)| *counted).count() as i64;
+    let subtree_ids: Vec<Uuid> = subtree.iter().map(|(id, _)| *id).collect();
+    // Reports on them that preserved nothing have nothing left to decide.
+    let notices = moderation::close_obsolete_reports(&mut tx, "comment", &subtree_ids).await?;
 
     sqlx::query("DELETE FROM comments WHERE id = $1")
         .bind(comment_id)
@@ -275,6 +286,7 @@ pub async fn delete_comment(
         .db_err_ctx("Failed to update comment_count", "Database error")?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    notices.send(&state).await;
 
     // Comments have no files; this only finishes the bookkeeping.
     evidence::finish(&state, preserved, Vec::new()).await;

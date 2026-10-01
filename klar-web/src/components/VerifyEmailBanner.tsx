@@ -7,8 +7,9 @@ import { useAuth } from "@/lib/auth-context";
 
 // Shown on every page (rendered by the root layout, above each page's own
 // header) until the signed-in user has verified their email. Unverified
-// accounts can't get admin access and have no working password reset, so
-// this has to be hard to miss rather than tucked away in settings.
+// accounts can't post, comment, message or report, get no working password
+// reset, and are deleted 30 days after sign-up, so this has to be hard to
+// miss rather than tucked away in settings.
 export default function VerifyEmailBanner() {
   const { user } = useAuth();
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
@@ -36,7 +37,8 @@ export default function VerifyEmailBanner() {
         <MailWarning size={16} className="shrink-0" />
         <span className="flex-1">
           Please verify your email address. We sent a link to{" "}
-          <strong className="break-all">{user.email}</strong>.
+          <strong className="break-all">{user.email}</strong>. Until then you can&rsquo;t post, comment, send messages or
+          report, and an account that stays unverified is deleted after 30 days.
         </span>
         {status === "sent" ? (
           <span className="font-medium">New link sent — check your inbox.</span>

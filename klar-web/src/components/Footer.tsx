@@ -43,6 +43,10 @@ export default function Footer() {
           Transparenz
         </Link>
         <span aria-hidden="true">·</span>
+        <Link href="/notices" className="hover:underline">
+          Rechtswidrige Inhalte melden
+        </Link>
+        <span aria-hidden="true">·</span>
         <Link href="/rights" className="hover:underline">
           Rechteverletzung melden
         </Link>

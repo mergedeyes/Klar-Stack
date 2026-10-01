@@ -49,7 +49,8 @@ export interface Post {
   // "hidden" posts never reach the client at all (server-side filtered)
   // except for the owner viewing their own profile -- "flagged" ones do
   // reach the client, and should render behind an interstitial warning.
-  moderation_status?: 'visible' | 'flagged' | 'hidden';
+  // "removed" ones (by the moderation team) never reach anyone.
+  moderation_status?: 'visible' | 'flagged' | 'hidden' | 'removed';
 }
 
 export interface MediaAsset {
@@ -79,7 +80,9 @@ export interface AppNotification {
   // -- it's never persisted in the notifications table or returned by
   // notifications.list(), so the hook special-cases it instead of adding
   // it to the notification dropdown list.
-  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message' | 'follow_request' | 'follow_accepted'
+  // 'message_changed' (an edited or deleted message) likewise only
+  // arrives live, to refresh an open chat.
+  type_name: 'follow' | 'post_like' | 'comment' | 'comment_like' | 'message' | 'message_changed' | 'follow_request' | 'follow_accepted'
     // Notices from Klar itself (no actor): a statement of reasons about
     // your content, the outcome of a report you filed, or the answer to
     // your objection.
@@ -135,7 +138,9 @@ export interface Comment {
   // "hidden" comments never reach the client except for their own author
   // (server-side filtered) -- "flagged" ones do reach the client and
   // should render behind a lightweight interstitial for non-authors.
-  moderation_status?: 'visible' | 'flagged' | 'hidden';
+  // "removed": removed by the moderation team; only sent, with an empty
+  // body, when others replied to it, as a placeholder for the thread.
+  moderation_status?: 'visible' | 'flagged' | 'hidden' | 'removed';
 }
 
 export interface AuthResponse {
@@ -450,14 +455,21 @@ export const users = {
       true
     ),
 
-  changePassword: (currentPassword: string, newPassword: string) =>
-    request<void>("/users/me/password", {
+  // Ends every session, and returns fresh tokens so this device stays
+  // signed in; they're stored here.
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const fresh = await request<{ access_token: string; refresh_token: string }>("/users/me/password", {
       method: "PATCH",
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-    }, true),
+    }, true);
+    tokens.set(fresh.access_token, fresh.refresh_token);
+  },
 
-  deleteAccount: () =>
-    request<void>("/users/me", { method: "DELETE" }, true),
+  // Asks for the password: a session alone can't delete an account.
+  deleteAccount: (password: string) =>
+    request<void>("/users/me", { method: "DELETE", body: JSON.stringify({ password }) }, true),
+
+  deleteAvatar: () => request<User>("/users/me/avatar", { method: "DELETE" }, true),
 
   uploadAvatar: (file: File) => {
     const form = new FormData();
@@ -542,31 +554,62 @@ export type ReportReason =
   // Only on decisions from a rights claim; not a report reason users pick.
   | 'copyright';
 
-export type ReportTargetType = 'post' | 'comment' | 'user';
+export type ReportTargetType = 'post' | 'comment' | 'user' | 'message';
 
-export interface AdminReport {
+// Where a report came from: someone using the app, the public notice form,
+// the team itself, or an authority's order.
+export type ReportSource = "user_report" | "public_notice" | "own_initiative" | "authority_order";
+
+// One pending report, as listed under its item in the queue.
+export interface QueueReport {
   id: string;
-  // Both null once the reporter has deleted their account.
+  // Both null once the reporter has deleted their account, and for a
+  // notice from the public form.
   reporter_id: string | null;
   reporter_username: string | null;
-  target_type: ReportTargetType;
-  target_id: string;
   reason: ReportReason;
   details: string | null;
-  status: 'pending' | 'dismissed' | 'actioned';
   created_at: string;
+  source: ReportSource;
+  authority: string | null;
+  order_reference: string | null;
+  // The reporter asked to have a dismissal checked again.
+  recheck_requested_at: string | null;
+  recheck_note: string | null;
+  // A notice from the public form: who sent it, if they said.
+  notifier_name: string | null;
+  notifier_email: string | null;
+}
+
+// An objection against an automatic restriction that rests on the group's
+// reports: deciding the reports answers it.
+export interface QueueObjection {
+  decision_id: string;
+  restriction: "hidden" | "flagged";
+  objection: string | null;
+  objected_at: string | null;
+}
+
+// All pending reports on one item. Dismissing or removing acts on the
+// whole group.
+export interface ReportGroup {
+  target_type: ReportTargetType;
+  target_id: string;
+  // Post caption or comment body; null for profiles and messages (a
+  // message is only shown through its evidence record).
   target_preview: string | null;
+  // Never set for a group with a CSAM or intimate-image report.
   target_thumb_url: string | null;
   target_username: string | null;
-  // Only set after review (dismiss/remove) -- always null in the pending
-  // queue itself, since get_reports only returns status='pending' rows.
-  review_note?: string | null;
-  // The evidence record kept for the target (likely-illegal reasons only,
-  // see /admin/evidence), and whether the original has since been deleted.
+  target_exists: boolean;
+  target_status: "visible" | "flagged" | "hidden" | "removed" | null;
   evidence_id: string | null;
   evidence_content_deleted: boolean | null;
-  // Pending for more than 30 days.
+  severity: "critical" | "high" | "normal";
+  // A report in the group has waited for more than 30 days.
   overdue: boolean;
+  reports: QueueReport[];
+  objections: QueueObjection[];
 }
 
 export const reportsApi = {
@@ -579,11 +622,17 @@ export const reportsApi = {
 };
 
 export const adminReportsApi = {
-  list: () => request<AdminReport[]>("/admin/reports", {}, true),
-  dismiss: (reportId: string, note?: string) =>
+  list: () => request<ReportGroup[]>("/admin/reports", {}, true),
+  // Closes every pending report on the item, or just this one (onlyThis).
+  // objectionResponse answers a pending objection against an automatic
+  // restriction the dismissal lifts; it is shown to the author.
+  dismiss: (reportId: string, note?: string, onlyThis = false, objectionResponse?: string) =>
     request<void>(
       `/admin/reports/${reportId}/dismiss`,
-      { method: "POST", body: JSON.stringify({ note: note || null }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ note: note || null, only_this: onlyThis, objection_response: objectionResponse || null }),
+      },
       true
     ),
   // violation: a catalog id (GET /admin/violations) or "none"; omitted, the
@@ -595,6 +644,30 @@ export const adminReportsApi = {
       {
         method: "POST",
         body: JSON.stringify({ note: note || null, violation: violation ?? null, justification: justification || null }),
+      },
+      true
+    ),
+  // A case without a report: the team's own finding, or an authority's
+  // order (authority required). It lands in the queue as a report.
+  createCase: (c: {
+    target_type: "post" | "comment" | "user";
+    target_id: string;
+    reason: ReportReason;
+    details?: string;
+    source: "own_initiative" | "authority_order";
+    authority?: string;
+    order_reference?: string;
+  }) =>
+    request<{ report_id: string }>(
+      "/admin/cases",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...c,
+          details: c.details || null,
+          authority: c.authority || null,
+          order_reference: c.order_reference || null,
+        }),
       },
       true
     ),
@@ -636,13 +709,19 @@ export interface Strike {
   content_excerpt: string | null;
 }
 
+export type ProfileField = "avatar" | "bio" | "display_name" | "username";
+
 export interface Suspension {
   // null for a permanent suspension.
   until: string | null;
   permanent: boolean;
   // Permanent suspensions: when the account is deleted (null while an
-  // objection is pending, since deletion waits for its outcome).
+  // objection is pending or the statement is held back, since deletion
+  // waits for both).
   deletion_at: string | null;
+  // Admins only: the measure's statement is still held back (CSAM), which
+  // blocks the deletion until an admin sends it.
+  statement_held?: boolean;
 }
 
 export interface MyStanding {
@@ -684,8 +763,10 @@ export interface StrikeDetail extends Strike {
   username: string;
   snapshot: {
     content: {
-      type: "post" | "comment";
-      text: string | null;
+      type: "post" | "comment" | "message" | "profile";
+      text?: string | null;
+      // A profile: what was removed.
+      removed?: Record<string, unknown>;
       created_at: string;
       edited_at: string | null;
       image_count?: number;
@@ -713,10 +794,37 @@ export const adminStandingApi = {
     request<StrikeDetail>(`/admin/strikes/${id}/open`, { method: "POST", body: "{}" }, true),
   get: (username: string) =>
     request<AdminStanding>(`/admin/users/${encodeURIComponent(username)}/standing`, {}, true),
-  apply: (username: string, measure: AccountMeasure, reason: ReportReason) =>
+  // explanation: shown to the user; required when the account has no
+  // active strike or the measure goes beyond the suggestion. reportIds:
+  // pending reports on the account that the measure answers.
+  apply: (username: string, measure: AccountMeasure, reason: ReportReason, explanation?: string, reportIds: string[] = []) =>
     request<AdminStanding>(
       `/admin/users/${encodeURIComponent(username)}/measures`,
-      { method: "POST", body: JSON.stringify({ measure, reason }) },
+      { method: "POST", body: JSON.stringify({ measure, reason, explanation: explanation || null, report_ids: reportIds }) },
+      true
+    ),
+  // Removes parts of a profile, like a content removal: classified, with a
+  // strike and a statement; an accepted objection puts them back.
+  removeFromProfile: (
+    username: string,
+    fields: ProfileField[],
+    violation?: string,
+    justification?: string,
+    note?: string,
+    reportIds: string[] = []
+  ) =>
+    request<void>(
+      `/admin/users/${encodeURIComponent(username)}/profile-removal`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          fields,
+          violation: violation ?? null,
+          justification: justification || null,
+          note: note || null,
+          report_ids: reportIds,
+        }),
+      },
       true
     ),
   lift: (username: string) =>
@@ -845,7 +953,7 @@ export const adminEvidenceApi = {
 
 export interface ModerationDecision {
   id: string;
-  target_type: "post" | "comment" | "user";
+  target_type: "post" | "comment" | "user" | "message";
   // removed: deleted by the moderation team; hidden / flagged: automatic,
   // after a report, until reviewed. warning / suspended / banned: account
   // measures (target_type "user").
@@ -861,27 +969,72 @@ export interface ModerationDecision {
   created_at: string;
   lifted_at: string | null;
   superseded: boolean;
+  // The decision that replaced this one (a removal after an automatic
+  // hide), whose statement says what applies now.
+  superseded_by: string | null;
   objection: string | null;
   objected_at: string | null;
-  objection_status: "pending" | "rejected" | "accepted" | null;
+  // superseded: a removal replaced the restriction objected to;
+  // withdrawn: the author deleted their account.
+  objection_status: "pending" | "rejected" | "accepted" | "superseded" | "withdrawn" | null;
   objection_response: string | null;
   objection_resolved_at: string | null;
   can_object: boolean;
+  // What it followed; null for account measures from the standing page.
+  source: "notice" | "own_initiative" | "authority_order" | "rights_claim" | null;
+  // A removal whose content has been deleted for good: an accepted
+  // objection can no longer restore it.
+  content_purged: boolean;
 }
+
+export type ReportOutcome = "removed" | "account_measure" | "no_violation" | "obsolete" | "duplicate";
 
 export interface MyReport {
   id: string;
   target_type: ReportTargetType;
   reason: ReportReason;
-  status: "pending" | "dismissed" | "actioned";
+  status: "pending" | "dismissed" | "actioned" | "obsolete";
+  outcome: ReportOutcome | null;
   created_at: string;
   reviewed_at: string | null;
+  recheck_requested_at: string | null;
+  // Dismissed within the last six months and not re-checked yet.
+  can_recheck: boolean;
 }
 
 export interface AdminModerationDecision extends ModerationDecision {
   target_id: string;
   affected_username: string | null;
   delivered_at: string | null;
+  // A held-back statement waiting for more than a week.
+  overdue: boolean;
+  // Reports still pending behind an automatic restriction: its objection
+  // is answered by deciding them in the report queue.
+  pending_reports: number;
+}
+
+// One row of the decision log (admin).
+export interface LoggedDecision extends ModerationDecision {
+  target_id: string;
+  affected_username: string | null;
+  decided_by_username: string | null;
+  delivered_at: string | null;
+  report_count: number;
+  violation_type: string | null;
+}
+
+// What is waiting for an admin (the badges in Settings).
+export interface AdminAttention {
+  reports: number;
+  urgent_reports: number;
+  overdue_reports: number;
+  objections: number;
+  rights_claims: number;
+  held_statements: number;
+  overdue_held_statements: number;
+  overdue_evidence: number;
+  authority_reports: number;
+  total: number;
 }
 
 export const moderationApi = {
@@ -894,6 +1047,44 @@ export const moderationApi = {
       true
     ),
   myReports: () => request<MyReport[]>("/moderation/reports", {}, true),
+  // Once per dismissed report: back into the queue for another look.
+  recheck: (reportId: string, note?: string) =>
+    request<MyReport>(
+      `/moderation/reports/${reportId}/recheck`,
+      { method: "POST", body: JSON.stringify({ note: note || null }) },
+      true
+    ),
+};
+
+// ── Notices about illegal content (public form, DSA Art. 16) ─────────────────
+
+export interface NewNotice {
+  reason: ReportReason;
+  explanation: string;
+  content_url: string;
+  // Optional only for child sexual abuse material.
+  notifier_name: string | null;
+  notifier_email: string | null;
+  good_faith: boolean;
+  // Honeypot; always empty from the real form.
+  website: string;
+}
+
+export interface NoticeStatus {
+  id: string;
+  reason: ReportReason;
+  content_url: string;
+  explanation: string;
+  created_at: string;
+  decided_at: string | null;
+  outcome: ReportOutcome | null;
+}
+
+export const noticesApi = {
+  create: (notice: NewNotice) =>
+    request<{ id: string; token: string }>("/notices", { method: "POST", body: JSON.stringify(notice) }, true),
+  status: (id: string, token: string) =>
+    request<NoticeStatus>(`/notices/${id}/status`, { method: "POST", body: JSON.stringify({ token }) }),
 };
 
 // ── Rights claims (copyright etc.) ───────────────────────────────────────────
@@ -1156,9 +1347,29 @@ export const adminLocksApi = {
     request<void>(`/admin/locks/${id}`, { method: "PATCH", body: JSON.stringify({ assessment }) }, true),
 };
 
+export interface DecisionLogFilter {
+  restriction?: string;
+  reason?: string;
+  source?: string;
+  automated?: boolean;
+  decided_by?: string;
+  affected?: string;
+  before_time?: string;
+  before_id?: string;
+  limit?: number;
+}
+
 export const adminModerationApi = {
   queue: () =>
     request<{ held: AdminModerationDecision[]; objections: AdminModerationDecision[] }>("/admin/moderation", {}, true),
+  attention: () => request<AdminAttention>("/admin/attention", {}, true),
+  decisions: (filter: DecisionLogFilter) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter)) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    return request<LoggedDecision[]>(`/admin/decisions?${query}`, {}, true);
+  },
   release: (id: string) =>
     request<void>(`/admin/moderation/decisions/${id}/release`, { method: "POST", body: "{}" }, true),
   resolveObjection: (id: string, accept: boolean, response: string) =>

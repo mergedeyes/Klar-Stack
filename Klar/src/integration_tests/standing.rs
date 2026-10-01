@@ -132,7 +132,10 @@ async fn strikes_keep_the_removed_content_with_its_context(pool: PgPool) {
     let comment = res["id"].as_str().unwrap();
     let report = app.report(&bob, "comment", comment.parse().unwrap(), "harassment").await;
     app.post(&admin, &format!("/admin/reports/{report}/remove"), json!({ "violation": "harassment_targeted" })).await.ok();
-    assert_eq!(app.count(&format!("SELECT 1 FROM comments WHERE id = '{comment}'")).await, 0, "the comment is gone");
+    // Removed for everyone, but kept until the objection window has passed.
+    assert_eq!(app.scalar(&format!("SELECT moderation_status FROM comments WHERE id = '{comment}'")).await.as_deref(), Some("removed"));
+    let visible = app.get(&bob, &format!("/posts/{post}/comments")).await.ok();
+    assert!(!String::from_utf8_lossy(&visible.body).contains("nobody cares"), "the comment is gone");
 
     let strike = standing(&app, &admin, "alice").await["strikes"][0].clone();
     let open = format!("/admin/strikes/{}/open", strike["id"].as_str().unwrap());
@@ -182,7 +185,7 @@ async fn repeat_factor_counts_only_the_same_reason(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn new_reasons_are_moderated_like_their_peers(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let (alice, bob, admin) = (app.register("alice").await, app.register("bob").await, app.admin().await);
+    let (alice, bob, admin) = (app.register("alice").await, app.trusted("bob").await, app.admin().await);
 
     // Non-consensual intimate images are hidden at once, like CSAM, but the
     // statement isn't held back.
@@ -253,6 +256,10 @@ async fn warning_comes_before_suspension_and_suspension_makes_the_account_read_o
     assert_eq!(app.post(&alice, &format!("/posts/{bob_post}/like"), json!({})).await.status, StatusCode::FORBIDDEN);
     assert_eq!(app.post(&alice, "/users/bob/follow", json!({})).await.status, StatusCode::FORBIDDEN);
     assert_eq!(app.patch(&alice, "/users/me", json!({ "bio": "new" })).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.patch(&alice, "/users/me", json!({ "username": "alice2" })).await.status, StatusCode::FORBIDDEN);
+    // ... except emptying the profile, e.g. of an offending bio or picture.
+    app.patch(&alice, "/users/me", json!({ "bio": "", "is_private": false })).await.ok();
+    app.delete(&alice, "/users/me/avatar").await.ok();
     // ... reading, objecting, exporting and deleting own content still work.
     app.get(&alice, "/feed").await.ok();
     app.get(&alice, "/users/alice").await.ok();
@@ -291,8 +298,12 @@ async fn accepted_objections_end_a_suspension_and_take_back_a_strike(pool: PgPoo
     let app = TestApp::new(pool).await;
     let (alice, bob, admin) = (app.register("alice").await, app.register("bob").await, app.admin().await);
 
-    removed_comment(&app, &alice, &bob, &admin, Some("harassment_targeted")).await;
-    let ban = app.post(&admin, "/admin/users/alice/measures", json!({ "measure": "ban", "reason": "harassment" })).await.ok().json();
+    let comment = removed_comment(&app, &alice, &bob, &admin, Some("harassment_targeted")).await;
+    let ban = app
+        .post(&admin, "/admin/users/alice/measures", json!({ "measure": "ban", "reason": "harassment", "explanation": "Threatened several people." }))
+        .await
+        .ok()
+        .json();
     assert_eq!(ban["suspension"]["permanent"], true);
     assert!(ban["suspension"]["until"].is_null());
     let refused = app.post(&alice, "/posts", json!({ "caption": "x" })).await;
@@ -312,6 +323,11 @@ async fn accepted_objections_end_a_suspension_and_take_back_a_strike(pool: PgPoo
     assert!(mine["suspension"].is_null(), "suspension ended");
     assert_eq!(mine["score"], 0, "strike taken back");
     app.get(&bob, "/users/alice").await.ok();
+    assert_eq!(
+        app.scalar(&format!("SELECT moderation_status FROM comments WHERE id = '{comment}'")).await.as_deref(),
+        Some("visible"),
+        "the removed comment is restored"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -340,7 +356,8 @@ async fn a_permanently_suspended_account_is_deleted_after_the_objection_window(p
     removed_comment(&app, &alice, &bob, &admin, Some("harassment_targeted")).await;
     removed_comment(&app, &carol, &bob, &admin, Some("harassment_targeted")).await;
     for name in ["alice", "carol"] {
-        app.post(&admin, &format!("/admin/users/{name}/measures"), json!({ "measure": "ban", "reason": "harassment" })).await.ok();
+        let measure = json!({ "measure": "ban", "reason": "harassment", "explanation": "Threatened several people." });
+        app.post(&admin, &format!("/admin/users/{name}/measures"), measure).await.ok();
     }
     let mine = app.get(&alice, "/users/me/standing").await.ok().json();
     assert!(!mine["suspension"]["deletion_at"].is_null(), "the user sees when");
@@ -401,7 +418,7 @@ async fn likely_illegal_classifications_are_preserved_and_flagged_for_the_author
     assert_eq!(record["authority_report"], "recommended");
     assert_eq!(record["authority_reported"], false);
     assert_eq!(record["decision"], "removed");
-    assert!(!record["content_deleted_at"].is_null());
+    assert!(record["content_deleted_at"].is_null(), "kept, unseen, for a possible objection");
     assert_eq!(
         app.count(&format!("SELECT 1 FROM evidence_versions v WHERE v.evidence_id = '{}'", record["id"].as_str().unwrap())).await,
         1,
@@ -431,4 +448,43 @@ async fn likely_illegal_classifications_are_preserved_and_flagged_for_the_author
         .ok();
     crate::evidence::sweep(&app.state).await;
     assert!(app.scalar(&format!("SELECT purged_at FROM evidence_records WHERE id = '{id}'")).await.is_some());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn measures_say_why_and_close_the_reports_behind_them(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (carol, bob, dave, admin) =
+        (app.register("carol").await, app.register("bob").await, app.register("dave").await, app.admin().await);
+    let report = app.report(&bob, "user", carol.id, "impersonation").await;
+    let elsewhere = app.report(&bob, "user", dave.id, "spam").await;
+    let path = "/admin/users/carol/measures";
+
+    // Without strikes the score explains nothing, so the admin has to.
+    assert_eq!(app.post(&admin, path, json!({ "measure": "warning", "reason": "impersonation" })).await.status, StatusCode::BAD_REQUEST);
+    // Only reports on this account can be closed by its measure.
+    let wrong = json!({ "measure": "warning", "reason": "impersonation", "explanation": "x", "report_ids": [elsewhere] });
+    assert_eq!(app.post(&admin, path, wrong).await.status, StatusCode::CONFLICT);
+    let measure = json!({
+        "measure": "warning", "reason": "impersonation",
+        "explanation": "Dein Profil gibt sich als eine bekannte Journalistin aus.",
+        "report_ids": [report],
+    });
+    app.post(&admin, path, measure).await.ok();
+
+    // The statement names the facts it relies on, and no score.
+    let ds = app.get(&carol, "/moderation/decisions").await.ok().json();
+    let explanation = ds[0]["explanation"].as_str().unwrap();
+    assert!(explanation.contains("bekannte Journalistin"), "{explanation}");
+    assert!(explanation.contains("Meldung deines Kontos"), "{explanation}");
+    assert!(!explanation.contains("Punkten"), "{explanation}");
+    assert_eq!(ds[0]["source"], "notice");
+
+    // The report is closed as acted on, and the reporter learns that.
+    let mine = app.get(&bob, "/moderation/reports").await.ok().json();
+    let mine = mine.as_array().unwrap().iter().find(|r| r["id"] == report.to_string()).unwrap().clone();
+    assert_eq!(mine["status"], "actioned");
+    assert_eq!(mine["outcome"], "account_measure");
+    let outcomes = app.get(&bob, "/notifications").await.ok().json();
+    assert_eq!(outcomes.as_array().unwrap().iter().filter(|n| n["type_name"] == "report_outcome").count(), 1);
+    assert_eq!(app.scalar(&format!("SELECT status FROM reports WHERE id = '{elsewhere}'")).await.as_deref(), Some("pending"));
 }

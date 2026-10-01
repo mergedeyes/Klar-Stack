@@ -14,7 +14,8 @@ use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::evidence;
 use crate::media;
 use crate::moderation;
-use crate::models::{UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
+use crate::models::{RefreshResponse, UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
+use crate::standing;
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{
     check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
@@ -179,6 +180,17 @@ pub async fn update_profile(
         .await
         .db_err("Database error")?;
 
+    // While suspended, a profile can only be emptied, e.g. of the bio a
+    // report was about (standing.rs lets this request through for that).
+    // Forms send every field, so a field left as it is counts as untouched.
+    let mut conn = state.db.acquire().await.db_err("Database error")?;
+    if standing::suspension(&mut conn, auth.user_id).await?.is_some() && !only_clears(&input, &current_user) {
+        return Err(AppError::forbidden(
+            "Your account is suspended. You can only clear your display name or bio until the suspension ends.",
+        ));
+    }
+    drop(conn);
+
     if let Some(display_name) = &input.display_name {
         check_max_len(display_name, "Display name", DISPLAY_NAME_MAX)?;
     }
@@ -271,6 +283,67 @@ pub async fn update_profile(
     Ok(Json(UserResponse::from(updated_user).resolve_media(&state.storage)))
 }
 
+/// Before an account goes: lowers the denormalized counters its likes,
+/// comments and follows count in on other people's posts, comments and
+/// profiles (they go with ON DELETE CASCADE, which leaves counters alone).
+/// Its comments take their replies with them, so a post's comment_count
+/// drops by the whole subtree -- minus comments removed by moderation,
+/// which no longer count. Its own posts go entirely, so they're skipped.
+async fn release_counters(tx: &mut sqlx::PgConnection, user_id: Uuid) -> Result<(), AppError> {
+    let statements = [
+        r#"
+        UPDATE posts p SET like_count = GREATEST(p.like_count - 1, 0)
+        FROM likes l WHERE l.post_id = p.id AND l.user_id = $1 AND p.user_id != $1
+        "#,
+        r#"
+        UPDATE comments c SET like_count = GREATEST(c.like_count - 1, 0)
+        FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $1 AND c.user_id != $1
+        "#,
+        r#"
+        WITH RECURSIVE gone AS (
+            SELECT c.id FROM comments c JOIN posts p ON p.id = c.post_id
+            WHERE c.user_id = $1 AND p.user_id != $1
+            UNION
+            SELECT c.id FROM comments c JOIN gone g ON c.parent_comment_id = g.id
+        )
+        UPDATE posts p SET comment_count = GREATEST(p.comment_count - x.n, 0)
+        FROM (
+            SELECT c.post_id, COUNT(*) AS n FROM gone g JOIN comments c ON c.id = g.id
+            WHERE c.moderation_status != 'removed' GROUP BY c.post_id
+        ) x
+        WHERE p.id = x.post_id
+        "#,
+        r#"
+        UPDATE users u SET follower_count = GREATEST(u.follower_count - 1, 0)
+        FROM follows f WHERE f.follower_id = $1 AND f.following_id = u.id
+        "#,
+        r#"
+        UPDATE users u SET following_count = GREATEST(u.following_count - 1, 0)
+        FROM follows f WHERE f.following_id = $1 AND f.follower_id = u.id
+        "#,
+    ];
+    for sql in statements {
+        sqlx::query(sql)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .db_err_ctx("Failed to update counters", "Failed to delete account")?;
+    }
+    Ok(())
+}
+
+/// Whether a profile update only empties fields or leaves them as they are.
+fn only_clears(input: &UpdateProfileRequest, current: &UserRow) -> bool {
+    let cleared_or_same = |new: &Option<String>, old: &Option<String>| match new {
+        None => true,
+        Some(value) => value.trim().is_empty() || Some(value.as_str()) == old.as_deref(),
+    };
+    input.username.as_deref().is_none_or(|u| u.trim() == current.username)
+        && input.is_private.is_none_or(|p| p == current.is_private)
+        && cleared_or_same(&input.display_name, &current.display_name)
+        && cleared_or_same(&input.bio, &current.bio)
+}
+
 /// POST /users/me/avatar — upload avatar image (auth required)
 pub async fn upload_avatar(
     State(state): State<AppState>,
@@ -344,6 +417,35 @@ pub async fn upload_avatar(
     Ok(Json(UserResponse::from(user).resolve_media(&state.storage)))
 }
 
+/// DELETE /users/me/avatar — removes the profile picture. Also open to a
+/// suspended account, which can't otherwise change its profile, so it can
+/// take down a picture a report was about.
+pub async fn delete_avatar(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<UserResponse>, AppError> {
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+    let old_avatar = sqlx::query_scalar::<_, Option<String>>("SELECT avatar_url FROM users WHERE id = $1 FOR UPDATE")
+        .bind(auth.user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .db_err("Database error")?;
+    let user = sqlx::query_as::<_, UserRow>("UPDATE users SET avatar_url = NULL WHERE id = $1 RETURNING *")
+        .bind(auth.user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .db_err("Failed to remove avatar")?;
+    // A profile under a likely-illegal report keeps the change as a
+    // version; the picture itself was captured when it was reported.
+    let preserved = evidence::capture(&mut tx, "user", auth.user_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+
+    let old_key = old_avatar.map(|url| url.strip_prefix("/media/").unwrap_or(&url).to_string());
+    evidence::finish(&state, preserved, old_key).await;
+    tracing::info!("Avatar removed: {}", auth.user_id);
+    Ok(Json(UserResponse::from(user).resolve_media(&state.storage)))
+}
+
 
 #[derive(Debug, Deserialize)]
 pub struct ChangePasswordRequest {
@@ -352,13 +454,15 @@ pub struct ChangePasswordRequest {
 }
 
 /// PATCH /users/me/password — change password (auth required)
-/// Requires current password to verify identity before updating.
-/// Invalidates all refresh tokens on success to force re-login on other devices.
+/// Requires current password to verify identity before updating. Ends every
+/// session at once -- whoever knew the old password may be signed in
+/// somewhere -- and returns fresh tokens, so only this device stays signed
+/// in.
 pub async fn change_password(
     State(state): State<AppState>,
     auth: AuthUser,
     Json(input): Json<ChangePasswordRequest>,
-) -> Result<StatusCode, AppError> {
+) -> Result<(axum::http::HeaderMap, Json<RefreshResponse>), AppError> {
 
     validate_password(&input.new_password)?;
     if input.current_password == input.new_password {
@@ -389,44 +493,71 @@ pub async fn change_password(
         .map_err(|_| AppError::internal("Failed to hash password"))?
         .to_string();
 
-    // Update password
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(&new_hash)
         .bind(auth.user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .db_err("Failed to update password")?;
+    crate::handlers::account_lock::revoke_sessions(&mut tx, auth.user_id).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
-    // Invalidate all refresh tokens — force re-login on other devices
-    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(auth.user_id)
-        .execute(&state.db)
-        .await
-        .db_err_ctx("Failed to invalidate sessions", "Database error")?;
-
+    let (cookies, access_token, refresh_token) = crate::handlers::auth::new_session(&state, auth.user_id).await?;
     tracing::info!("Password changed for user: {}", auth.user_id);
-    Ok(StatusCode::NO_CONTENT)
+    Ok((cookies, Json(RefreshResponse { access_token, refresh_token })))
 }
 
-/// DELETE /users/me — delete account and all associated data (auth required)
+#[derive(Debug, Deserialize)]
+pub struct DeleteAccountRequest {
+    pub password: String,
+}
+
+/// DELETE /users/me — delete account and all associated data (auth
+/// required). Asks for the password: a session alone -- an unlocked phone,
+/// a stolen access token -- mustn't be enough to erase everything for good.
 pub async fn delete_account(
     State(state): State<AppState>,
     auth: AuthUser,
+    Json(input): Json<DeleteAccountRequest>,
 ) -> Result<StatusCode, AppError> {
-    delete_user(&state, auth.user_id, Some(auth.user_id)).await?;
+    let user = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE id = $1")
+        .bind(auth.user_id)
+        .fetch_one(&state.db)
+        .await
+        .db_err("Database error")?;
+    crate::handlers::auth::verify_password(&user, &input.password)
+        .map_err(|_| AppError::bad_request("The password is incorrect"))?;
+    delete_user(&state, auth.user_id, Deletion::Owner(auth.user_id)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Deletes an account and all associated data: by its owner (DELETE
-/// /users/me), or by the standing sweeper once a permanent suspension's
-/// objection window has passed (`actor` None, standing.rs).
+/// Who deletes an account.
+#[derive(Clone, Copy, Debug)]
+pub enum Deletion {
+    /// Its owner, DELETE /users/me.
+    Owner(Uuid),
+    /// The standing sweeper, once a permanent suspension's objection window
+    /// has passed (standing.rs).
+    Ban,
+    /// The retention sweeper: the address was never verified
+    /// (retention.rs). Checked again in the deleting transaction, in case
+    /// it was verified just now; then nothing is deleted.
+    Unverified,
+}
+
+/// Deletes an account and all associated data; see `Deletion` for who.
 ///
 /// Deletion order:
 /// 1. Fetch all media file keys for this user's posts (before CASCADE removes them)
 /// 2. Fetch avatar key
 /// 3. Delete the user record (CASCADE handles all DB relations)
 /// 4. Delete media files from disk
-pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -> Result<(), AppError> {
+pub async fn delete_user(state: &AppState, user_id: Uuid, by: Deletion) -> Result<(), AppError> {
+    let actor = match by {
+        Deletion::Owner(id) => Some(id),
+        Deletion::Ban | Deletion::Unverified => None,
+    };
 
     // Collect all media file keys for this user's posts
     let media_keys = sqlx::query_as::<_, (String, String, String)>(
@@ -453,10 +584,21 @@ pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 
+    let verified = sqlx::query_scalar::<_, bool>("SELECT email_verified FROM users WHERE id = $1 FOR UPDATE")
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .db_err("Database error")?
+        .ok_or_else(|| AppError::not_found("User not found"))?;
+    if matches!(by, Deletion::Unverified) && verified {
+        return Ok(());
+    }
+
     // The deletion goes ahead (Art. 17), but content with a pending
     // likely-illegal report -- this user's posts and comments, comments
-    // under their posts, and the profile itself -- is preserved as
-    // evidence first (Art. 17(3)(e)); see evidence.rs.
+    // under their posts, and the profile itself -- and every reported
+    // message they sent is preserved as evidence first (Art. 17(3)(e));
+    // see evidence.rs.
     let scope = evidence::Scope {
         posts: sqlx::query_scalar::<_, Uuid>("SELECT id FROM posts WHERE user_id = $1")
             .bind(user_id)
@@ -468,9 +610,37 @@ pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -
             .fetch_all(&mut *tx)
             .await
             .db_err_ctx("Failed to list comments", "Failed to delete account")?,
+        // Only reported messages are preserved, so only those are listed:
+        // years of chats would make a long list for nothing.
+        messages: sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT m.id FROM messages m
+            WHERE m.sender_id = $1 AND EXISTS (
+                SELECT 1 FROM reports r WHERE r.target_type = 'message' AND r.target_id = m.id AND r.status = 'pending'
+            )
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await
+        .db_err_ctx("Failed to list reported messages", "Failed to delete account")?,
         user: Some(user_id),
     };
     let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::AccountDeletion, actor).await?;
+
+    // Reports on what goes with the account that preserved nothing have
+    // nothing left to decide; their reporters learn it's gone. That
+    // includes other people's comments under this user's posts.
+    let comments_gone = sqlx::query_scalar::<_, Uuid>(
+        "SELECT c.id FROM comments c JOIN posts p ON p.id = c.post_id WHERE c.user_id = $1 OR p.user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await
+    .db_err_ctx("Failed to list comments", "Failed to delete account")?;
+    let mut notices = moderation::close_obsolete_reports(&mut tx, "post", &scope.posts).await?;
+    notices.extend(moderation::close_obsolete_reports(&mut tx, "comment", &comments_gone).await?);
+    notices.extend(moderation::close_obsolete_reports(&mut tx, "user", &[user_id]).await?);
 
     // Decision records about this account stay as the moderation audit
     // trail, without the content excerpt.
@@ -494,6 +664,10 @@ pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -
     .await
     .db_err_ctx("Failed to delete orphaned conversations", "Failed to delete account")?;
 
+    // The cascade below also removes this user's likes, comments and
+    // follows on other people's things; their counters follow here.
+    release_counters(&mut tx, user_id).await?;
+
     // Delete user — CASCADE removes posts, comments, likes, follows, blocks,
     // sent messages, refresh_tokens, email_tokens, media_asset rows
     sqlx::query("DELETE FROM users WHERE id = $1")
@@ -503,6 +677,7 @@ pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -
         .db_err("Failed to delete account")?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Failed to delete account")?;
+    notices.send(state).await;
 
     // Clean up the files and their CDN copies (best-effort, failures are
     // logged by delete_media), apart from preserved ones still waiting
@@ -515,7 +690,7 @@ pub async fn delete_user(state: &AppState, user_id: Uuid, actor: Option<Uuid>) -
         .chain(screenshot_keys);
     evidence::finish(state, preserved, keys).await;
 
-    tracing::info!("Account deleted: {}{}", user_id, if actor.is_none() { " (after a permanent suspension)" } else { "" });
+    tracing::info!("Account deleted: {} ({:?})", user_id, by);
     Ok(())
 }
 
@@ -649,6 +824,37 @@ pub async fn export_my_data(
 
     let followers = sqlx::query_as::<_, (String, DateTime<Utc>)>(
         "SELECT u.username, f.created_at FROM follows f JOIN users u ON u.id = f.follower_id WHERE f.following_id = $1 ORDER BY f.created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .db_err_ctx("Data export query failed", "Database error")?;
+
+    // --- Follow requests still pending, both ways ---
+    let requests_sent = sqlx::query_as::<_, (String, DateTime<Utc>)>(
+        "SELECT u.username, r.created_at FROM follow_requests r JOIN users u ON u.id = r.target_id WHERE r.requester_id = $1 ORDER BY r.created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .db_err_ctx("Data export query failed", "Database error")?;
+
+    let requests_received = sqlx::query_as::<_, (String, DateTime<Utc>)>(
+        "SELECT u.username, r.created_at FROM follow_requests r JOIN users u ON u.id = r.requester_id WHERE r.target_id = $1 ORDER BY r.created_at DESC"
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .db_err_ctx("Data export query failed", "Database error")?;
+
+    // --- Changed Terms and privacy policy: what this account was shown,
+    // and when it accepted or acknowledged it ---
+    let legal_acks = sqlx::query_as::<_, (Vec<String>, DateTime<Utc>, DateTime<Utc>, bool)>(
+        r#"
+        SELECT l.documents, l.published_at, a.acknowledged_at, a.accepted
+        FROM legal_update_acks a JOIN legal_updates l ON l.id = a.update_id
+        WHERE a.user_id = $1 ORDER BY a.acknowledged_at
+        "#
     )
     .bind(auth.user_id)
     .fetch_all(&state.db)
@@ -825,6 +1031,16 @@ pub async fn export_my_data(
         "following": following.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "followers": followers.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
         "blocked_users": blocked.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+        "follow_requests": {
+            "sent": requests_sent.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+            "received": requests_received.into_iter().map(|(username, since)| serde_json::json!({"username": username, "since": since})).collect::<Vec<_>>(),
+        },
+        "legal_updates": legal_acks.into_iter().map(|(documents, published_at, acknowledged_at, accepted)| serde_json::json!({
+            "documents": documents,
+            "published_at": published_at,
+            "acknowledged_at": acknowledged_at,
+            "accepted": accepted,
+        })).collect::<Vec<_>>(),
         "feedback_sent": feedback_sent,
         "notifications_received": notifications_json,
         "conversations": conversations_json,

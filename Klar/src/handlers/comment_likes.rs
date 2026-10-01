@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::auth::AuthUser;
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::handlers::blocks::check_block;
 use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{insert_notification, publish_notification, NotificationEvent, NotificationKind};
 use crate::models::LikeResponse;
@@ -29,7 +30,7 @@ pub async fn toggle_comment_like(
     require_visible_post(&state.db, Some(auth.user_id), post_id).await?;
 
     let comment_author = sqlx::query_scalar::<_, Uuid>(
-        "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2"
+        "SELECT user_id FROM comments WHERE id = $1 AND post_id = $2 AND moderation_status != 'removed'"
     )
     .bind(comment_id)
     .bind(post_id)
@@ -37,6 +38,10 @@ pub async fn toggle_comment_like(
     .await
     .db_err("Database error")?
     .ok_or_else(|| AppError::not_found("Comment not found"))?;
+
+    if check_block(&state.db, auth.user_id, comment_author).await? {
+        return Err(AppError::bad_request("Cannot like this comment"));
+    }
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 

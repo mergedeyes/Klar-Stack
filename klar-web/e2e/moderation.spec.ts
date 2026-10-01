@@ -8,6 +8,7 @@ import {
   report,
   signIn,
   signUp,
+  trustedSignUp,
   uniqueName,
   upload,
 } from "./helpers";
@@ -89,7 +90,8 @@ test("the third strike for the same reason within 30 days is marked as a repeat"
 
 test("dismissing a report takes it out of the queue and lifts the automatic warning", async ({ page, browser, request }) => {
   const admin = await adminSession();
-  const [author, reporter] = await Promise.all([signUp("warned"), signUp("reporter")]);
+  // A trusted reporter: a brand-new account's report only queues.
+  const [author, reporter] = await Promise.all([signUp("warned"), trustedSignUp("reporter")]);
   const caption = `violent ${uniqueName("p")}`;
   const post = await upload(request, author, caption);
   await report(request, reporter, "post", post, "violence");
@@ -132,4 +134,23 @@ test("the admin sees the removed content of a strike with its context", async ({
   await expect(card.getByText(text)).toBeVisible();
   await expect(card.getByText(`On a post by @${reporter.username}`)).toBeVisible();
   await expect(card.getByText(/Criterion: Androhung von Gewalt/)).toBeVisible();
+});
+
+test("several reports on one post are one card, decided together or one by one", async ({ browser, request }) => {
+  const admin = await adminSession();
+  const [author, first, second] = await Promise.all([signUp("popular"), signUp("reporter"), signUp("reporter")]);
+  const caption = `twice reported ${uniqueName("p")}`;
+  const post = await upload(request, author, caption);
+  await report(request, first, "post", post, "spam");
+  await report(request, second, "post", post, "harassment");
+
+  const adminPage = await pageFor(browser, admin);
+  await adminPage.goto("/admin/reports");
+  const card = adminPage.getByTestId("report-group").filter({ hasText: caption });
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText("2 reports");
+  await card.getByRole("button", { name: "Dismiss only this report" }).first().click();
+  await expect(card).toContainText("1 report");
+  await card.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await expect(card).toBeHidden();
 });

@@ -78,7 +78,10 @@ export default function TransparenzPage() {
             <h3 className="mb-1 font-semibold">Direktnachrichten</h3>
             <p>
               Nachrichteninhalt, Zeitstempel, Lesestatus und Emoji-Reaktionen.
-              Nachrichten sind nur für die beiden Gesprächspartner sichtbar.
+              Nachrichten sind nur für die beiden Gesprächspartner sichtbar —
+              außer eine von beiden meldet eine Nachricht: Dann kann unser
+              Team sie und die zehn Nachrichten davor lesen (siehe
+              „Moderation und Sicherheit“).
             </p>
           </div>
 
@@ -89,20 +92,19 @@ export default function TransparenzPage() {
               kommentiert, wird das kurz gespeichert (wer, was, wann), damit
               du es in deiner Benachrichtigungsliste siehst. Diese Ereignisse
               werden dir außerdem in Echtzeit zugestellt (siehe „Echtzeit-
-              Benachrichtigungen“ unten).
+              Benachrichtigungen“ unten). Gelesene Benachrichtigungen löschen
+              wir nach 90 Tagen, ungelesene nach einem Jahr.
             </p>
           </div>
 
           <div className="mb-4">
-            <h3 className="mb-1 font-semibold">Nutzungsereignisse</h3>
+            <h3 className="mb-1 font-semibold">Keine Nutzungsprotokolle</h3>
             <p>
-              Wir protokollieren, welche Beiträge du ansiehst, likest oder
-              kommentierst, verknüpft mit deinem Konto (falls eingeloggt).
-              Das ist heute die Grundlage für mögliche zukünftige Funktionen
-              (z. B. bessere Empfehlungen) — <strong>aktuell beeinflusst das
-              nichts</strong>: dein Feed bleibt rein chronologisch, wie oben
-              beschrieben. Wir wollten das trotzdem hier nennen, auch wenn es
-              noch keine sichtbare Auswirkung hat.
+              Wir protokollieren nicht, welche Beiträge du ansiehst, likest
+              oder kommentierst. Ein solches Protokoll gab es bis Oktober 2026
+              für mögliche spätere Empfehlungen; es wurde nie genutzt, und wir
+              haben es mit allen Einträgen gelöscht, weil ein chronologischer
+              Feed es nicht braucht.
             </p>
           </div>
 
@@ -185,15 +187,39 @@ export default function TransparenzPage() {
           <div className="mb-4">
             <h3 className="mb-1 font-semibold">Meldungen</h3>
             <p>
-              Jeder kann Beiträge, Kommentare und Profile melden. Eine
-              einzelne Meldung entfernt nichts, mit zwei Ausnahmen: Bei
-              Darstellungen sexuellen Missbrauchs von Minderjährigen und
+              Jeder kann Beiträge, Kommentare, Direktnachrichten und Profile
+              melden, mit einer bestätigten E-Mail-Adresse. Rechtswidrige
+              Inhalte kann außerdem jede Person ohne Konto über das Formular{" "}
+              <Link href="/notices" className="underline">„Rechtswidrige Inhalte melden“</Link>{" "}
+              melden. Eine einzelne Meldung entfernt nichts, mit zwei Ausnahmen:
+              Bei Darstellungen sexuellen Missbrauchs von Minderjährigen und
               intimen Aufnahmen ohne Einwilligung wird der Inhalt sofort
               ausgeblendet, weil jeder weitere Aufruf der gezeigten Person
               schadet. Bei Gewalt, Selbstverletzung, sexuellen Inhalten und
               Terrorismus erscheint er bis zur Prüfung hinter einem
-              Warnhinweis. Alles andere bleibt sichtbar, bis ein Mensch aus
-              unserem Team entschieden hat.
+              Warnhinweis. Das gilt nur für Meldungen von Konten, die
+              mindestens einen Tag alt sind und deren Meldungen dieser Art nicht
+              wiederholt unbegründet waren — sonst könnte jemand mit einem
+              neuen Konto beliebige Beiträge verschwinden lassen. Alles andere
+              bleibt sichtbar, bis ein Mensch aus unserem Team entschieden hat.
+              Mehrere Meldungen zum selben Inhalt entscheiden wir gemeinsam, und
+              jede meldende Person erfährt das Ergebnis; stellen wir keinen
+              Verstoß fest, kann sie einmal um erneute Prüfung bitten. Bei
+              Missbrauchsdarstellungen, intimen Aufnahmen und Terrorismus
+              benachrichtigt Klar unser Team sofort per E-Mail; die E-Mail
+              enthält keine Inhalte und keine Namen.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Gemeldete Direktnachrichten</h3>
+            <p>
+              Meldest du eine Nachricht, sichern wir sie und die zehn
+              Nachrichten davor, damit unser Team versteht, worauf sie
+              antwortete — weitere Nachrichten des Gesprächs sehen wir nicht.
+              Die Kopie bleibt, auch wenn die verfassende Person die Nachricht
+              oder ihr Konto löscht; sonst könnte sie Belästigung einfach
+              verschwinden lassen. Jeder Blick unseres Teams darauf wird
+              protokolliert.
             </p>
           </div>
           <div className="mb-4">
@@ -211,7 +237,33 @@ export default function TransparenzPage() {
               nie ein Automatismus. Zu jeder Entscheidung bekommst du eine
               Begründung in der App und per E-Mail und kannst sechs Monate
               lang widersprechen; deinen Punktestand siehst du unter
-              Einstellungen → Moderation.
+              Einstellungen → Moderation. Statt eines ganzen Kontos können wir
+              auch nur einzelne Profilangaben entfernen, etwa ein Profilbild
+              oder einen Benutzernamen, der eine andere Person nachahmt.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Entfernen heißt erst einmal: unsichtbar</h3>
+            <p>
+              Was unser Team entfernt, verschwindet sofort für alle, wird aber
+              erst nach Ablauf der sechsmonatigen Widerspruchsfrist endgültig
+              gelöscht. Hat dein Widerspruch Erfolg, stellen wir es genau so
+              wieder her, wie es war. Antworten anderer auf einen entfernten
+              Kommentar bleiben stehen; an seiner Stelle steht „Removed by
+              moderation“. Darstellungen sexuellen Missbrauchs von
+              Minderjährigen löschen wir dagegen, sobald die Beweissicherung
+              abgeschlossen ist.
+            </p>
+          </div>
+          <div className="mb-4">
+            <h3 className="mb-1 font-semibold">Woher eine Entscheidung kommt</h3>
+            <p>
+              Die meisten Entscheidungen folgen auf eine Meldung. Unser Team
+              kann aber auch von sich aus handeln, etwa bei einem Inhalt, auf
+              den es selbst stößt, oder auf Anordnung einer Behörde. Die
+              Begründung nennt immer den Anlass, bei einer Anordnung auch die
+              Behörde. Jede Entscheidung wird mit Person, Zeitpunkt und Grund
+              festgehalten.
             </p>
           </div>
           <div className="mb-4">
@@ -272,6 +324,11 @@ export default function TransparenzPage() {
             braucht sie länger.
             Punkte aus Verstößen und die dazu gespeicherte Kopie des
             entfernten Inhalts löschen wir, sobald die Punkte verfallen.
+            Meldungen löschen wir sechs Monate nach unserer Entscheidung,
+            Entscheidungen nach drei Jahren — beides nur, wenn nichts mehr
+            darauf beruht. Ein Konto, dessen E-Mail-Adresse nach 30 Tagen
+            noch nicht bestätigt ist, löschen wir nach einer Erinnerung eine
+            Woche vorher.
             In den nächtlichen Sicherungen können deine Daten noch bis zu 14
             Tage liegen, bevor diese automatisch gelöscht werden.
             Serverseitige Zugriffsprotokolle laufen unabhängig davon ohnehin
