@@ -155,7 +155,7 @@ pub async fn resend_link(
     let token = create_reset_token(&mut tx, user.id, LINK_HOURS).await?;
     tx.commit().await.db_err("Database error")?;
 
-    if let Err(e) = state.email.send_account_locked(&user.email, &token).await {
+    if let Err(e) = state.email.send_account_locked(&user.email, &user.username, &token).await {
         tracing::error!("Lock email resend for user {} failed: {}", user.id, e.0);
     }
     Ok(Json(serde_json::json!({ "message": "We sent you a new link." })))
@@ -203,7 +203,7 @@ pub async fn lock_account(
 /// Also the "lock" decision of an account review (account_review.rs).
 pub async fn lock_user(state: &AppState, user_id: Uuid, admin_id: Uuid, note: &str) -> Result<(), AppError> {
     let mut tx = state.db.begin().await.db_err("Database error")?;
-    let email = sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = $1 FOR UPDATE")
+    let (email, username) = sqlx::query_as::<_, (String, String)>("SELECT email, username FROM users WHERE id = $1 FOR UPDATE")
         .bind(user_id)
         .fetch_optional(&mut *tx)
         .await
@@ -235,7 +235,7 @@ pub async fn lock_user(state: &AppState, user_id: Uuid, admin_id: Uuid, note: &s
     let token = create_reset_token(&mut tx, user_id, LINK_HOURS).await?;
     tx.commit().await.db_err("Database error")?;
 
-    if let Err(e) = state.email.send_account_locked(&email, &token).await {
+    if let Err(e) = state.email.send_account_locked(&email, &username, &token).await {
         tracing::error!("Lock email for user {} failed: {}", user_id, e.0);
     }
     tracing::info!("Account {} locked by admin {} (suspected takeover)", user_id, admin_id);

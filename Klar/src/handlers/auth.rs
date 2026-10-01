@@ -186,9 +186,10 @@ pub async fn register(
     {
         let email_service = state.email.clone();
         let to_email = user.email.clone();
+        let username = user.username.clone();
         let token = email_token.clone();
         tokio::spawn(async move {
-            if let Err(e) = email_service.send_verification(&to_email, &token).await {
+            if let Err(e) = email_service.send_verification(&to_email, &username, &token).await {
                 tracing::error!("Failed to send verification email: {}", e);
             }
         });
@@ -562,15 +563,15 @@ pub async fn resend_verification(
         "message": "If an unverified account exists for that email, a new verification link has been sent"
     }));
 
-    let user = sqlx::query_as::<_, (uuid::Uuid, String, bool)>(
-        "SELECT id, email, email_verified FROM users WHERE LOWER(email) = $1"
+    let user = sqlx::query_as::<_, (uuid::Uuid, String, String, bool)>(
+        "SELECT id, email, username, email_verified FROM users WHERE LOWER(email) = $1"
     )
     .bind(normalize_email(&input.email))
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?;
 
-    let Some((user_id, to_email, email_verified)) = user else {
+    let Some((user_id, to_email, username, email_verified)) = user else {
         return Ok(generic);
     };
     if email_verified {
@@ -623,7 +624,7 @@ pub async fn resend_verification(
 
     let email_service = state.email.clone();
     tokio::spawn(async move {
-        if let Err(e) = email_service.send_verification(&to_email, &token).await {
+        if let Err(e) = email_service.send_verification(&to_email, &username, &token).await {
             tracing::error!("Failed to send verification email: {}", e);
         }
     });

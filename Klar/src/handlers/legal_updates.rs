@@ -290,7 +290,7 @@ pub(crate) async fn send_emails(state: &AppState) {
 
     for (update_id, documents, summary, requires_acceptance) in open {
         loop {
-            let next = sqlx::query_as::<_, (Uuid, String)>(
+            let next = sqlx::query_as::<_, (Uuid, String, String)>(
                 r#"
                 INSERT INTO legal_update_emails (update_id, user_id)
                 SELECT $1, u.id FROM users u, legal_updates l
@@ -298,15 +298,15 @@ pub(crate) async fn send_emails(state: &AppState) {
                   AND NOT EXISTS (SELECT 1 FROM legal_update_emails e WHERE e.update_id = $1 AND e.user_id = u.id)
                 ORDER BY u.created_at LIMIT 1
                 ON CONFLICT DO NOTHING
-                RETURNING user_id, (SELECT email FROM users WHERE id = user_id)
+                RETURNING user_id, (SELECT email FROM users WHERE id = user_id), (SELECT username FROM users WHERE id = user_id)
                 "#,
             )
             .bind(update_id)
             .fetch_optional(&state.db)
             .await;
             match next {
-                Ok(Some((user_id, email))) => {
-                    if let Err(e) = state.email.send_legal_update(&email, &documents, &summary, requires_acceptance).await {
+                Ok(Some((user_id, email, username))) => {
+                    if let Err(e) = state.email.send_legal_update(&email, &username, &documents, &summary, requires_acceptance).await {
                         tracing::error!("Legal update {} email to user {} failed: {}", update_id, user_id, e.0);
                     }
                     tokio::time::sleep(SEND_PAUSE).await;
