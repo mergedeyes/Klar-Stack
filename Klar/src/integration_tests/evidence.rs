@@ -224,13 +224,18 @@ async fn copy_waits_for_evidence_storage_and_the_sweeper_finishes_it(pool: PgPoo
     let (alice, bob, admin) = (without.register("alice").await, without.trusted("bob").await, without.admin().await);
 
     let post = without.upload(&alice, "Storage down").await;
+    let before = without.scalar(&format!("SELECT full_key FROM media_assets WHERE post_id = '{post}'")).await.unwrap();
     let report = without.report(&bob, "post", post, "csam").await;
     let ev = record_for(&without, post).await.unwrap();
-    // The CSAM key rotation moves the file; the pending copy follows it.
-    eventually("rotation", || async {
-        without.scalar(&format!("SELECT source_key FROM evidence_files WHERE evidence_id = '{ev}'")).await
-            == without.scalar(&format!("SELECT full_key FROM media_assets WHERE post_id = '{post}'")).await
-    }).await;
+    // The CSAM key rotation moves the file in the background and the
+    // pending copy follows it. Both keys start out the same, so comparing
+    // them doesn't show the rotation ran; deleting the old file is its last
+    // step.
+    eventually("rotation", || async { !without.media_file(&before).exists() }).await;
+    assert_eq!(
+        without.scalar(&format!("SELECT source_key FROM evidence_files WHERE evidence_id = '{ev}'")).await,
+        without.scalar(&format!("SELECT full_key FROM media_assets WHERE post_id = '{post}'")).await
+    );
     assert_eq!(copied_files(&without, &ev).await, 0);
 
     without.post(&admin, &format!("/admin/reports/{report}/remove"), json!({})).await.ok();
@@ -242,18 +247,11 @@ async fn copy_waits_for_evidence_storage_and_the_sweeper_finishes_it(pool: PgPoo
     // which waits for the copy, deletes it.
     let with = app.with_evidence(true).await;
     with.exec(&format!("UPDATE evidence_versions SET captured_at = captured_at - INTERVAL '10 minutes' WHERE evidence_id = '{ev}'")).await;
-    
-    // 1. The sweeper finishes the copy
     evidence::sweep(&with.state).await;
     assert_eq!(copied_files(&with, &ev).await, 1);
-
-    // 2. Manually trigger the retention sweep (since the background task sleeps for an hour)
+    assert!(with.media_file(&source).exists());
     crate::retention::sweep(&with.state).await;
-
-    // 3. Wait securely for the filesystem to register the deletion
-    eventually("retention sweeps the file", || async {
-        !with.media_file(&source).exists()
-    }).await;
+    assert!(!with.media_file(&source).exists());
 }
 
 #[sqlx::test(migrations = "./migrations")]
