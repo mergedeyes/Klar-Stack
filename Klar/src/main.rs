@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod alerts;
 mod auth;
 mod config;
 mod db;
@@ -26,6 +27,7 @@ mod media;
 mod moderation;
 mod models;
 mod rate_limit;
+mod retention;
 mod routes;
 mod standing;
 mod storage;
@@ -183,6 +185,8 @@ async fn main() {
     standing::spawn_sweeper(state.clone());
     handlers::legal_updates::spawn_sweeper(state.clone());
     handlers::feedback::spawn_cleanup(state.clone());
+    retention::spawn(state.clone());
+    alerts::spawn(state.clone());
     uptime::spawn(state.clone());
 
     let app = routes::create_router(state);

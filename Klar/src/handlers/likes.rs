@@ -10,10 +10,9 @@ use crate::auth::{AuthUser, OptionalAuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::blocks::check_block;
-use crate::handlers::events::record_event;
 use crate::handlers::posts::require_visible_post;
 use crate::handlers::notifications::{insert_notification, publish_notification, NotificationEvent, NotificationKind};
-use crate::models::{EventType, LikeResponse};
+use crate::models::LikeResponse;
 use crate::utils::DbResultExt;
 
 /// POST /posts/:post_id/like — toggle like on a post (auth required)
@@ -98,12 +97,6 @@ pub async fn toggle_like(
         publish_notification(&state, &event).await;
     }
 
-    record_event(
-        &state.db,
-        Some(auth.user_id),
-        post_id,
-        if liked { EventType::Like } else { EventType::Unlike },
-    ).await;
 
     Ok(Json(LikeResponse {
         liked,

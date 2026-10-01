@@ -103,9 +103,9 @@ export default function RegisterPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Click the link in the email to verify your account. You can still
-            browse Klar while unverified, but some features require a verified
-            email.
+            Click the link in the email to verify your account. Until then you
+            can browse Klar, but not post, comment, send messages or report; an
+            account that stays unverified is deleted after 30 days.
           </CardContent>
           <CardFooter className="justify-center">
             <Button onClick={() => router.push("/feed")}>

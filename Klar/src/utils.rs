@@ -22,11 +22,19 @@ use uuid::Uuid;
 /// other cache-invalidation logic to get right.
 pub fn is_admin_email(email: &str) -> bool {
     let email = email.trim().to_lowercase();
+    admin_emails().contains(&email)
+}
+
+/// The ADMIN_EMAILS addresses, lowercased; for alerting every admin
+/// (alerts.rs). Only accounts that verified their address count, which the
+/// callers check against the users table.
+pub fn admin_emails() -> Vec<String> {
     std::env::var("ADMIN_EMAILS")
         .unwrap_or_default()
         .split(',')
         .map(|s| s.trim().to_lowercase())
-        .any(|admin| !admin.is_empty() && admin == email)
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// Extension trait for sqlx::Result: logs the real database error server
@@ -194,7 +202,7 @@ impl ResolveMedia for crate::models::MediaAsset {
     }
 }
 
-impl ResolveMedia for crate::models::AdminReportRow {
+impl ResolveMedia for crate::handlers::reports::ReportGroup {
     fn resolve_media(mut self, storage: &Storage) -> Self {
         self.target_thumb_url = storage.resolve(self.target_thumb_url);
         self

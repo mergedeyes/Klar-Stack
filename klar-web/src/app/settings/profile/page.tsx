@@ -67,6 +67,19 @@ export default function EditProfilePage() {
     }
   }
 
+  const handleRemoveAvatar = async () => {
+    if (!window.confirm("Remove your profile picture?")) return;
+    setError(null);
+    try {
+      await usersApi.deleteAvatar();
+      setAvatarFile(null);
+      setAvatarPreview(null);
+      await refreshUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove the picture");
+    }
+  };
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -105,10 +118,12 @@ export default function EditProfilePage() {
       // Update profile (Only send username if it actually changed to avoid triggering cooldown unnecessarily)
       const usernamePayload = newUsername.toLowerCase() !== user.username.toLowerCase() ? newUsername : null;
 
+      // An emptied field is sent as "" -- null would mean "unchanged" --
+      // so a display name or bio can actually be cleared.
       await usersApi.updateProfile(
         usernamePayload,
-        displayName.trim() || null,
-        bio.trim() || null,
+        displayName.trim(),
+        bio.trim(),
         isPrivate
       );
 
@@ -198,12 +213,22 @@ export default function EditProfilePage() {
               <Camera size={24} className="text-white" />
             </div>
           </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
-          >
-            Change photo
-          </button>
+          <div className="flex gap-4">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Change photo
+            </button>
+            {user.avatar_url && !avatarFile && (
+              <button
+                onClick={handleRemoveAvatar}
+                className="text-sm text-muted-foreground underline-offset-4 hover:text-destructive hover:underline"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
           <input
             ref={fileInputRef}
             type="file"

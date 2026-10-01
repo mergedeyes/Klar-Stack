@@ -67,7 +67,7 @@ async fn daily_cap_export_deletion_and_retention(pool: PgPool) {
 
     assert_eq!(app.export(&tester).await["feedback_sent"].as_array().unwrap().len(), 20);
 
-    app.delete(&tester, "/users/me").await.ok();
+    app.delete_account(&tester).await.ok();
     assert_eq!(app.count("SELECT 1 FROM feedback WHERE message = 'First message' AND user_id IS NULL").await, 1, "text stays, link goes");
 
     app.exec("UPDATE feedback SET created_at = NOW() - INTERVAL '366 days' WHERE message = 'filler'").await;
@@ -124,7 +124,7 @@ async fn screenshots_are_admin_only_exported_and_expire(pool: PgPool) {
     // Deleting the account takes the screenshots along at once.
     app.feedback(&other, &text, vec![png(300, 600, [0, 0, 200])]).await.ok();
     let key: String = sqlx::query_scalar("SELECT storage_key FROM feedback_screenshots").fetch_one(&app.state.db).await.unwrap();
-    app.delete(&other, "/users/me").await.ok();
+    app.delete_account(&other).await.ok();
     assert_eq!(app.count("SELECT 1 FROM feedback_screenshots").await, 0);
     assert!(!app.media_file(&key).exists());
 }

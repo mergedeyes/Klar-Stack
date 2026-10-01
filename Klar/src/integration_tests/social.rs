@@ -195,3 +195,82 @@ async fn paging_never_skips_or_repeats_posts_from_the_same_second(pool: PgPool) 
         assert_eq!(ids, all, "{path} skipped or repeated a post");
     }
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn deleting_an_account_lowers_the_counters_it_was_part_of(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, bob, carol) = (app.register("alice").await, app.register("bob").await, app.register("carol").await);
+    let post = app.upload(&alice, "alice's post").await;
+
+    // Bob likes and comments; carol replies to his comment; bob likes
+    // carol's own comment; bob follows alice, carol follows bob.
+    app.post(&bob, &format!("/posts/{post}/like"), json!({})).await.ok();
+    let bobs = app.comment(&bob, post, "nice").await;
+    app.post(&carol, &format!("/posts/{post}/comments"), json!({ "body": "agreed", "parent_comment_id": bobs })).await.ok();
+    let carols = app.comment(&carol, post, "lovely").await;
+    app.post(&bob, &format!("/posts/{post}/comments/{carols}/like"), json!({})).await.ok();
+    app.post(&bob, "/users/alice/follow", json!({})).await.ok();
+    app.post(&carol, "/users/bob/follow", json!({})).await.ok();
+    assert_eq!(post_counts(&app, post).await, (1, 3));
+
+    app.delete_account(&bob).await.ok();
+
+    assert_eq!(post_counts(&app, post).await, (0, 1), "his like, his comment and the reply under it");
+    assert_eq!(app.scalar(&format!("SELECT like_count FROM comments WHERE id = '{carols}'")).await.as_deref(), Some("0"));
+    assert_eq!(stats(&app, &alice, "alice").await.0, 0, "alice's followers");
+    assert_eq!(stats(&app, &carol, "carol").await.1, 0, "carol's following");
+    // And every counter matches its rows.
+    assert_eq!(
+        app.count(
+            "SELECT 1 FROM posts p WHERE like_count != (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) \
+             OR comment_count != (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)"
+        )
+        .await,
+        0
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_block_hides_both_sides_everywhere_and_ends_follow_requests(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, bob, carol) = (app.register("alice").await, app.register("bob").await, app.register("carol").await);
+    let alices = app.upload(&alice, "alice's post").await.to_string();
+    let bobs = app.upload(&bob, "bob's post").await.to_string();
+    let discovery = |user: &User| {
+        let (app, user) = (&app, user.clone());
+        async move {
+            let feed = app.get(&user, "/feed/discovery").await.ok().json();
+            feed["data"].as_array().unwrap().iter().map(|p| p["id"].as_str().unwrap().to_string()).collect::<Vec<_>>()
+        }
+    };
+
+    // Pending requests both ways (both accounts private).
+    app.patch(&alice, "/users/me", json!({ "is_private": true })).await.ok();
+    app.patch(&bob, "/users/me", json!({ "is_private": true })).await.ok();
+    app.post(&alice, "/users/bob/follow", json!({})).await.ok();
+    app.post(&bob, "/users/alice/follow", json!({})).await.ok();
+    app.patch(&alice, "/users/me", json!({ "is_private": false })).await.ok();
+    app.patch(&bob, "/users/me", json!({ "is_private": false })).await.ok();
+    assert!(discovery(&bob).await.contains(&alices));
+
+    app.post(&alice, "/users/bob/block", json!({})).await.ok();
+    assert!(!discovery(&bob).await.contains(&alices), "the blocked one doesn't see the blocker");
+    assert!(!discovery(&alice).await.contains(&bobs), "nor the other way round");
+    assert!(discovery(&carol).await.contains(&alices));
+    assert_eq!(app.count("SELECT 1 FROM follow_requests").await, 0);
+    // A request from before this rule can't be accepted either.
+    app.exec(&format!("INSERT INTO follow_requests (requester_id, target_id) VALUES ('{}', '{}')", bob.id, alice.id)).await;
+    assert_eq!(app.post(&alice, "/users/me/follow-requests/bob/accept", json!({})).await.status, StatusCode::BAD_REQUEST);
+
+    // No liking each other's comments.
+    let comment = app.comment(&alice, carol_post(&app, &carol).await, "on carol's post").await;
+    let carols = app.scalar(&format!("SELECT post_id FROM comments WHERE id = '{comment}'")).await.unwrap();
+    assert_eq!(
+        app.post(&bob, &format!("/posts/{carols}/comments/{comment}/like"), json!({})).await.status,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+async fn carol_post(app: &TestApp, carol: &User) -> Uuid {
+    app.upload(carol, "carol's post").await
+}

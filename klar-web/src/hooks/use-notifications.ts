@@ -123,6 +123,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             if (incoming.actor) setLastMessageEvent({ senderId: incoming.actor.id, at: Date.now() });
             return;
           }
+          // An edited or deleted message: the open chat refreshes, but
+          // nothing new arrived, so the unread badge stays as it is.
+          if (incoming.type_name === "message_changed") {
+            if (incoming.actor) setLastMessageEvent({ senderId: incoming.actor.id, at: Date.now() });
+            return;
+          }
 
           setNotifications(prev => [incoming, ...prev]);
           setUnreadCount(prev => prev + 1);

@@ -64,7 +64,12 @@ test("a suspended account is read-only and hidden, until the suspension is lifte
   const admin = await adminSession();
   const [author, other] = await Promise.all([signUp("suspended"), signUp("other")]);
   const otherPost = await upload(request, other, "Other's post");
-  await apiCall(request, admin, "POST", `/admin/users/${author.username}/measures`, { measure: "suspend_7d", reason: "harassment" });
+  // Without strikes, the admin explains the measure; the user reads it.
+  await apiCall(request, admin, "POST", `/admin/users/${author.username}/measures`, {
+    measure: "suspend_7d",
+    reason: "harassment",
+    explanation: "Repeated insults in direct messages.",
+  });
 
   // The suspended user sees why and what they can still do...
   await signIn(page, author);
@@ -84,7 +89,7 @@ test("a suspended account is read-only and hidden, until the suspension is lifte
   // Hidden from others: the profile doesn't exist for them.
   const otherPage = await pageFor(browser, other);
   await otherPage.goto(`/users/${author.username}`);
-  await expect(otherPage).toHaveURL(/\/feed$/);
+  await expect(otherPage.getByText("Profil nicht gefunden")).toBeVisible();
 
   // Lifted early: visible again, and commenting works.
   const adminPage = await pageFor(browser, admin);
@@ -104,7 +109,11 @@ test("a suspended account is read-only and hidden, until the suspension is lifte
 test("a permanent suspension shows when the account will be deleted", async ({ page, request }) => {
   const admin = await adminSession();
   const author = await signUp("banned");
-  await apiCall(request, admin, "POST", `/admin/users/${author.username}/measures`, { measure: "ban", reason: "spam" });
+  await apiCall(request, admin, "POST", `/admin/users/${author.username}/measures`, {
+    measure: "ban",
+    reason: "spam",
+    explanation: "The account only posts advertising.",
+  });
   await signIn(page, author);
   await page.goto("/moderation");
   await expect(page.getByText("Your account is permanently suspended.")).toBeVisible();
@@ -114,7 +123,11 @@ test("a permanent suspension shows when the account will be deleted", async ({ p
 test("an accepted objection ends a suspension", async ({ page, browser, request }) => {
   const admin = await adminSession();
   const author = await signUp("objects");
-  await apiCall(request, admin, "POST", `/admin/users/${author.username}/measures`, { measure: "suspend_30d", reason: "harassment" });
+  await apiCall(request, admin, "POST", `/admin/users/${author.username}/measures`, {
+    measure: "suspend_30d",
+    reason: "harassment",
+    explanation: "Threats against another user.",
+  });
   const [decision] = await apiGet<{ id: string }[]>(request, author, "/moderation/decisions");
 
   await signIn(page, author);
@@ -136,4 +149,44 @@ test("an accepted objection ends a suspension", async ({ page, browser, request 
   await expect(page.getByText("Wir haben deinem Widerspruch stattgegeben.")).toBeVisible();
   const standing = await apiGet<{ suspension: unknown }>(request, author, "/users/me/standing");
   expect(standing.suspension).toBeNull();
+});
+
+test("a measure without strikes needs an explanation, which the statement shows", async ({ page, browser }) => {
+  const admin = await adminSession();
+  const user = await signUp("explained");
+  const adminPage = await pageFor(browser, admin);
+  const card = await lookUp(adminPage, user.username);
+  const apply = card.getByRole("button", { name: "Apply" });
+  await expect(apply).toBeDisabled();
+  await card.getByLabel("Explanation for the user").fill("Your profile pretends to be a well-known journalist.");
+  await card.getByLabel("Main reason").selectOption("impersonation");
+  await apply.click();
+  await expect(card.getByText("1 earlier measure")).toBeVisible();
+
+  await signIn(page, user);
+  await page.goto("/moderation");
+  await page.getByRole("link", { name: /Warning · account/ }).click();
+  await expect(page.getByText(/well-known journalist/)).toBeVisible();
+  await expect(page.getByText(/von 100 Punkten/)).toHaveCount(0);
+});
+
+test("parts of a profile can be removed, and the statement lists them", async ({ page, browser, request }) => {
+  const admin = await adminSession();
+  const user = await signUp("profile");
+  await apiCall(request, user, "PATCH", "/users/me", { bio: "A hateful bio", display_name: "Hateful Name" });
+  const adminPage = await pageFor(browser, admin);
+  const card = await lookUp(adminPage, user.username);
+  await card.getByRole("button", { name: "Remove parts of the profile" }).click();
+  await card.getByLabel("Bio").check();
+  await card.getByLabel("Display name").check();
+  await card.getByLabel("Classify as").selectOption("hate_derogatory");
+  await card.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(card.getByRole("button", { name: "Remove parts of the profile" })).toBeVisible();
+
+  await signIn(page, user);
+  await page.goto(`/users/${user.username}`);
+  await expect(page.getByText("A hateful bio")).toHaveCount(0);
+  await page.goto("/moderation");
+  await page.getByRole("link", { name: /Removed · account/ }).click();
+  await expect(page.getByText(/Entfernt: Beschreibung, Anzeigename\./)).toBeVisible();
 });

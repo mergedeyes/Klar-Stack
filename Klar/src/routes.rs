@@ -35,6 +35,9 @@ fn build_cors() -> CorsLayer {
         ])
         .allow_headers(AllowHeaders::mirror_request())
         .allow_credentials(true)
+        // The data export's dated file name; cross-origin scripts only see
+        // the headers listed here.
+        .expose_headers([axum::http::header::CONTENT_DISPOSITION])
 }
 
 /// Span for each request: like tower_http's DefaultMakeSpan, but records
@@ -101,6 +104,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/rights-claims", post(handlers::rights::create_claim))
         .route("/rights-claims/{claim_id}/status", post(handlers::rights::claim_status))
         .route("/rights-claims/{claim_id}/respond", post(handlers::rights::respond_to_claim))
+        // Public notices about illegal content (DSA Art. 16), with or
+        // without an account: the same strict limit.
+        .route("/notices", post(handlers::notices::create_notice))
+        .route("/notices/{notice_id}/status", post(handlers::notices::notice_status))
         // Notices from klar-web/legal-updates, sent by the frontend deploy
         // with LEGAL_UPDATES_TOKEN; the strict limit guards the token.
         .route("/internal/legal-updates", post(handlers::legal_updates::publish_from_deploy))
@@ -131,7 +138,7 @@ pub fn create_router(state: AppState) -> Router {
             .patch(handlers::users::update_profile)
             .delete(handlers::users::delete_account))
         .route("/users/me/password", patch(handlers::users::change_password))
-        .route("/users/me/avatar", post(handlers::users::upload_avatar))
+        .route("/users/me/avatar", post(handlers::users::upload_avatar).delete(handlers::users::delete_avatar))
         .route("/users/me/blocked", get(handlers::blocks::get_blocked_users))
         .route("/users/me/export", get(handlers::users::export_my_data))
         .route("/users/me/standing", get(handlers::standing::my_standing))
@@ -193,9 +200,6 @@ pub fn create_router(state: AppState) -> Router {
         .route("/notifications/stream-ticket", post(handlers::notifications::create_stream_ticket))
         .route("/notifications/read", patch(handlers::notifications::mark_read))
 
-        // Interaction event log (client-reported views)
-        .route("/events", post(handlers::events::create_event))
-
         // In-app feedback (bug reports, ideas)
         .route("/feedback", post(handlers::feedback::create_feedback)
             // Up to three screenshots of 10 MB each, plus the text fields.
@@ -215,6 +219,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/moderation/decisions/{decision_id}", get(handlers::moderation::get_decision))
         .route("/moderation/decisions/{decision_id}/objection", post(handlers::moderation::object_to_decision))
         .route("/moderation/reports", get(handlers::moderation::my_reports))
+        .route("/moderation/reports/{report_id}/recheck", post(handlers::moderation::request_recheck))
+        .route("/admin/cases", post(handlers::reports::create_case))
+        .route("/admin/attention", get(handlers::moderation::admin_attention))
+        .route("/admin/decisions", get(handlers::moderation::decision_log))
+        .route("/admin/users/{username}/profile-removal", post(handlers::profile_moderation::remove_from_profile))
         .route("/admin/moderation", get(handlers::moderation::admin_queue))
         .route("/admin/moderation/decisions/{decision_id}/release", post(handlers::moderation::release_decision))
         .route("/admin/moderation/decisions/{decision_id}/objection", post(handlers::moderation::resolve_objection))
@@ -246,19 +255,25 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/evidence/{evidence_id}/authority-report", post(handlers::evidence::record_authority_report))
         // ────────────────────────────────────────────────────────────
 
+        // Publishing, messaging and reporting need a verified email
+        // address (handlers/auth.rs). Runs last, after the suspension check.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            handlers::auth::enforce_verified_email,
+        ))
         // Suspended accounts are read-only (standing.rs). A route_layer, so
         // it sees the matched route template.
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             crate::standing::enforce_suspension,
         ))
-        // A locked account's access tokens stop working at once
-        // (handlers/account_lock.rs). Added after the suspension layer, so
-        // it runs before it: a hijacked session ends even while suspended.
-        // Both run after the rate limit.
+        // A session ends at once when its account is locked, deleted or
+        // gets a new password (handlers/account_lock.rs). Added after the
+        // suspension layer, so it runs before it: a hijacked session ends
+        // even while suspended. Both run after the rate limit.
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
-            handlers::account_lock::enforce_account_lock,
+            handlers::account_lock::enforce_session,
         ))
         .route_layer(middleware::from_fn_with_state(
             general_limiter,

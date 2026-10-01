@@ -50,6 +50,19 @@ export default function DatenschutzPage() {
             Nutzungsvertrags (Art. 6 Abs. 1 lit. b DSGVO).
           </p>
           <p className="mt-2">
+            <strong>Bestätigung der E-Mail-Adresse:</strong> Beiträge,
+            Kommentare, Direktnachrichten und Meldungen sind erst möglich,
+            wenn du deine E-Mail-Adresse bestätigt hast; E-Mails zu
+            Moderationsentscheidungen schicken wir nur an bestätigte Adressen.
+            Ein Konto, dessen Adresse 30 Tage nach der Registrierung noch nicht
+            bestätigt ist, löschen wir mit allen Daten; eine Woche vorher
+            erinnern wir dich mit einem neuen Bestätigungslink. Eine nicht
+            bestätigte Adresse kann einer anderen Person gehören, und ein
+            Konto, das wir nicht erreichen können, bewahren wir nicht ohne
+            Grund auf (Art. 5 Abs. 1 lit. c und e, Art. 6 Abs. 1 lit. b und f
+            DSGVO).
+          </p>
+          <p className="mt-2">
             <strong>Änderungen unserer Bedingungen:</strong> Ändern sich die
             Nutzungsbedingungen oder diese Datenschutzerklärung, zeigen wir dir
             beim nächsten Öffnen von Klar einen Hinweis und schreiben an
@@ -114,6 +127,11 @@ export default function DatenschutzPage() {
             Feedback nur, um Klar zu verbessern (Art. 6 Abs. 1 lit. f DSGVO),
             und löschen es nach einem Jahr; löschst du dein Konto vorher,
             entfällt die Verknüpfung mit dir.
+          </p>
+          <p className="mt-2">
+            <strong>Benachrichtigungen:</strong> Benachrichtigungen (z. B. wer
+            dir folgt oder deinen Beitrag kommentiert) löschen wir 90 Tage nach
+            dem Lesen, ungelesene nach einem Jahr.
           </p>
           <p className="mt-2">
             <strong>Link-Vorschauen:</strong> Teilt jemand den Link zu einem
@@ -203,6 +221,16 @@ export default function DatenschutzPage() {
             lit. b DSGVO). Es werden keine Tracking- oder Werbe-Cookies
             eingesetzt.
           </p>
+          <p className="mt-2">
+            Zu jeder Anmeldung speichern wir die Refresh-Token nur als
+            Hashwert und bis zu ihrem Ablauf nach 30 Tagen, auch bereits
+            verwendete: Taucht ein verwendetes Token erneut auf, hat es
+            vermutlich jemand kopiert, und wir beenden diese Anmeldung (Art. 6
+            Abs. 1 lit. f DSGVO, Sicherheit deines Kontos). Änderst du dein
+            Passwort oder sperren wir dein Konto wegen Verdachts auf fremden
+            Zugriff, enden alle Anmeldungen sofort; dazu speichern wir den
+            Zeitpunkt.
+          </p>
         </section>
 
         <section className="mb-6">
@@ -223,11 +251,11 @@ export default function DatenschutzPage() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">7. Meldungen und Moderation</h2>
           <p>
-            Wenn du einen Beitrag, einen Kommentar oder ein Profil über die
-            Melden-Funktion meldest, verarbeiten wir deine Nutzer-ID als
-            meldende Person, den gemeldeten Inhalt bzw. das gemeldete Profil,
-            den von dir ausgewählten Meldegrund sowie eine optionale
-            Freitext-Beschreibung. Bei der Bearbeitung einer Meldung durch
+            Wenn du einen Beitrag, einen Kommentar, eine Direktnachricht oder
+            ein Profil über die Melden-Funktion meldest, verarbeiten wir deine
+            Nutzer-ID als meldende Person, den gemeldeten Inhalt bzw. das
+            gemeldete Profil, den von dir ausgewählten Meldegrund sowie eine
+            optionale Freitext-Beschreibung. Bei der Bearbeitung einer Meldung durch
             unser Team werden zusätzlich eine interne Notiz sowie die
             Nutzer-ID der bearbeitenden Person gespeichert. Rechtsgrundlage
             ist die Erfüllung unserer rechtlichen Pflichten als
@@ -238,9 +266,34 @@ export default function DatenschutzPage() {
             Minderjährigen) führen automatisiert zu einer sofortigen
             Ausblendung des gemeldeten Inhalts; andere Meldegründe können
             zunächst zu einer Kennzeichnung mit Warnhinweis führen, bis eine
-            manuelle Prüfung erfolgt ist. Löschst du dein Konto, bleiben von
-            dir abgegebene Meldungen bestehen, sind aber nicht mehr mit dir
-            verknüpft.
+            manuelle Prüfung erfolgt ist. Das geschieht nur bei Meldungen von
+            Konten mit bestätigter E-Mail-Adresse, die mindestens einen Tag
+            alt sind und deren Meldungen dieser Art in den letzten 30 Tagen
+            nicht wiederholt unbegründet waren; dazu werten wir die eigenen
+            bisherigen Meldungen des Kontos aus. Pro Tag sind höchstens 30
+            Meldungen möglich. So verhindern wir, dass jemand mit neu
+            angelegten Konten fremde Inhalte ausblendet (Art. 6 Abs. 1 lit. f
+            DSGVO, Art. 23 DSA). Stellen wir keinen Verstoß fest, kannst du
+            einmal um erneute Prüfung bitten; wir speichern dazu deine
+            Begründung. Meldungen löschen wir sechs Monate nach unserer
+            Entscheidung, es sei denn, eine noch gültige Punktevergabe, eine
+            Beweissicherung oder ein offener Widerspruch beruht darauf.
+            Löschst du dein Konto, bleiben von dir abgegebene Meldungen bis
+            dahin bestehen, sind aber nicht mehr mit dir verknüpft.
+          </p>
+          <p className="mt-2">
+            <strong>Meldungen über das Formular:</strong> Rechtswidrige Inhalte
+            kann jede Person, auch ohne Klar-Konto, über das Formular
+            „Rechtswidrige Inhalte melden“ melden. Dabei übermittelt sie uns den
+            Link zum Inhalt, den Meldegrund, eine Begründung sowie Name und
+            E-Mail-Adresse; bei Darstellungen sexuellen Missbrauchs von Kindern
+            sind Name und E-Mail-Adresse freiwillig. Wir nutzen diese Angaben,
+            um die Meldung zu prüfen und über Eingang und Ergebnis zu
+            informieren (Art. 6 Abs. 1 lit. c DSGVO i. V. m. Art. 16 DSA). Den
+            Stand kann die meldende Person über einen persönlichen Link
+            einsehen; wir speichern davon nur einen nicht rückrechenbaren
+            Hashwert. Wer betroffen ist, erfährt nicht, wer gemeldet hat. Die
+            Angaben löschen wir zusammen mit der Meldung.
           </p>
           <p className="mt-2">
             <strong>Begründung von Entscheidungen:</strong> Wird ein Inhalt von
@@ -253,9 +306,20 @@ export default function DatenschutzPage() {
             werden ebenfalls gespeichert. Wer etwas meldet, erfährt, ob die
             Meldung zu einer Maßnahme geführt hat — nicht aber, wer betroffen
             ist. Rechtsgrundlage ist Art. 6 Abs. 1 lit. c DSGVO i. V. m. Art. 16
-            und 17 DSA. Die Entscheidungen bleiben als Nachweis unserer
-            Moderation gespeichert; löschst du dein Konto, entfallen der
-            Inhaltsauszug und die Verknüpfung mit dir.
+            und 17 DSA. Entfernt unser Team einen Beitrag, einen Kommentar
+            oder Angaben aus deinem Profil, sind sie sofort für alle
+            unsichtbar; wir bewahren sie aber bis zum Ende der sechsmonatigen
+            Widerspruchsfrist auf, um sie wiederherzustellen, falls dein
+            Widerspruch Erfolg hat, und löschen sie danach endgültig
+            (Art. 6 Abs. 1 lit. c DSGVO i. V. m. Art. 20 Abs. 4 DSA).
+            Darstellungen sexuellen Missbrauchs von Minderjährigen löschen wir,
+            sobald die Beweissicherung abgeschlossen ist. Entscheidungen
+            löschen wir drei Jahre nach der Entscheidung, ihrer Aufhebung oder
+            der Antwort auf einen Widerspruch (regelmäßige Verjährungsfrist,
+            § 195 BGB), solange keine gültige Punktevergabe oder laufende
+            Sperrung darauf beruht; löschst du dein Konto vorher, entfallen
+            der Inhaltsauszug, die entfernten Profilangaben und die
+            Verknüpfung mit dir.
           </p>
           <p className="mt-2">
             <strong>Punkte und Kontomaßnahmen:</strong> Entfernt unser Team
@@ -314,15 +378,21 @@ export default function DatenschutzPage() {
             Anzeigename, E-Mail-Adresse, Registrierungsdatum) und der
             Zusammenhang (z. B. der kommentierte Beitrag) — keine weiteren
             Kommentare oder Likes. Bei anderen
-            Meldegründen (z. B. Spam) wird nichts kopiert. Die Kopie liegt in einem
+            Meldegründen (z. B. Spam) wird nichts kopiert. Eine gemeldete
+            Direktnachricht sichern wir unabhängig vom Grund, zusammen mit den
+            zehn Nachrichten davor (von beiden Seiten) als Zusammenhang; unser
+            Team kann sie dann lesen. Das ist nötig, weil die verfassende
+            Person eine Nachricht — auch mit ihrem Konto — für beide Seiten
+            löschen kann und die Meldung sonst ins Leere liefe. Weitere
+            Nachrichten des Gesprächs sehen wir nicht. Die Kopie liegt in einem
             gesonderten, nicht öffentlich erreichbaren Speicher bei Bunny.net
             in Deutschland, Bilder darin verschlüsselt; nur unser Moderationsteam hat Zugriff, und jeder
             Zugriff wird mit Person, Zeitpunkt und Grund protokolliert.
             Rechtsgrundlage ist Art. 6 Abs. 1 lit. c und f DSGVO; das Recht
             auf Löschung ist insoweit nach Art. 17 Abs. 3 lit. e DSGVO
-            eingeschränkt. Erweist sich die Meldung als unbegründet, löschen
-            wir die Kopie umgehend, andernfalls sechs Monate nach unserer
-            Entscheidung — es sei denn, sie wird für ein laufendes Verfahren
+            eingeschränkt. Erweist sich die Meldung als unbegründet oder hat
+            ein Widerspruch gegen die Entfernung Erfolg, löschen wir die Kopie
+            umgehend, andernfalls sechs Monate nach unserer Entscheidung — es sei denn, sie wird für ein laufendes Verfahren
             oder auf Anforderung einer Behörde länger benötigt. Diese Kopien
             sind nicht Teil des Datenexports.
           </p>
@@ -350,8 +420,10 @@ export default function DatenschutzPage() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">9. Löschung deines Kontos</h2>
           <p>
-            Du kannst dein Konto jederzeit in den Einstellungen löschen. Dein
-            Profil, deine Beiträge, Kommentare und Likes werden dabei
+            Du kannst dein Konto jederzeit in den Einstellungen löschen; zum
+            Schutz vor versehentlichem oder fremdem Löschen fragen wir dabei
+            nach deinem Passwort. Dein Profil, deine Beiträge, Kommentare und
+            Likes werden dabei
             unmittelbar mit dem Klick auf den dazugehörigen Button aus unserer
             Datenbank entfernt — <strong>nicht</strong>, wie bei anderen
             Plattformen üblich, erst nach einer Wartefrist. Einzige Ausnahme

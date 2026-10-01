@@ -75,8 +75,9 @@ async fn report_captures_state_and_edits_add_versions(pool: PgPool) {
         Some("sexual_content,violence")
     );
 
-    // Decided only once the last likely-illegal report is resolved.
-    app.post(&admin, &format!("/admin/reports/{r1}/dismiss"), json!({})).await.ok();
+    // Decided only once the last likely-illegal report is resolved. (A
+    // dismissal closes every report on the item unless told otherwise.)
+    app.post(&admin, &format!("/admin/reports/{r1}/dismiss"), json!({ "only_this": true })).await.ok();
     assert_eq!(app.scalar(&format!("SELECT decided_at IS NULL FROM evidence_records WHERE id = '{ev}'")).await.as_deref(), Some("true"));
     app.post(&admin, &format!("/admin/reports/{r2}/dismiss"), json!({})).await.ok();
     assert_eq!(app.scalar(&format!("SELECT decision FROM evidence_records WHERE id = '{ev}'")).await.as_deref(), Some("dismissed"));
@@ -92,7 +93,7 @@ async fn report_captures_state_and_edits_add_versions(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn csam_is_copied_before_rotation_and_survives_removal(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let (alice, bob, admin) = (app.register("alice").await, app.register("bob").await, app.admin().await);
+    let (alice, bob, admin) = (app.register("alice").await, app.trusted("bob").await, app.admin().await);
 
     let post = app.upload(&alice, "csam").await;
     let original_key = app.scalar(&format!("SELECT full_key FROM media_assets WHERE post_id = '{post}'")).await.unwrap();
@@ -106,6 +107,11 @@ async fn csam_is_copied_before_rotation_and_survives_removal(pool: PgPool) {
     eventually("key rotation", || async { !app.media_file(&original_key).exists() }).await;
 
     app.post(&admin, &format!("/admin/reports/{report}/remove"), json!({ "note": "confirmed" })).await.ok();
+    assert_eq!(app.scalar(&format!("SELECT moderation_status FROM posts WHERE id = '{post}'")).await.as_deref(), Some("removed"));
+    // Removed content is kept for a possible objection, but CSAM is deleted
+    // for good as soon as its evidence copy is complete.
+    crate::retention::sweep(&app.state).await;
+    assert_eq!(app.count(&format!("SELECT 1 FROM posts WHERE id = '{post}'")).await, 0);
     assert_eq!(app.scalar(&format!("SELECT deletion_trigger FROM evidence_records WHERE id = '{ev}'")).await.as_deref(), Some("moderation_removal"));
     assert_eq!(versions(&app, &ev).await, "reported", "removal adds no version");
     assert_eq!(
@@ -143,7 +149,7 @@ async fn csam_is_copied_before_rotation_and_survives_removal(pool: PgPool) {
     let trail = app.scalar(&format!(
         "SELECT string_agg(action, ',' ORDER BY created_at, id) FROM evidence_events WHERE evidence_id = '{ev}'"
     )).await.unwrap();
-    assert_eq!(trail, "created,version_added,content_deleted,authority_report_advised,decided,viewed,file_viewed,hold_set,authority_report,hold_lifted,purged");
+    assert_eq!(trail, "created,version_added,authority_report_advised,decided,content_deleted,viewed,file_viewed,hold_set,authority_report,hold_lifted,purged");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -203,7 +209,7 @@ async fn profile_timeline_through_account_deletion(pool: PgPool) {
     assert_eq!(versions(&app, &ev).await, "reported,edited,edited");
     assert!(!app.media_file(&old_avatar).exists(), "old avatar deleted once copied");
 
-    app.delete(&carol, "/users/me").await.ok();
+    app.delete_account(&carol).await.ok();
     assert_eq!(app.scalar(&format!("SELECT deletion_trigger FROM evidence_records WHERE id = '{ev}'")).await.as_deref(), Some("account_deletion"));
 
     // Confirming the violation on the deleted account keeps the evidence.
@@ -215,7 +221,7 @@ async fn profile_timeline_through_account_deletion(pool: PgPool) {
 async fn copy_waits_for_evidence_storage_and_the_sweeper_finishes_it(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let without = app.with_evidence(false).await;
-    let (alice, bob, admin) = (without.register("alice").await, without.register("bob").await, without.admin().await);
+    let (alice, bob, admin) = (without.register("alice").await, without.trusted("bob").await, without.admin().await);
 
     let post = without.upload(&alice, "Storage down").await;
     let report = without.report(&bob, "post", post, "csam").await;
@@ -231,12 +237,15 @@ async fn copy_waits_for_evidence_storage_and_the_sweeper_finishes_it(pool: PgPoo
     let source = without.scalar(&format!("SELECT source_key FROM evidence_files WHERE evidence_id = '{ev}'")).await.unwrap();
     assert!(without.media_file(&source).exists(), "original kept while the copy is pending");
 
-    // Storage back: the sweeper copies (once the capture is 5 min old) and
-    // then deletes the original.
+    // Storage back: the sweeper copies (once the capture is 5 min old).
+    // The removed post still has the file; deleting the post for good,
+    // which waits for the copy, deletes it.
     let with = app.with_evidence(true).await;
     with.exec(&format!("UPDATE evidence_versions SET captured_at = captured_at - INTERVAL '10 minutes' WHERE evidence_id = '{ev}'")).await;
     evidence::sweep(&with.state).await;
     assert_eq!(copied_files(&with, &ev).await, 1);
+    assert!(with.media_file(&source).exists());
+    crate::retention::sweep(&with.state).await;
     assert!(!with.media_file(&source).exists());
 }
 

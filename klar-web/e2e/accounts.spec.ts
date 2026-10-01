@@ -8,16 +8,24 @@ import { API, clientIp, pageFor, signIn, signUp, uniqueName, withDb } from "./he
 // would arrive by email are read from the test database.
 
 async function emailToken(userEmail: string, type: "verification" | "password_reset"): Promise<string> {
-  return withDb(async (db) => {
-    const res = await db.query(
-      `SELECT t.token FROM email_tokens t JOIN users u ON u.id = t.user_id
-       WHERE LOWER(u.email) = LOWER($1) AND t.token_type = $2 AND t.used_at IS NULL
-       ORDER BY t.created_at DESC LIMIT 1`,
-      [userEmail, type],
-    );
-    expect(res.rowCount, `a ${type} token for ${userEmail}`).toBe(1);
-    return res.rows[0].token as string;
-  });
+  // A reset link is created in the background, so it can land a moment
+  // after the page says it was sent.
+  let token: string | null = null;
+  await expect
+    .poll(async () => {
+      token = await withDb(async (db) => {
+        const res = await db.query(
+          `SELECT t.token FROM email_tokens t JOIN users u ON u.id = t.user_id
+           WHERE LOWER(u.email) = LOWER($1) AND t.token_type = $2 AND t.used_at IS NULL
+           ORDER BY t.created_at DESC LIMIT 1`,
+          [userEmail, type],
+        );
+        return (res.rows[0]?.token as string | undefined) ?? null;
+      });
+      return token;
+    }, { message: `a ${type} token for ${userEmail}` })
+    .not.toBeNull();
+  return token!;
 }
 
 async function refreshStatus(refreshToken: string): Promise<number> {
@@ -87,7 +95,7 @@ test("a forgotten password is reset through the link, and the new one signs in",
   await context.close();
 });
 
-test("changing the password signs out the other devices", async ({ page }) => {
+test("changing the password signs out the other devices, and this one stays signed in", async ({ page, request }) => {
   const user = await signUp("changer");
   // A second device: its own login, its own refresh token.
   const loginContext = await playwrightRequest.newContext();
@@ -107,6 +115,14 @@ test("changing the password signs out the other devices", async ({ page }) => {
   await expect(page).toHaveURL(/\/settings$/);
 
   expect(await refreshStatus(secondDevice)).toBe(401);
+  // This device got fresh tokens with the change and keeps working. (Read
+  // from the page: a reload would re-seed the old ones through signIn.)
+  const fresh = await page.evaluate(() => localStorage.getItem("klar_access_token"));
+  expect(fresh).not.toBe(user.access_token);
+  const me = await request.get(`${API}/users/me`, { headers: { Authorization: `Bearer ${fresh}`, "X-Forwarded-For": clientIp() } });
+  expect(me.ok()).toBeTruthy();
+  const old = await request.get(`${API}/users/me`, { headers: { Authorization: `Bearer ${user.access_token}`, "X-Forwarded-For": clientIp() } });
+  expect(old.status()).toBe(401);
 });
 
 test("the data download is a ZIP, and deleting the account signs out and removes the profile", async ({ page, browser }) => {
@@ -127,11 +143,17 @@ test("the data download is a ZIP, and deleting the account signs out and removes
   const confirm = page.getByRole("button", { name: "Delete account" });
   await expect(confirm).toBeDisabled();
   await page.getByPlaceholder(user.username).fill(user.username);
+  // The password too: a session alone can't delete an account.
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Your password").fill("wrong-password-1");
+  await confirm.click();
+  await expect(page.getByText("The password is incorrect")).toBeVisible();
+  await page.getByLabel("Your password").fill("test-password-123");
   await confirm.click();
   await expect(page).toHaveURL(/\/login/);
 
-  // For anyone else the profile is gone (the page falls back to the feed).
+  // For anyone else the profile is gone.
   const visitor = await pageFor(browser, await signUp("visitor"));
   await visitor.goto(`/users/${user.username}`);
-  await expect(visitor).toHaveURL(/\/feed/);
+  await expect(visitor.getByText("Profil nicht gefunden")).toBeVisible();
 });

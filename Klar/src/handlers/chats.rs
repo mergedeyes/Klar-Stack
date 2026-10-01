@@ -2,6 +2,7 @@ use axum::{extract::{State, Path}, http::StatusCode, Json};
 use uuid::Uuid;
 use chrono::Utc;
 use crate::{AppState, errors::AppError, auth::AuthUser, models::chat::*};
+use crate::evidence;
 use crate::handlers::notifications::{build_event, publish_notification};
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{required_text, MESSAGE_MAX};
@@ -239,6 +240,35 @@ pub async fn send_message(
     Ok(Json(message))
 }
 
+/// The other participant of the conversation a message belongs to, for the
+/// live event after an edit or a deletion; None once they deleted their
+/// account.
+async fn other_participant(conn: &mut sqlx::PgConnection, message_id: Uuid, user_id: Uuid) -> Result<Option<Uuid>, AppError> {
+    sqlx::query_scalar::<_, Option<Uuid>>(
+        r#"
+        SELECT CASE WHEN c.user1_id = $2 THEN c.user2_id ELSE c.user1_id END
+        FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.id = $1
+        "#,
+    )
+    .bind(message_id)
+    .bind(user_id)
+    .fetch_optional(&mut *conn)
+    .await
+    .db_err("Database error")
+    .map(Option::flatten)
+}
+
+/// Tells the other participant's open chat that a message changed, so an
+/// edit or a deletion shows without reloading. A type of its own, not
+/// "message": that one also lights up the unread badge.
+async fn publish_change(state: &AppState, target: Option<Uuid>, actor: Uuid, message_id: Uuid) {
+    if let (Some(target), Ok(mut conn)) = (target, state.db.acquire().await) {
+        if let Some(event) = build_event(&mut conn, target, actor, message_id, "message_changed", None).await {
+            publish_notification(state, &event).await;
+        }
+    }
+}
+
 pub async fn edit_message(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -247,23 +277,33 @@ pub async fn edit_message(
 ) -> Result<StatusCode, AppError> {
     let body = required_text(&payload.body, "Message", MESSAGE_MAX)?;
 
-    let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
-        .fetch_optional(&state.db)
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+    let sender = sqlx::query_scalar::<_, Option<Uuid>>("SELECT sender_id FROM messages WHERE id = $1 FOR UPDATE")
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
         .await
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
-    if msg_meta.sender_id != Some(auth.user_id) {
+    if sender != Some(auth.user_id) {
         return Err(AppError::forbidden("You can only edit your own messages"));
     }
 
-    sqlx::query!(
-        "UPDATE messages SET body = $1, edited_at = $2 WHERE id = $3",
-        body, Utc::now(), message_id
-    )
-    .execute(&state.db)
-    .await
-    .db_err("Failed to edit message")?;
+    sqlx::query("UPDATE messages SET body = $1, edited_at = $2 WHERE id = $3")
+        .bind(body)
+        .bind(Utc::now())
+        .bind(message_id)
+        .execute(&mut *tx)
+        .await
+        .db_err("Failed to edit message")?;
+
+    // A reported message keeps a version per edit, so editing can't
+    // rewrite what was reported (evidence.rs).
+    let preserved = evidence::capture(&mut tx, "message", message_id, evidence::Cause::Edited, Some(auth.user_id)).await?;
+    let other = other_participant(&mut tx, message_id, auth.user_id).await?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    evidence::finish(&state, preserved, Vec::new()).await;
+    publish_change(&state, other, auth.user_id, message_id).await;
 
     Ok(StatusCode::OK)
 }
@@ -273,20 +313,32 @@ pub async fn delete_message(
     auth: AuthUser,
     Path(message_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let msg_meta = sqlx::query!("SELECT sender_id FROM messages WHERE id = $1", message_id)
-        .fetch_optional(&state.db)
+    let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
+    let sender = sqlx::query_scalar::<_, Option<Uuid>>("SELECT sender_id FROM messages WHERE id = $1 FOR UPDATE")
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
         .await
         .db_err("Database error")?
         .ok_or_else(|| AppError::not_found("Message not found"))?;
 
-    if msg_meta.sender_id != Some(auth.user_id) {
+    if sender != Some(auth.user_id) {
         return Err(AppError::forbidden("You can only delete your own messages"));
     }
 
-    sqlx::query!("DELETE FROM messages WHERE id = $1", message_id)
-        .execute(&state.db)
+    // A reported message is preserved before it goes: deleting it for both
+    // sides mustn't erase what the other person reported (evidence.rs).
+    let scope = evidence::Scope { messages: vec![message_id], ..Default::default() };
+    let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::UserDeletion, Some(auth.user_id)).await?;
+    let other = other_participant(&mut tx, message_id, auth.user_id).await?;
+
+    sqlx::query("DELETE FROM messages WHERE id = $1")
+        .bind(message_id)
+        .execute(&mut *tx)
         .await
         .db_err("Failed to delete message")?;
+    tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    evidence::finish(&state, preserved, Vec::new()).await;
+    publish_change(&state, other, auth.user_id, message_id).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Grid3X3, Lock, Flag } from "lucide-react";
+import Link from "next/link";
+import { Grid3X3, Lock, Flag, ShieldAlert, UserX } from "lucide-react";
 import Image from "next/image";
 import {
   users as usersApi,
@@ -93,6 +94,10 @@ export default function ProfilePage() {
   const loading = loadedFor !== username;
   const [activePost, setActivePost] = useState<Post | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  // The name whose profile couldn't be loaded: deleted, suspended, or a
+  // typo.
+  const [notFoundFor, setNotFoundFor] = useState<string | null>(null);
+  const notFound = notFoundFor === username;
 
   const [followers, setFollowers] = useState<User[]>([]);
   const [following, setFollowing] = useState<User[]>([]);
@@ -189,7 +194,7 @@ export default function ProfilePage() {
         setProfile(profileData);
       })
       .catch(() => {
-        if (!cancelled) router.push("/feed");
+        if (!cancelled) setNotFoundFor(username);
       })
       .finally(() => {
         if (!cancelled) setLoadedFor(username);
@@ -314,6 +319,28 @@ export default function ProfilePage() {
     );
   }
 
+  // Said so, instead of quietly landing on the feed: a mistyped name, or
+  // an account that was deleted or is suspended.
+  if (notFound) {
+    return (
+      <div className="flex-1 bg-background">
+        <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
+            <SmartBackButton aria-label="Back" />
+          </div>
+        </header>
+        <main className="mx-auto max-w-3xl px-4 py-16 text-center">
+          <UserX size={36} className="mx-auto mb-3 text-muted-foreground" />
+          <p className="font-semibold">Profil nicht gefunden</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            There&rsquo;s no profile called @{username} — the name may be mistyped, or the account was deleted or is
+            suspended.
+          </p>
+        </main>
+      </div>
+    );
+  }
+
   if (!profile) return null;
 
   return (
@@ -334,6 +361,17 @@ export default function ProfilePage() {
               >
                 <Flag size={18} />
               </button>
+            )}
+            {/* The account's standing: measures, or parts of the profile
+                removed (with or without a report). */}
+            {!isMe && me?.is_admin && (
+              <Link
+                href={`/admin/standing/${profile.username}`}
+                aria-label="Moderate user"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <ShieldAlert size={18} />
+              </Link>
             )}
           </div>
         </header>
@@ -539,6 +577,7 @@ export default function ProfilePage() {
         <ReportModal
           targetType="user"
           targetId={profile.id}
+          authorUsername={profile.username}
           onClose={() => setShowReportModal(false)}
         />
       )}

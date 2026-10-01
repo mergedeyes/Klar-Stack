@@ -46,6 +46,9 @@ pub struct CursorData {
 /// private accounts, since `u.id = NULL` and the follows EXISTS subquery
 /// both evaluate to false/no-match).
 ///
+/// Accounts the viewer blocked, or that blocked the viewer, are left out
+/// in both directions, as everywhere else.
+///
 /// "Hidden" posts (auto-hidden via a CSAM report) are excluded outright,
 /// even for their own author -- this is a discovery surface, not "my own
 /// content" view, so there's no case here where showing it to anyone
@@ -87,13 +90,16 @@ pub async fn get_global_feed(
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
                 WHERE (p.created_at, p.id) < ($1, $2)
-                  AND p.moderation_status != 'hidden'
+                  AND p.moderation_status NOT IN ('hidden', 'removed')
                   AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
                   AND (
                     u.is_private = FALSE
                     OR u.id = $4
                     OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = $4 AND f.following_id = u.id)
                   )
+                  AND NOT EXISTS(SELECT 1 FROM blocks b
+                                 WHERE (b.blocker_id = $4 AND b.blocked_id = u.id)
+                                    OR (b.blocker_id = u.id AND b.blocked_id = $4))
                 ORDER BY p.created_at DESC, p.id DESC
                 LIMIT $3
                 "#
@@ -126,13 +132,16 @@ pub async fn get_global_feed(
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
-                WHERE p.moderation_status != 'hidden'
+                WHERE p.moderation_status NOT IN ('hidden', 'removed')
                   AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
                   AND (
                     u.is_private = FALSE
                     OR u.id = $2
                     OR EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = $2 AND f.following_id = u.id)
                   )
+                  AND NOT EXISTS(SELECT 1 FROM blocks b
+                                 WHERE (b.blocker_id = $2 AND b.blocked_id = u.id)
+                                    OR (b.blocker_id = u.id AND b.blocked_id = $2))
                 ORDER BY p.created_at DESC, p.id DESC
                 LIMIT $1
                 "#

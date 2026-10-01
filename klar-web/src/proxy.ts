@@ -13,8 +13,9 @@ import { NextRequest, NextResponse } from "next/server";
 //   so someone who entered the passcode on .de would be bounced to
 //   /welcome and lose the token. These pages only forward the token to the
 //   API, which the gate doesn't cover anyway, so exposing them leaks nothing.
-// - /rights (the rights-claim form and its status pages): the DSA requires
-//   the notice mechanism to be open to anyone, with or without an account.
+// - /rights and /notices (the forms for rights claims and for illegal
+//   content, and their status pages): the DSA requires the notice
+//   mechanism to be open to anyone, with or without an account.
 const PUBLIC_PATHS = [
   "/welcome",
   "/api/site-access",
@@ -25,6 +26,7 @@ const PUBLIC_PATHS = [
   "/nutzungsbedingungen",
   "/transparenz",
   "/rights",
+  "/notices",
   "/favicon.ico",
 ];
 

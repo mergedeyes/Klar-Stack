@@ -23,7 +23,7 @@ async fn public_post_redirects_to_its_image(pool: PgPool) {
 async fn no_image_for_private_warned_or_deleted_posts(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let alice = app.register("alice").await;
-    let bob = app.register("bob").await;
+    let bob = app.trusted("bob").await;
 
     let private = app.upload(&bob, "Private").await;
     app.patch(&bob, "/users/me", json!({ "is_private": true })).await.ok();

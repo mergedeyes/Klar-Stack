@@ -33,7 +33,7 @@ use crate::auth::{generate_refresh_token, hash_refresh_token, AuthUser, Optional
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
 use crate::handlers::reports::{require_admin, rotate_post_media_keys};
-use crate::moderation::{self, NewDecision, Restriction};
+use crate::moderation::{self, NewDecision, Restriction, Source};
 use crate::utils::DbResultExt;
 use crate::validation::{required_text, validate_new_email};
 
@@ -433,50 +433,40 @@ pub async fn accept_claim(
     let mut tx = state.db.begin().await.db_err("Database error")?;
     let (email, post_id, work) = lock_open_claim(&mut tx, claim_id).await?;
 
-    let newly_hidden = match sqlx::query_scalar::<_, String>(
-        "SELECT moderation_status::text FROM posts WHERE id = $1 FOR UPDATE",
-    )
-    .bind(post_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .db_err("Database error")?
-    {
-        None => return Err(AppError::conflict("The post no longer exists -- decline the claim with that reason instead")),
-        Some(status) => status != "hidden",
-    };
-    if newly_hidden {
-        sqlx::query("UPDATE posts SET moderation_status = 'hidden' WHERE id = $1")
-            .bind(post_id)
-            .execute(&mut *tx)
-            .await
-            .db_err("Database error")?;
+    let exists = sqlx::query_scalar::<_, bool>("SELECT TRUE FROM posts WHERE id = $1 FOR UPDATE")
+        .bind(post_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .db_err("Database error")?
+        .is_some();
+    if !exists {
+        return Err(AppError::conflict("The post no longer exists -- decline the claim with that reason instead"));
     }
 
-    let notices = moderation::record_decision(&mut tx, NewDecision {
-        target_type: "post",
-        target_id: post_id,
-        restriction: Restriction::Hidden,
-        automated: false,
-        reason: "copyright",
+    let recorded = moderation::record_decision(&mut tx, NewDecision {
         decided_by: Some(auth.user_id),
-        report_id: None,
         rights_claim_id: Some(claim_id),
+        source: Source::RightsClaim,
         detail: Some(format!("Betroffenes Werk laut Meldung: {}", work)),
         // Repeat infringers are a separate, still open question; a hide
         // after a rights claim doesn't count towards the standing yet.
-        classification: None,
+        ..NewDecision::base("post", post_id, Restriction::Hidden, "copyright")
     })
     .await?;
+    let notices = recorded.notices;
+    // The post's status follows from every restriction on it, so a later
+    // dismissed report can't undo this one (moderation::refresh_status).
+    let newly_hidden = matches!(
+        moderation::refresh_status(&mut tx, "post", post_id).await?,
+        Some((old, new)) if new == "hidden" && old != "hidden"
+    );
 
     sqlx::query(
-        r#"
-        UPDATE rights_claims SET status = 'accepted', decided_at = NOW(), decided_by = $2,
-            decision_id = (SELECT id FROM moderation_decisions WHERE rights_claim_id = $1 ORDER BY created_at DESC LIMIT 1)
-        WHERE id = $1
-        "#,
+        "UPDATE rights_claims SET status = 'accepted', decided_at = NOW(), decided_by = $2, decision_id = $3 WHERE id = $1",
     )
     .bind(claim_id)
     .bind(auth.user_id)
+    .bind(recorded.decision_id)
     .execute(&mut *tx)
     .await
     .db_err("Database error")?;
@@ -538,14 +528,17 @@ pub async fn decline_claim(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Called when the uploader's objection to a claim's decision is accepted
-/// (the post is visible again): marks the claim restored and tells the
-/// claimant. Runs inside the resolving transaction.
+/// Called when the uploader's objection to a claim's decision is accepted:
+/// marks the claim restored and tells the claimant. `visible`: whether the
+/// post is visible again -- another restriction (say, a pending CSAM
+/// report) may still keep it hidden, and the email mustn't claim otherwise.
+/// Runs inside the resolving transaction.
 pub async fn mark_restored(
     tx: &mut sqlx::PgConnection,
     state: &AppState,
     claim_id: Uuid,
     admin_id: Uuid,
+    visible: bool,
 ) -> Result<(), AppError> {
     let email = sqlx::query_scalar::<_, String>(
         "UPDATE rights_claims SET status = 'restored' WHERE id = $1 AND status = 'accepted' RETURNING claimant_email",
@@ -556,14 +549,21 @@ pub async fn mark_restored(
     .db_err("Database error")?;
     if let Some(email) = email {
         log_event(tx, claim_id, Some(admin_id), "restored", None).await?;
+        let status = if visible {
+            "Der Beitrag ist wieder sichtbar."
+        } else {
+            "Die Einschraenkung aufgrund deiner Meldung ist aufgehoben."
+        };
         email_claimant(
             state,
             email,
             claim_id,
             "Update zu deiner Rechte-Meldung bei Klar",
-            "Die Person, die den Beitrag veroeffentlicht hat, hat erfolgreich widersprochen. Der Beitrag ist \
-             wieder sichtbar. Dir stehen weiterhin der Rechtsweg und die aussergerichtliche Streitbeilegung offen."
-                .to_string(),
+            format!(
+                "Die Person, die den Beitrag veroeffentlicht hat, hat erfolgreich widersprochen. {} Dir stehen \
+                 weiterhin der Rechtsweg und die aussergerichtliche Streitbeilegung offen.",
+                status
+            ),
         );
     }
     Ok(())

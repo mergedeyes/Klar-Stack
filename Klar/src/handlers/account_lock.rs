@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
-use crate::auth::{AuthUser, OptionalAuthUser};
+use crate::auth::{AuthUser, OptionalSession};
 use crate::errors::AppError;
 use crate::handlers::auth::{create_reset_token, verify_password, AppState};
 use crate::handlers::reports::require_admin;
@@ -82,28 +82,71 @@ pub async fn unlock_after_reset(tx: &mut PgConnection, user_id: Uuid) -> Result<
     Ok(())
 }
 
-/// Middleware: a locked account's still-valid access tokens stop working
-/// at once. 401, like an expired token: the client's refresh then fails
-/// (the refresh tokens are gone) and it goes to the login page, which
-/// explains the lock. One indexed lookup per signed-in request.
-pub async fn enforce_account_lock(
+/// Middleware: a signed-in request only goes through while its session
+/// may go on (session_valid). Otherwise 401, like an expired token: the
+/// client's refresh then fails too (the refresh tokens are gone) and it
+/// goes to the login page, which explains a lock. One indexed lookup per
+/// signed-in request.
+pub async fn enforce_session(
     State(state): State<AppState>,
-    auth: OptionalAuthUser,
+    session: OptionalSession,
     req: Request,
     next: Next,
 ) -> Response {
-    if let Some(user_id) = auth.user_id {
-        let locked = match state.db.acquire().await {
-            Ok(mut conn) => is_locked(&mut conn, user_id).await,
+    if let Some((user_id, issued_at)) = session.session {
+        let valid = match state.db.acquire().await {
+            Ok(mut conn) => session_valid(&mut conn, user_id, issued_at).await,
             Err(e) => Err(AppError::internal(format!("Database error: {}", e))),
         };
-        match locked {
-            Ok(false) => {}
-            Ok(true) => return AppError::unauthorized("Session ended").into_response(),
+        match valid {
+            Ok(true) => {}
+            Ok(false) => return AppError::unauthorized("Session ended").into_response(),
             Err(e) => return e.into_response(),
         }
     }
     next.run(req).await
+}
+
+/// Whether a session that began at `since` (Unix seconds with microseconds:
+/// when its access token or stream ticket was issued, auth::issued_now)
+/// may go on: the account still exists, isn't locked, and its sessions
+/// weren't revoked after that -- by a lock or a new password
+/// (users.sessions_revoked_at).
+pub async fn session_valid(conn: &mut PgConnection, user_id: Uuid, since: f64) -> Result<bool, AppError> {
+    sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT NOT EXISTS(SELECT 1 FROM account_locks l WHERE l.user_id = u.id AND l.unlocked_at IS NULL)
+           AND (u.sessions_revoked_at IS NULL OR u.sessions_revoked_at <= to_timestamp($2))
+        FROM users u WHERE u.id = $1
+        "#,
+    )
+    .bind(user_id)
+    .bind(since)
+    .fetch_optional(&mut *conn)
+    .await
+    .db_err("Database error")
+    .map(|valid| valid.unwrap_or(false))
+}
+
+/// Ends every session of an account at once: access tokens issued until
+/// now stop working (enforce_session), open notification streams close
+/// within half a minute, and all refresh tokens go. For a lock and a new
+/// password; the caller issues fresh tokens where the current session
+/// should go on. The time comes from the same clock as the tokens' `iat`
+/// (not the database's), so a token issued right after still counts.
+pub async fn revoke_sessions(conn: &mut PgConnection, user_id: Uuid) -> Result<(), AppError> {
+    sqlx::query("UPDATE users SET sessions_revoked_at = to_timestamp($2) WHERE id = $1")
+        .bind(user_id)
+        .bind(crate::auth::issued_now())
+        .execute(&mut *conn)
+        .await
+        .db_err_ctx("Failed to end sessions", "Database error")?;
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *conn)
+        .await
+        .db_err_ctx("Failed to end sessions", "Database error")?;
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,9 +243,38 @@ pub async fn lock_account(
 }
 
 /// Locks an account, ends its sessions and emails the owner a reset link.
-/// Also the "lock" decision of an account review (account_review.rs).
 pub async fn lock_user(state: &AppState, user_id: Uuid, admin_id: Uuid, note: &str) -> Result<(), AppError> {
     let mut tx = state.db.begin().await.db_err("Database error")?;
+    let lock = lock_in(&mut tx, user_id, admin_id, note).await?;
+    tx.commit().await.db_err("Database error")?;
+    lock.notify(state).await;
+    Ok(())
+}
+
+/// A lock made in the caller's transaction, waiting for the owner's email.
+#[must_use]
+pub struct NewLock {
+    user_id: Uuid,
+    admin_id: Uuid,
+    email: String,
+    username: String,
+    token: String,
+}
+
+impl NewLock {
+    /// Emails the owner their reset link. Runs after commit.
+    pub async fn notify(self, state: &AppState) {
+        if let Err(e) = state.email.send_account_locked(&self.email, &self.username, &self.token).await {
+            tracing::error!("Lock email for user {} failed: {}", self.user_id, e.0);
+        }
+        tracing::info!("Account {} locked by admin {} (suspected takeover)", self.user_id, self.admin_id);
+    }
+}
+
+/// The lock itself, inside the caller's transaction: also the "lock"
+/// decision of an account review (account_review.rs), which closes the
+/// review in the same transaction.
+pub async fn lock_in(tx: &mut PgConnection, user_id: Uuid, admin_id: Uuid, note: &str) -> Result<NewLock, AppError> {
     let (email, username) = sqlx::query_as::<_, (String, String)>("SELECT email, username FROM users WHERE id = $1 FOR UPDATE")
         .bind(user_id)
         .fetch_optional(&mut *tx)
@@ -227,19 +299,9 @@ pub async fn lock_user(state: &AppState, user_id: Uuid, admin_id: Uuid, note: &s
         return Err(AppError::conflict("This account is already locked"));
     }
 
-    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await
-        .db_err_ctx("Failed to end sessions", "Database error")?;
-    let token = create_reset_token(&mut tx, user_id, LINK_HOURS).await?;
-    tx.commit().await.db_err("Database error")?;
-
-    if let Err(e) = state.email.send_account_locked(&email, &username, &token).await {
-        tracing::error!("Lock email for user {} failed: {}", user_id, e.0);
-    }
-    tracing::info!("Account {} locked by admin {} (suspected takeover)", user_id, admin_id);
-    Ok(())
+    revoke_sessions(tx, user_id).await?;
+    let token = create_reset_token(&mut *tx, user_id, LINK_HOURS).await?;
+    Ok(NewLock { user_id, admin_id, email, username, token })
 }
 
 /// POST /admin/locks/:id/unlock (admin only) -- e.g. once the owner proved

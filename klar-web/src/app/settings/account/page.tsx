@@ -13,6 +13,9 @@ export default function AccountSettingsPage() {
   const router = useRouter();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
+  // Asked for by the backend: a signed-in session alone can't delete an
+  // account (a borrowed phone, a stolen token).
+  const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +33,7 @@ export default function AccountSettingsPage() {
     setDeleting(true);
     setError(null);
     try {
-      await usersApi.deleteAccount();
+      await usersApi.deleteAccount(password);
       await logout();
       router.push("/login");
     } catch (err) {
@@ -107,22 +110,33 @@ export default function AccountSettingsPage() {
                   value={deleteInput}
                   onChange={(e) => setDeleteInput(e.target.value)}
                   placeholder={user.username}
+                  aria-label="Your username"
                   className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-destructive"
                 />
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted-foreground">Your password</span>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-destructive"
+                  />
+                </label>
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="destructive"
                   className="flex-1"
                   onClick={handleDelete}
-                  disabled={deleteInput !== user.username || deleting}
+                  disabled={deleteInput !== user.username || !password || deleting}
                 >
                   {deleting ? "Deleting…" : "Delete account"}
                 </Button>
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); }}
+                  onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); setPassword(""); }}
                 >
                   Cancel
                 </Button>

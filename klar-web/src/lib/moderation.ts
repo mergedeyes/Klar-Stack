@@ -1,4 +1,4 @@
-import type { AccountMeasure, EvidenceSummary, ReviewFlag, StrikeSeverity } from "@/lib/api";
+import type { AccountMeasure, EvidenceSummary, ReportOutcome, ReportSource, ReviewFlag, StrikeSeverity } from "@/lib/api";
 
 // Labels shared by the admin moderation pages (report queue, evidence).
 
@@ -18,6 +18,23 @@ export const REASON_LABELS: Record<string, string> = {
   illegal_goods: "Illegal goods (drugs, weapons)",
   extremism: "Extremism or glorifying Nazism/fascism",
   copyright: "Copyright or other rights (rights claim)",
+};
+
+// Where a report came from (the admin queue).
+export const SOURCE_LABELS: Record<ReportSource, string> = {
+  user_report: "Report",
+  public_notice: "Public notice",
+  own_initiative: "Own initiative",
+  authority_order: "Authority order",
+};
+
+// What a reporter is told about their report (DSA Art. 16(5)).
+export const OUTCOME_LABELS: Record<ReportOutcome, string> = {
+  removed: "Reviewed — the content was removed",
+  account_measure: "Reviewed — action was taken against the account",
+  no_violation: "Reviewed — no violation found",
+  obsolete: "Content no longer available — it was deleted before we could review it",
+  duplicate: "Closed — you had already reported this",
 };
 
 export const TRIGGER_LABELS: Record<NonNullable<EvidenceSummary["deletion_trigger"]>, string> = {

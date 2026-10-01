@@ -18,14 +18,28 @@ interface Person {
   email: string;
   created_at: string;
 }
+// A message before the reported one (both sides of the conversation).
+interface ContextMessage {
+  id: string;
+  sender_id: string | null;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+}
 interface Snapshot {
   post?: { caption: string | null; created_at: string; edited_at: string | null };
   comment?: { body: string; created_at: string; edited_at: string | null };
   profile?: { username: string; display_name: string | null; bio: string | null; created_at: string };
-  context?: {
-    post: { id: string; caption: string | null; author_id: string } | null;
-    parent_comment: { id: string; body: string; author_id: string } | null;
-  };
+  message?: { body: string; created_at: string; edited_at: string | null };
+  // For a message: who received it.
+  recipient_id?: string | null;
+  // A comment's post and parent; for a message, the ten messages before it.
+  context?:
+    | {
+        post: { id: string; caption: string | null; author_id: string } | null;
+        parent_comment: { id: string; body: string; author_id: string } | null;
+      }
+    | ContextMessage[];
   author?: Person | null;
 }
 
@@ -50,6 +64,7 @@ const ACTION_LABELS: Record<string, string> = {
   file_viewed: "Viewed file",
   hold_set: "Legal hold set",
   hold_lifted: "Legal hold lifted",
+  authority_report_advised: "Report to authorities advised",
   authority_report: "Reported to authority",
   purged: "Purged",
 };
@@ -252,6 +267,8 @@ export default function EvidenceDetailPage() {
 
             {detail.versions.map((version, index) => {
               const snap = version.content as Snapshot;
+              const thread = Array.isArray(snap.context) ? snap.context : null;
+              const around = Array.isArray(snap.context) ? null : snap.context;
               return (
                 <Section
                   key={version.id}
@@ -269,17 +286,45 @@ export default function EvidenceDetailPage() {
                       <Field label="Comment"><span className="whitespace-pre-wrap">{snap.comment.body}</span></Field>
                       <Field label="Posted">{new Date(snap.comment.created_at).toLocaleString()}</Field>
                       {snap.comment.edited_at && <Field label="Edited">{new Date(snap.comment.edited_at).toLocaleString()}</Field>}
-                      {snap.context?.parent_comment && (
+                      {around?.parent_comment && (
                         <Field label="In reply to">
-                          <span className="whitespace-pre-wrap text-muted-foreground">{snap.context.parent_comment.body}</span>
+                          <span className="whitespace-pre-wrap text-muted-foreground">{around.parent_comment.body}</span>
                         </Field>
                       )}
-                      {snap.context?.post && (
+                      {around?.post && (
                         <Field label="On post">
-                          <span className="whitespace-pre-wrap text-muted-foreground">{snap.context.post.caption ?? "(no caption)"}</span>
+                          <span className="whitespace-pre-wrap text-muted-foreground">{around.post.caption ?? "(no caption)"}</span>
                         </Field>
                       )}
                     </>
+                  )}
+                  {snap.message && (
+                    <>
+                      <Field label="Message"><span className="whitespace-pre-wrap">{snap.message.body}</span></Field>
+                      <Field label="Sent">{new Date(snap.message.created_at).toLocaleString()}</Field>
+                      {snap.message.edited_at && <Field label="Edited">{new Date(snap.message.edited_at).toLocaleString()}</Field>}
+                    </>
+                  )}
+                  {/* The conversation before it, both sides: what the
+                      message answered. Nothing else of the chat is kept. */}
+                  {thread && (
+                    <details className="rounded-md bg-muted/30 p-2 text-sm">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        The {thread.length} message{thread.length === 1 ? "" : "s"} before it
+                      </summary>
+                      <ol className="mt-2 space-y-1.5">
+                        {thread.map((m) => (
+                          <li key={m.id}>
+                            <span className="text-xs text-muted-foreground">
+                              {m.sender_id && m.sender_id === snap.author?.id ? "Sender" : "Recipient"} ·{" "}
+                              {new Date(m.created_at).toLocaleString()}
+                              {m.edited_at && " · edited"}
+                            </span>
+                            <p className="whitespace-pre-wrap">{m.body}</p>
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
                   )}
                   {snap.profile && (
                     <>

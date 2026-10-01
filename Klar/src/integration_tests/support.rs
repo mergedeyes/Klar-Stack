@@ -83,6 +83,13 @@ pub struct User {
     ip: String,
 }
 
+impl User {
+    /// The same account with another access token, e.g. a second device's.
+    pub fn with_token(&self, token: &str) -> User {
+        User { id: self.id, token: token.to_string(), ip: self.ip.clone() }
+    }
+}
+
 impl TestApp {
     pub async fn new(pool: PgPool) -> Self {
         let dirs = Arc::new(Dirs {
@@ -169,6 +176,13 @@ impl TestApp {
     pub async fn delete(&self, user: &User, path: &str) -> Resp {
         self.json_request(Method::DELETE, path, Some(user), None).await
     }
+    pub async fn delete_with(&self, user: &User, path: &str, body: Value) -> Resp {
+        self.json_request(Method::DELETE, path, Some(user), Some(body)).await
+    }
+    /// DELETE /users/me with the password it asks for.
+    pub async fn delete_account(&self, user: &User) -> Resp {
+        self.delete_with(user, "/users/me", json!({ "password": PASSWORD })).await
+    }
     pub async fn anon_get(&self, path: &str) -> Resp {
         self.json_request(Method::GET, path, None, None).await
     }
@@ -187,7 +201,16 @@ impl TestApp {
 
     // ── Common steps ──────────────────────────────────────────────────────────
 
+    /// A new account with its email address verified, as almost every
+    /// test needs: publishing, messaging and reporting require it.
     pub async fn register(&self, username: &str) -> User {
+        let user = self.register_unverified(username).await;
+        self.exec(&format!("UPDATE users SET email_verified = TRUE WHERE id = '{}'", user.id)).await;
+        user
+    }
+
+    /// A new account that hasn't verified its address yet.
+    pub async fn register_unverified(&self, username: &str) -> User {
         self.register_with_email(username, &format!("{username}@example.test")).await
     }
 
@@ -207,6 +230,15 @@ impl TestApp {
         }
     }
 
+    /// An account whose reports restrict content before review (a hide or
+    /// a warning, handlers/reports.rs): verified, like every `register`ed
+    /// one, and older than a day. A fresh account's reports only queue.
+    pub async fn trusted(&self, username: &str) -> User {
+        let user = self.register(username).await;
+        self.exec(&format!("UPDATE users SET created_at = NOW() - INTERVAL '2 days' WHERE id = '{}'", user.id)).await;
+        user
+    }
+
     /// An admin: the ADMIN_EMAILS address, with its email verified.
     pub async fn admin(&self) -> User {
         let admin = self.register_with_email("site_admin", ADMIN_EMAIL).await;
@@ -219,13 +251,18 @@ impl TestApp {
     }
 
     pub async fn upload_image(&self, user: &User, caption: &str, image: Vec<u8>) -> Uuid {
+        let res = self.try_upload(user, caption, image).await.ok().json();
+        res["post"]["id"].as_str().unwrap().parse().unwrap()
+    }
+
+    /// POST /posts/upload, for checking a refusal.
+    pub async fn try_upload(&self, user: &User, caption: &str, image: Vec<u8>) -> Resp {
         let req = multipart(
             "/posts/upload",
             user,
             &[("caption", None, caption.as_bytes().to_vec()), ("image", Some("photo.png"), image)],
         );
-        let res = self.send(req, &user.ip).await.ok().json();
-        res["post"]["id"].as_str().unwrap().parse().unwrap()
+        self.send(req, &user.ip).await
     }
 
     pub async fn upload_avatar(&self, user: &User, rgb: [u8; 3]) {

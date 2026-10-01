@@ -277,22 +277,28 @@ impl Classification {
 
 const NOTE_MAX: usize = 1000;
 
-/// Validates an admin's classification of a removal after a report with
-/// `reported_reason`. `violation`: a catalog id, "none", or nothing for the
-/// reason's default.
-pub fn classify(reported_reason: &str, violation: Option<&str>, note: Option<&str>) -> Result<Classification, AppError> {
+/// Validates an admin's classification of a removal after reports with
+/// `reported_reasons` (one report or a group on the same item). `violation`:
+/// a catalog id, "none", or nothing for the first reason's default. A type
+/// of another reason than any reported one needs a justification, as does
+/// "none"; with no reports at all (the team's own case), the admin's pick
+/// is the only classification there is.
+pub fn classify(reported_reasons: &[&str], violation: Option<&str>, note: Option<&str>) -> Result<Classification, AppError> {
     let note = note.map(str::trim).filter(|n| !n.is_empty());
     if note.is_some_and(|n| n.chars().count() > NOTE_MAX) {
         return Err(AppError::bad_request(format!("Justification must be under {} characters", NOTE_MAX)));
     }
     let chosen = match violation {
-        None => default_violation(reported_reason),
+        None => match reported_reasons.first() {
+            Some(reason) => default_violation(reason),
+            None => return Err(AppError::bad_request("Pick the violation type")),
+        },
         Some("none") => None,
         Some(id) => Some(self::violation(id).ok_or_else(|| AppError::bad_request("Unknown violation type"))?),
     };
     let needs_note = match chosen {
         None => violation.is_some(),
-        Some(v) => v.reason != reported_reason,
+        Some(v) => !reported_reasons.is_empty() && !reported_reasons.contains(&v.reason),
     };
     if needs_note && note.is_none() {
         return Err(AppError::bad_request(
@@ -333,11 +339,13 @@ pub async fn strike_points(tx: &mut PgConnection, user_id: Uuid, v: &Violation) 
     Ok((base, points))
 }
 
-/// SELECT producing the snapshot of the post or comment with id $1: the
-/// removed content itself (the only part that is the author's own data, so
-/// the only part in their export), its context, and the reports on it --
-/// reason, description and time, not who reported. Images aren't copied;
-/// likely-illegal ones are preserved in the evidence store.
+/// SELECT producing the snapshot of the item with id $1: the removed
+/// content itself (the only part that is the author's own data, so the only
+/// part in their export), its context, and the reports on it -- reason,
+/// description and time, not who reported. Images aren't copied;
+/// likely-illegal ones are preserved in the evidence store. A message gets
+/// no context here: the conversation around it is the other person's too,
+/// and the evidence copy keeps what is needed.
 fn snapshot_sql(target_type: &str) -> &'static str {
     match target_type {
         "post" => r#"
@@ -351,6 +359,28 @@ fn snapshot_sql(target_type: &str) -> &'static str {
                     FROM reports r WHERE r.target_type = 'post' AND r.target_id = p.id), '[]'::jsonb),
                 'removed_at', NOW())
             FROM posts p WHERE p.id = $1
+            "#,
+        "message" => r#"
+            SELECT jsonb_build_object(
+                'content', jsonb_build_object('type', 'message', 'text', m.body, 'created_at', m.created_at,
+                    'edited_at', m.edited_at),
+                'context', NULL,
+                'reports', COALESCE((SELECT jsonb_agg(jsonb_build_object('reason', r.reason, 'details', r.details,
+                    'created_at', r.created_at) ORDER BY r.created_at)
+                    FROM reports r WHERE r.target_type = 'message' AND r.target_id = m.id), '[]'::jsonb),
+                'removed_at', NOW())
+            FROM messages m WHERE m.id = $1
+            "#,
+        // A profile: what was removed is passed in as $2 (the removed fields).
+        "user" => r#"
+            SELECT jsonb_build_object(
+                'content', jsonb_build_object('type', 'profile', 'removed', $2::jsonb, 'created_at', u.created_at),
+                'context', NULL,
+                'reports', COALESCE((SELECT jsonb_agg(jsonb_build_object('reason', r.reason, 'details', r.details,
+                    'created_at', r.created_at) ORDER BY r.created_at)
+                    FROM reports r WHERE r.target_type = 'user' AND r.target_id = u.id), '[]'::jsonb),
+                'removed_at', NOW())
+            FROM users u WHERE u.id = $1
             "#,
         _ => r#"
             SELECT jsonb_build_object(
@@ -372,6 +402,18 @@ fn snapshot_sql(target_type: &str) -> &'static str {
     }
 }
 
+/// The snapshot for content its author deleted before the decision: the
+/// text from the evidence copy, and the reports on it.
+const DELETED_SNAPSHOT_SQL: &str = r#"
+    SELECT jsonb_build_object(
+        'content', jsonb_build_object('type', $2::text, 'text', $3::text, 'deleted_by_author', TRUE),
+        'context', NULL,
+        'reports', COALESCE((SELECT jsonb_agg(jsonb_build_object('reason', r.reason, 'details', r.details,
+            'created_at', r.created_at) ORDER BY r.created_at)
+            FROM reports r WHERE r.target_type = $2::report_target_type AND r.target_id = $1), '[]'::jsonb),
+        'removed_at', NOW())
+"#;
+
 pub struct NewStrike<'a> {
     pub user_id: Uuid,
     pub decision_id: Uuid,
@@ -380,6 +422,11 @@ pub struct NewStrike<'a> {
     pub points: i32,
     pub target_type: &'a str,
     pub target_id: Uuid,
+    /// The text of content its author had already deleted, from the
+    /// evidence copy (the decision rests on that copy).
+    pub fallback_text: Option<String>,
+    /// For a removal from a profile: what was removed.
+    pub removed_fields: Option<serde_json::Value>,
 }
 
 /// Stores a strike with its snapshot. Runs in the removal's transaction,
@@ -388,12 +435,23 @@ pub async fn add_strike(tx: &mut PgConnection, s: NewStrike<'_>) -> Result<(), A
     if s.base_points == 0 {
         return Ok(());
     }
-    let snapshot = sqlx::query_scalar::<_, serde_json::Value>(snapshot_sql(s.target_type))
-        .bind(s.target_id)
+    let live = sqlx::query_scalar::<_, serde_json::Value>(snapshot_sql(s.target_type))
+        .bind(s.target_id);
+    let live = if s.target_type == "user" { live.bind(&s.removed_fields) } else { live };
+    let snapshot = match live
         .fetch_optional(&mut *tx)
         .await
         .db_err_ctx("Failed to snapshot removed content", "Database error")?
-        .unwrap_or_else(|| serde_json::json!({ "content": null }));
+    {
+        Some(snapshot) => snapshot,
+        None => sqlx::query_scalar::<_, serde_json::Value>(DELETED_SNAPSHOT_SQL)
+            .bind(s.target_id)
+            .bind(s.target_type)
+            .bind(&s.fallback_text)
+            .fetch_one(&mut *tx)
+            .await
+            .db_err_ctx("Failed to snapshot removed content", "Database error")?,
+    };
 
     sqlx::query(
         r#"
@@ -418,7 +476,9 @@ pub async fn add_strike(tx: &mut PgConnection, s: NewStrike<'_>) -> Result<(), A
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Declared from the mildest to the harshest; the order says whether a
+/// measure goes beyond the suggested one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Measure {
     Warning,
     Suspend7,
@@ -517,21 +577,26 @@ pub struct Suspension {
     pub until: Option<DateTime<Utc>>,
     pub permanent: bool,
     /// For a permanent suspension: when the account is deleted (see
-    /// sweep_bans). None while an objection is pending, since deletion
-    /// waits for its outcome.
+    /// sweep_bans). None while an objection is pending, or while the
+    /// statement is still held back, since deletion waits for both.
     pub deletion_at: Option<DateTime<Utc>>,
+    /// The statement of the measure is still held back (CSAM): the account
+    /// isn't deleted until an admin sends it. Only shown to admins.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub statement_held: bool,
 }
 
 /// 'infinity' can't be decoded into a DateTime, so it's mapped to
 /// `permanent` in SQL.
 pub async fn suspension(conn: &mut PgConnection, user_id: Uuid) -> Result<Option<Suspension>, AppError> {
-    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, bool, Option<DateTime<Utc>>)>(
+    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, bool, Option<DateTime<Utc>>, bool)>(
         r#"
         SELECT CASE WHEN u.suspended_until = 'infinity' THEN NULL ELSE u.suspended_until END,
                u.suspended_until = 'infinity',
                CASE WHEN u.suspended_until = 'infinity' AND d.restriction = 'banned'
-                         AND d.objection_status IS DISTINCT FROM 'pending'
-                    THEN d.created_at + make_interval(days => $2) END
+                         AND d.objection_status IS DISTINCT FROM 'pending' AND d.delivered_at IS NOT NULL
+                    THEN d.created_at + make_interval(days => $2) END,
+               COALESCE(d.delivered_at IS NULL, FALSE)
         FROM users u LEFT JOIN moderation_decisions d ON d.id = u.suspension_decision_id
         WHERE u.id = $1 AND u.suspended_until > NOW()
         "#,
@@ -541,7 +606,7 @@ pub async fn suspension(conn: &mut PgConnection, user_id: Uuid) -> Result<Option
     .fetch_optional(&mut *conn)
     .await
     .db_err("Database error")?;
-    Ok(row.map(|(until, permanent, deletion_at)| Suspension { until, permanent, deletion_at }))
+    Ok(row.map(|(until, permanent, deletion_at, statement_held)| Suspension { until, permanent, deletion_at, statement_held }))
 }
 
 /// A permanently suspended account is deleted when the objection window
@@ -558,7 +623,7 @@ pub const BAN_DELETION_NOTICE_DAYS: i32 = 14;
 /// Bans whose account is still there, not lifted, delivered, and without a
 /// pending objection. `$1` = days since the ban.
 const DUE_BANS: &str = r#"
-    SELECT d.id, u.id, u.email, d.created_at, d.deletion_notified_at
+    SELECT d.id, u.id, CASE WHEN u.email_verified THEN u.email END, d.created_at, d.deletion_notified_at
     FROM users u JOIN moderation_decisions d ON d.id = u.suspension_decision_id
     WHERE u.suspended_until = 'infinity' AND d.restriction = 'banned'
       AND d.lifted_at IS NULL AND d.delivered_at IS NOT NULL
@@ -567,7 +632,10 @@ const DUE_BANS: &str = r#"
       AND d.created_at <= NOW() - make_interval(days => $1)
 "#;
 
-type DueBan = (Uuid, Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>);
+/// (decision, user, verified email, banned at, reminder sent at). An
+/// unverified address gets no reminder email -- it may belong to a stranger
+/// -- but the date shows in the app, so the reminder still counts as given.
+type DueBan = (Uuid, Uuid, Option<String>, DateTime<Utc>, Option<DateTime<Utc>>);
 
 /// Sends due reminders and deletes due accounts. Each step claims its
 /// decision row first (UPDATE ... WHERE ... IS NULL), so replicas running
@@ -598,6 +666,7 @@ pub(crate) async fn sweep_bans(state: &AppState) {
                 let planned = banned_at + chrono::Duration::days(BAN_DELETION_DAYS as i64);
                 let earliest = Utc::now() + chrono::Duration::days(BAN_DELETION_NOTICE_DAYS as i64);
                 let on = planned.max(earliest).format("%d.%m.%Y").to_string();
+                let Some(email) = email else { continue };
                 if let Err(e) = state.email.send_ban_deletion_notice(&email, decision_id, &on).await {
                     tracing::error!("Ban deletion reminder for decision {} failed: {}", decision_id, e.0);
                 }
@@ -633,7 +702,7 @@ pub(crate) async fn sweep_bans(state: &AppState) {
         if !matches!(claimed, Ok(true)) {
             continue;
         }
-        match crate::handlers::users::delete_user(state, user_id, None).await {
+        match crate::handlers::users::delete_user(state, user_id, crate::handlers::users::Deletion::Ban).await {
             Ok(()) => tracing::info!("Deleted permanently suspended account {} (decision {})", user_id, decision_id),
             Err(e) => {
                 tracing::error!("Deleting permanently suspended account {} failed: {}", user_id, e.message);
@@ -663,11 +732,14 @@ fn allowed_while_suspended(method: &Method, path: &str) -> bool {
         ("POST", "/moderation/decisions/{decision_id}/objection")
             | ("POST", "/reports")
             | ("POST", "/feedback")
-            | ("POST", "/events")
             | ("POST", "/notifications/stream-ticket")
             | ("PATCH", "/notifications/read")
             | ("PATCH", "/chats/{conversation_id}/read")
             | ("PATCH", "/users/me/password")
+            // Only clearing a field; update_profile refuses anything else
+            // while suspended.
+            | ("PATCH", "/users/me")
+            | ("POST", "/moderation/reports/{report_id}/recheck")
             | ("PATCH", "/users/me/keep-account")
             | ("POST", "/legal-updates/{update_id}/acknowledge")
             | ("POST", "/users/{username}/block")
@@ -787,13 +859,18 @@ mod tests {
 
     #[test]
     fn departing_from_the_report_needs_a_justification() {
-        assert_eq!(classify("harassment", None, None).unwrap().id(), "insult");
-        assert_eq!(classify("harassment", Some("threat_stalking"), None).unwrap().id(), "threat_stalking");
-        assert!(classify("terrorism", Some("insult"), None).is_err());
-        assert_eq!(classify("terrorism", Some("insult"), Some("Exaggerated report")).unwrap().id(), "insult");
-        assert!(classify("spam", Some("none"), Some("  ")).is_err());
-        assert!(classify("spam", Some("none"), Some("Compromised account")).unwrap().violation.is_none());
-        assert!(classify("spam", Some("nope"), Some("x")).is_err());
+        assert_eq!(classify(&["harassment"], None, None).unwrap().id(), "insult");
+        assert_eq!(classify(&["harassment"], Some("threat_stalking"), None).unwrap().id(), "threat_stalking");
+        assert!(classify(&["terrorism"], Some("insult"), None).is_err());
+        assert_eq!(classify(&["terrorism"], Some("insult"), Some("Exaggerated report")).unwrap().id(), "insult");
+        assert!(classify(&["spam"], Some("none"), Some("  ")).is_err());
+        assert!(classify(&["spam"], Some("none"), Some("Compromised account")).unwrap().violation.is_none());
+        assert!(classify(&["spam"], Some("nope"), Some("x")).is_err());
+        // A group of reports: any of their reasons counts as the report's.
+        assert_eq!(classify(&["spam", "harassment"], Some("insult"), None).unwrap().id(), "insult");
+        // The team's own case: its pick is the classification.
+        assert_eq!(classify(&[], Some("insult"), None).unwrap().id(), "insult");
+        assert!(classify(&[], None, None).is_err());
     }
 
     #[test]
@@ -827,6 +904,7 @@ mod tests {
         assert!(allowed_while_suspended(&Method::POST, "/moderation/decisions/{decision_id}/objection"));
         assert!(!allowed_while_suspended(&Method::POST, "/posts/upload"));
         assert!(!allowed_while_suspended(&Method::POST, "/chats/send"));
-        assert!(!allowed_while_suspended(&Method::PATCH, "/users/me"));
+        assert!(allowed_while_suspended(&Method::PATCH, "/users/me"), "to clear a bio; update_profile checks");
+        assert!(allowed_while_suspended(&Method::DELETE, "/users/me/avatar"));
     }
 }

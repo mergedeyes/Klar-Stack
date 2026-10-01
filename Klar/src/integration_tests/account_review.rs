@@ -89,3 +89,52 @@ async fn decisions_lock_ban_or_close_the_review(pool: PgPool) {
     let outcomes = app.scalar("SELECT string_agg(outcome, ',' ORDER BY opened_at) FROM account_reviews").await;
     assert_eq!(outcomes.as_deref(), Some("no_action,locked,bot"));
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_review_answers_the_account_report_it_was_opened_from(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (bob, carol, dave, eve, admin) = (
+        app.register("bob").await,
+        app.register("carol").await,
+        app.register("dave").await,
+        app.register("eve").await,
+        app.admin().await,
+    );
+    let review = |username: &'static str, report: uuid::Uuid, outcome: &'static str| {
+        let (app, admin) = (&app, admin.clone());
+        async move {
+            let r = app
+                .post(&admin, &format!("/admin/users/{username}/review"), json!({ "reason": "From a report", "report_id": report }))
+                .await
+                .ok()
+                .json();
+            let decide = format!("/admin/reviews/{}/decide", r["review_id"].as_str().unwrap());
+            app.post(&admin, &decide, json!({ "outcome": outcome, "note": "Checked" })).await.ok();
+        }
+    };
+    let state = |report: uuid::Uuid| {
+        let app = &app;
+        async move { app.scalar(&format!("SELECT status || '/' || COALESCE(outcome, '-') FROM reports WHERE id = '{report}'")).await.unwrap() }
+    };
+
+    // A bot reported as an account: the ban answers the report.
+    let r = app.report(&bob, "user", carol.id, "spam").await;
+    review("carol", r, "bot").await;
+    assert_eq!(state(r).await, "actioned/account_measure");
+    assert_eq!(
+        app.scalar(&format!("SELECT '{r}' = ANY(report_ids) FROM moderation_decisions WHERE restriction = 'banned'")).await.as_deref(),
+        Some("true")
+    );
+
+    // Nothing found: the account report is dismissed.
+    let r = app.report(&bob, "user", dave.id, "impersonation").await;
+    review("dave", r, "no_action").await;
+    assert_eq!(state(r).await, "dismissed/no_violation");
+
+    // A hijacked account: the lock doesn't decide its spam post, which
+    // stays in the queue.
+    let post = app.upload(&eve, "Cheap coins").await;
+    let r = app.report(&bob, "post", post, "spam").await;
+    review("eve", r, "lock").await;
+    assert_eq!(state(r).await, "pending/-");
+}

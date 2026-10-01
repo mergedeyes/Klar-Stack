@@ -13,6 +13,7 @@ use crate::errors::AppError;
 use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::follows::is_following;
+use crate::moderation;
 use crate::models::{CreatePostRequest, EditPostRequest, FeedQuery, PostResponse};
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{page_limit, required_text, CAPTION_MAX};
@@ -45,6 +46,9 @@ pub async fn can_view_posts(
 /// - "hidden" (auto-hidden via a CSAM report) -> 404 for everyone but the
 ///   owner, same response as a nonexistent post so its existence can't be
 ///   probed.
+/// - "removed" (by the moderation team, kept until the objection window has
+///   passed) -> 404 for everyone, the owner included; the statement of
+///   reasons is where the owner finds it.
 /// - private owner -> 403 unless the viewer is the owner or an accepted
 ///   follower (see can_view_posts).
 ///
@@ -62,7 +66,7 @@ pub async fn require_visible_post(
                p.moderation_status = 'hidden' OR COALESCE(u.suspended_until > NOW(), FALSE)
         FROM posts p
         JOIN users u ON u.id = p.user_id
-        WHERE p.id = $1
+        WHERE p.id = $1 AND p.moderation_status != 'removed'
         "#
     )
     .bind(post_id)
@@ -260,9 +264,10 @@ pub async fn edit_post(
 
     let caption = required_text(&input.caption, "Caption", CAPTION_MAX)?;
 
-    // Verify ownership
-    let owner_id = sqlx::query_scalar::<_, Uuid>(
-        "SELECT user_id FROM posts WHERE id = $1"
+    // Verify ownership. A removed post can't be edited: it's kept, unseen,
+    // only so that a successful objection can restore it as it was.
+    let (owner_id, removed) = sqlx::query_as::<_, (Uuid, bool)>(
+        "SELECT user_id, moderation_status = 'removed' FROM posts WHERE id = $1"
     )
     .bind(post_id)
     .fetch_optional(&state.db)
@@ -272,6 +277,9 @@ pub async fn edit_post(
 
     if owner_id != auth.user_id {
         return Err(AppError::forbidden("You can only edit your own posts"));
+    }
+    if removed {
+        return Err(AppError::not_found("Post not found"));
     }
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
@@ -316,7 +324,8 @@ pub async fn edit_post(
 /// Delete a post and everything hanging off it inside the caller's
 /// transaction, shared by the owner's delete and moderation removal.
 /// CASCADE removes likes, comments, media_assets and feed_items rows;
-/// post_count is decremented here since it's denormalized.
+/// post_count is decremented here since it's denormalized -- unless the
+/// post was removed by moderation, which already took it off the count.
 ///
 /// Returns the post's storage keys, which the caller must pass to
 /// evidence::finish() after commit -- storage can't take part in the
@@ -335,7 +344,9 @@ pub async fn delete_post_with_media(
     .await
     .db_err("Database error")?;
 
-    let Some(owner_id) = sqlx::query_scalar::<_, Uuid>("DELETE FROM posts WHERE id = $1 RETURNING user_id")
+    let Some((owner_id, counted)) = sqlx::query_as::<_, (Uuid, bool)>(
+        "DELETE FROM posts WHERE id = $1 RETURNING user_id, moderation_status != 'removed'"
+    )
         .bind(post_id)
         .fetch_optional(&mut *tx)
         .await
@@ -344,11 +355,13 @@ pub async fn delete_post_with_media(
         return Ok(None);
     };
 
-    sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
-        .bind(owner_id)
-        .execute(&mut *tx)
-        .await
-        .db_err_ctx("Failed to update post_count", "Database error")?;
+    if counted {
+        sqlx::query("UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id = $1")
+            .bind(owner_id)
+            .execute(&mut *tx)
+            .await
+            .db_err_ctx("Failed to update post_count", "Database error")?;
+    }
 
     Ok(Some(
         media_rows.into_iter().flat_map(|(thumb, medium, full)| [thumb, medium, full]).collect(),
@@ -386,12 +399,22 @@ pub async fn delete_post(
     // preserved as evidence first.
     let scope = evidence::Scope { posts: vec![post_id], ..Default::default() };
     let preserved = evidence::preserve(&mut tx, &scope, evidence::Trigger::UserDeletion, Some(auth.user_id)).await?;
+    // Reports on it (and on its comments) that preserved nothing have
+    // nothing left to decide; their reporters learn it's gone.
+    let comments = sqlx::query_scalar::<_, Uuid>("SELECT id FROM comments WHERE post_id = $1")
+        .bind(post_id)
+        .fetch_all(&mut *tx)
+        .await
+        .db_err("Database error")?;
+    let mut notices = moderation::close_obsolete_reports(&mut tx, "post", &[post_id]).await?;
+    notices.extend(moderation::close_obsolete_reports(&mut tx, "comment", &comments).await?);
 
     let media_keys = delete_post_with_media(&mut tx, post_id)
         .await?
         .ok_or_else(|| AppError::not_found("Post not found"))?;
 
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
+    notices.send(&state).await;
 
     // Delete the files only after the DB delete, so a failure leaves
     // orphaned files (cleanable) rather than DB records pointing to
@@ -467,6 +490,7 @@ pub async fn get_user_posts(
         LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
         WHERE p.user_id = $1
             AND (p.created_at, p.id) < ($2, $3)
+            AND p.moderation_status != 'removed'
             AND (p.moderation_status != 'hidden' OR $5)
         ORDER BY p.created_at DESC, p.id DESC
         LIMIT $4
@@ -529,7 +553,7 @@ pub async fn get_feed(
         LEFT JOIN media_assets m ON m.post_id = p.id AND m.sort_order = 0
         WHERE fi.user_id = $1
             AND (fi.created_at, fi.post_id) < ($2, $3)
-            AND p.moderation_status != 'hidden'
+            AND p.moderation_status NOT IN ('hidden', 'removed')
             AND (u.suspended_until IS NULL OR u.suspended_until <= NOW())
         ORDER BY fi.created_at DESC, fi.post_id DESC
         LIMIT $4

@@ -297,7 +297,10 @@ pub async fn create_stream_ticket(
 ) -> Result<Json<StreamTicketResponse>, AppError> {
     let ticket = generate_refresh_token();
     let mut conn = state.redis.clone();
-    conn.set_ex::<_, _, ()>(stream_ticket_key(&ticket), auth.user_id.to_string(), STREAM_TICKET_TTL_SECS)
+    // With the time it was issued: the stream measures the session against
+    // it (account_lock::session_valid).
+    let value = format!("{} {}", auth.user_id, crate::auth::issued_now());
+    conn.set_ex::<_, _, ()>(stream_ticket_key(&ticket), value, STREAM_TICKET_TTL_SECS)
         .await
         .map_err(|e| {
             tracing::error!("Failed to store SSE ticket: {}", e);
@@ -308,8 +311,9 @@ pub async fn create_stream_ticket(
 }
 
 /// Redeems a stream ticket: GET and DEL in one transaction, so the same
-/// ticket can't open two streams even when both requests race.
-async fn redeem_stream_ticket(state: &AppState, ticket: &str) -> Result<Uuid, AppError> {
+/// ticket can't open two streams even when both requests race. Returns the
+/// user and when the ticket was issued (auth::issued_now).
+async fn redeem_stream_ticket(state: &AppState, ticket: &str) -> Result<(Uuid, f64), AppError> {
     let key = stream_ticket_key(ticket);
     let mut conn = state.redis.clone();
     let (user_id, _): (Option<String>, i64) = redis::pipe()
@@ -324,8 +328,24 @@ async fn redeem_stream_ticket(state: &AppState, ticket: &str) -> Result<Uuid, Ap
         })?;
 
     user_id
-        .and_then(|id| id.parse().ok())
+        .and_then(|value| {
+            let (user, issued) = value.split_once(' ')?;
+            Some((user.parse().ok()?, issued.parse().ok()?))
+        })
         .ok_or_else(|| AppError::unauthorized("Invalid or expired stream ticket"))
+}
+
+/// How often an open stream checks that its session may go on, so a lock,
+/// a new password or the account's deletion closes it soon after.
+const STREAM_SESSION_CHECK_SECS: u64 = 30;
+
+async fn stream_session_valid(state: &AppState, user_id: Uuid, since: f64) -> bool {
+    match state.db.acquire().await {
+        Ok(mut conn) => crate::handlers::account_lock::session_valid(&mut conn, user_id, since).await.unwrap_or(true),
+        // The database being briefly unreachable isn't a reason to drop
+        // every stream; the next check decides.
+        Err(_) => true,
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -346,12 +366,28 @@ pub async fn notification_stream(
     State(state): State<AppState>,
     Query(query): Query<StreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
-    let user_id = redeem_stream_ticket(&state, &query.ticket).await?;
+    let (user_id, issued_at) = redeem_stream_ticket(&state, &query.ticket).await?;
+    if !stream_session_valid(&state, user_id, issued_at).await {
+        return Err(AppError::unauthorized("Session ended"));
+    }
     let mut rx = state.notification_tx.subscribe();
+    let mut session_check = tokio::time::interval(std::time::Duration::from_secs(STREAM_SESSION_CHECK_SECS));
+    session_check.tick().await;
 
     let stream = async_stream::stream! {
         loop {
-            let event = match rx.recv().await {
+            let received = tokio::select! {
+                received = rx.recv() => received,
+                _ = session_check.tick() => {
+                    if stream_session_valid(&state, user_id, issued_at).await {
+                        continue;
+                    }
+                    // Ended: the client's reconnect needs a new ticket,
+                    // which needs a valid session.
+                    break;
+                }
+            };
+            let event = match received {
                 Ok(event) => event,
                 // The channel is shared by every connected client, so a
                 // burst of other users' notifications can push this

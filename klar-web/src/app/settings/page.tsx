@@ -2,15 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ChevronRight, Download, Gauge, KeyRound, Lock, ShieldAlert, ShieldCheck, Trash2, UserPen } from "lucide-react";
+import { Archive, ChevronRight, Download, Gauge, History, KeyRound, Lock, Scale, ShieldAlert, ShieldCheck, Trash2, UserPen, type LucideIcon } from "lucide-react";
 import { BadgeCheck, FileText, FileWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { users } from "@/lib/api";
+import { adminModerationApi, users, type AdminAttention } from "@/lib/api";
 import { MessageSquareText } from "lucide-react";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import KeepAccountCard from "@/components/settings/KeepAccountCard";
 
-const sections = [
+interface SettingsSection {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  destructive?: boolean;
+  // Admin entries: how much is waiting there, and whether any of it is
+  // urgent.
+  badge?: number;
+  urgent?: boolean;
+}
+
+const sections: SettingsSection[] = [
   {
     href: "/settings/profile",
     icon: UserPen,
@@ -43,10 +55,16 @@ export default function SettingsPage() {
   const router = useRouter();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // What waits for an admin, as badges on the admin entries.
+  const [attention, setAttention] = useState<AdminAttention | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user?.is_admin) adminModerationApi.attention().then(setAttention).catch(() => {});
+  }, [user?.is_admin]);
 
   if (authLoading || !user) return null;
 
@@ -55,7 +73,7 @@ export default function SettingsPage() {
   // computes is_admin itself (GET /users/me, see utils::is_admin_email)
   // and just hands us a boolean -- no email/ID list to keep in sync on
   // the frontend, and no separate NEXT_PUBLIC_* build-time var needed.
-  const visibleSections = user.is_admin
+  const visibleSections: SettingsSection[] = user.is_admin
     ? [
         ...sections,
         {
@@ -63,6 +81,22 @@ export default function SettingsPage() {
           icon: ShieldAlert,
           label: "Reports",
           description: "Review reported content",
+          badge: attention?.reports,
+          urgent: !!attention?.urgent_reports,
+        },
+        {
+          href: "/admin/moderation",
+          icon: Scale,
+          label: "Statements & objections",
+          description: "Held-back statements and objections waiting for an answer",
+          badge: attention ? attention.objections + attention.held_statements : undefined,
+          urgent: !!attention?.overdue_held_statements,
+        },
+        {
+          href: "/admin/decisions",
+          icon: History,
+          label: "Decision log",
+          description: "Every moderation decision: who, what, when, why",
         },
         {
           href: "/admin/standing",
@@ -93,12 +127,15 @@ export default function SettingsPage() {
           icon: FileWarning,
           label: "Rights claims",
           description: "Copyright and other rights notices",
+          badge: attention?.rights_claims,
         },
         {
           href: "/admin/evidence",
           icon: Archive,
           label: "Evidence",
           description: "Preserved copies of deleted, likely-illegal content",
+          badge: attention ? attention.overdue_evidence + attention.authority_reports : undefined,
+          urgent: !!attention?.authority_reports,
         },
         {
           href: "/admin/feedback",
@@ -151,6 +188,16 @@ export default function SettingsPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">{section.description}</p>
               </div>
+              {!!section.badge && (
+                <span
+                  aria-label={`${section.badge} waiting`}
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    section.urgent ? "bg-destructive text-white" : "bg-muted"
+                  }`}
+                >
+                  {section.badge}
+                </span>
+              )}
               <ChevronRight size={16} className="text-muted-foreground" />
             </button>
           ))}

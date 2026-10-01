@@ -32,8 +32,14 @@ export function clientIp(): string {
 
 /** Registers through a context of its own: sign-up sets auth cookies, and
  * the backend reads the cookie before the Authorization header, so a
- * shared context would make every later call act as the newest user. */
-export async function signUp(prefix = "user", email?: string): Promise<Session> {
+ * shared context would make every later call act as the newest user.
+ *
+ * The address is marked verified in the test database, since posting,
+ * commenting, messaging and reporting need that (the link only goes to an
+ * inbox nobody reads); `verified: false` keeps the fresh, unverified state.
+ * Without E2E_DATABASE_URL a test that needs a verified account skips. */
+export async function signUp(prefix = "user", email?: string, { verified = true } = {}): Promise<Session> {
+  if (verified) test.skip(!process.env.E2E_DATABASE_URL, "verifying the address needs E2E_DATABASE_URL (see e2e/README.md)");
   const username = uniqueName(prefix);
   const context = await playwrightRequest.newContext();
   try {
@@ -43,10 +49,22 @@ export async function signUp(prefix = "user", email?: string): Promise<Session> 
     });
     expect(res.ok(), await res.text()).toBeTruthy();
     const body = await res.json();
+    if (verified) {
+      await withDb((db) => db.query("UPDATE users SET email_verified = TRUE WHERE id = $1", [body.user.id]));
+    }
     return { id: body.user.id, username, access_token: body.access_token, refresh_token: body.refresh_token };
   } finally {
     await context.dispose();
   }
+}
+
+/** An account whose reports hide or flag content before review: verified
+ * and older than a day (handlers/reports.rs). A fresh account's reports
+ * only queue. */
+export async function trustedSignUp(prefix = "reporter"): Promise<Session> {
+  const session = await signUp(prefix);
+  await withDb((db) => db.query("UPDATE users SET created_at = NOW() - INTERVAL '2 days' WHERE id = $1", [session.id]));
+  return session;
 }
 
 function auth(session: Session) {

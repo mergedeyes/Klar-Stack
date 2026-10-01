@@ -130,6 +130,17 @@ pub async fn block_user(
         teardown_follow(&mut tx, target, auth.user_id).await?;
     }
 
+    // Pending follow requests go too, both ways: accepting one later would
+    // show the blocked person every private post.
+    sqlx::query(
+        "DELETE FROM follow_requests WHERE (requester_id = $1 AND target_id = $2) OR (requester_id = $2 AND target_id = $1)",
+    )
+    .bind(auth.user_id)
+    .bind(target)
+    .execute(&mut *tx)
+    .await
+    .db_err("Failed to remove follow requests")?;
+
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     tracing::info!("User {} blocked {}", auth.user_id, username);

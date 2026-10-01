@@ -18,9 +18,10 @@ use uuid::Uuid;
 
 use crate::auth::AuthUser;
 use crate::errors::AppError;
+use crate::evidence;
 use crate::handlers::auth::AppState;
 use crate::handlers::reports::{require_admin, VALID_REASONS};
-use crate::moderation;
+use crate::moderation::{self, NewMeasure};
 use crate::standing::{self, Measure, Suspension, Violation, MAX_SCORE, THRESHOLDS, VIOLATIONS};
 use crate::utils::DbResultExt;
 
@@ -146,6 +147,30 @@ pub struct AdminStanding {
 }
 
 async fn admin_standing(conn: &mut PgConnection, user_id: Uuid, username: String) -> Result<AdminStanding, AppError> {
+    let current = current_standing(conn, user_id).await?;
+    Ok(AdminStanding {
+        user_id,
+        username,
+        score: current.score,
+        max_score: MAX_SCORE,
+        suspension: standing::suspension(conn, user_id).await?,
+        suggestion: current.suggestion.map(Measure::as_str),
+        strikes: current.strikes,
+        measures: current.measures,
+        thresholds: thresholds(),
+    })
+}
+
+/// An account's active strikes and measures, its score, and the measure
+/// they suggest next.
+struct CurrentStanding {
+    strikes: Vec<StrikeView>,
+    measures: Vec<MeasureView>,
+    score: i32,
+    suggestion: Option<Measure>,
+}
+
+async fn current_standing(conn: &mut PgConnection, user_id: Uuid) -> Result<CurrentStanding, AppError> {
     let strikes = active_strikes(conn, user_id, false).await?;
     let measures = sqlx::query_as::<_, MeasureView>(
         r#"
@@ -174,16 +199,11 @@ async fn admin_standing(conn: &mut PgConnection, user_id: Uuid, username: String
         .iter()
         .any(|m| m.lifted_at.is_none() && m.created_at > year_ago);
 
-    Ok(AdminStanding {
-        user_id,
-        username,
-        score,
-        max_score: MAX_SCORE,
-        suspension: standing::suspension(conn, user_id).await?,
-        suggestion: standing::suggest(score, strikes_since_last_measure, recently_warned).map(Measure::as_str),
+    Ok(CurrentStanding {
+        suggestion: standing::suggest(score, strikes_since_last_measure, recently_warned),
         strikes,
         measures,
-        thresholds: thresholds(),
+        score,
     })
 }
 
@@ -249,11 +269,23 @@ pub struct MeasureRequest {
     /// The report reason the measure mainly rests on; picks the ground
     /// cited in the statement.
     pub reason: String,
+    /// Why, in the admin's words; shown to the user in the statement, which
+    /// has to name the facts the decision relies on (DSA Art. 17(3)(c)).
+    /// Required when the account has no active strike or the measure goes
+    /// beyond the suggested one: then the score doesn't explain it.
+    pub explanation: Option<String>,
+    /// Pending reports on the account that led to the measure. They are
+    /// closed with the outcome "account measure", and their reporters told.
+    #[serde(default)]
+    pub report_ids: Vec<Uuid>,
 }
+
+const EXPLANATION_MAX: usize = 1000;
 
 /// POST /admin/users/:username/measures (admin only) -- an admin decides a
 /// warning or suspension. Any measure is allowed, not only the suggested
-/// one: the suggestion is a guide, the admin weighs the case.
+/// one: the suggestion is a guide, the admin weighs the case, and explains
+/// it when the score doesn't.
 pub async fn apply_measure(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -264,6 +296,10 @@ pub async fn apply_measure(
     let measure = Measure::parse(&input.measure).ok_or_else(|| AppError::bad_request("Invalid measure"))?;
     if !VALID_REASONS.contains(&input.reason.as_str()) && input.reason != "copyright" {
         return Err(AppError::bad_request("Invalid reason"));
+    }
+    let explanation = input.explanation.as_deref().map(str::trim).filter(|e| !e.is_empty());
+    if explanation.is_some_and(|e| e.chars().count() > EXPLANATION_MAX) {
+        return Err(AppError::bad_request(format!("The explanation must be under {} characters", EXPLANATION_MAX)));
     }
 
     let mut tx = state.db.begin().await.db_err("Database error")?;
@@ -277,15 +313,64 @@ pub async fn apply_measure(
         .execute(&mut *tx)
         .await
         .db_err("Database error")?;
-    let score = score_of(&active_strikes(&mut tx, user_id, false).await?);
+    let current = current_standing(&mut tx, user_id).await?;
+    let has_strikes = !current.strikes.is_empty();
+    let beyond_suggestion = current.suggestion.is_none_or(|suggested| measure > suggested);
+    if (!has_strikes || beyond_suggestion) && explanation.is_none() {
+        return Err(AppError::bad_request(
+            "Explain the measure to the user: the account has no active strike or the measure goes beyond the \
+             suggested one, so its score doesn't explain it",
+        ));
+    }
+    let report_ids = linked_reports(&mut tx, user_id, &input.report_ids).await?;
 
-    let (_, notices) =
-        moderation::record_account_measure(&mut tx, user_id, measure, &input.reason, auth.user_id, score, None).await?;
+    let (_, mut notices) = moderation::record_account_measure(&mut tx, NewMeasure {
+        user_id,
+        measure,
+        reason: &input.reason,
+        decided_by: auth.user_id,
+        score: current.score,
+        has_strikes,
+        basis: explanation,
+        report_ids: report_ids.clone(),
+    })
+    .await?;
+    if !report_ids.is_empty() {
+        notices.extend(
+            moderation::close_reports(&mut tx, &report_ids, "actioned", "account_measure", Some(auth.user_id), None).await?,
+        );
+        // A profile reported for a likely-illegal reason was preserved;
+        // the measure decides that too.
+        evidence::decide(&mut tx, "user", user_id, auth.user_id, explanation).await?;
+    }
     tx.commit().await.db_err("Database error")?;
     notices.send(&state).await;
 
     let mut conn = state.db.acquire().await.db_err("Database error")?;
     Ok(Json(admin_standing(&mut conn, user_id, username).await?))
+}
+
+/// The reports a measure closes: pending reports on this account and
+/// nothing else, so a measure can't close unrelated reports by mistake.
+async fn linked_reports(tx: &mut PgConnection, user_id: Uuid, ids: &[Uuid]) -> Result<Vec<Uuid>, AppError> {
+    let mut ids = ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(ids);
+    }
+    let found = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM reports WHERE id = ANY($1) AND target_type = 'user' AND target_id = $2 AND status = 'pending' FOR UPDATE",
+    )
+    .bind(&ids)
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await
+    .db_err("Database error")?;
+    if found.len() != ids.len() {
+        return Err(AppError::conflict("Only pending reports on this account can be linked to the measure"));
+    }
+    Ok(found)
 }
 
 /// POST /admin/users/:username/lift-suspension (admin only) -- ends the

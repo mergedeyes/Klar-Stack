@@ -75,6 +75,9 @@ async fn locks_are_the_incident_log(pool: PgPool) {
     app.patch(&admin, &format!("/admin/locks/{id}"), json!({ "assessment": "Only public posts; low risk, not reported." })).await.ok();
     app.post(&admin, &format!("/admin/locks/{id}/unlock"), json!({})).await.ok();
     assert_eq!(app.post(&admin, &format!("/admin/locks/{id}/unlock"), json!({})).await.status, StatusCode::CONFLICT);
+    // Unlocking doesn't bring the old session back: whoever held it has to
+    // sign in again.
+    assert_eq!(app.get(&alice, "/users/me").await.status, StatusCode::UNAUTHORIZED);
     assert_eq!(login(&app, "alice", PASSWORD).await, StatusCode::OK);
 
     // The record outlives the account.
@@ -86,7 +89,8 @@ async fn locks_are_the_incident_log(pool: PgPool) {
                 .method("DELETE")
                 .uri("/users/me")
                 .header("authorization", format!("Bearer {token}"))
-                .body(axum::body::Body::empty())
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(json!({ "password": PASSWORD }).to_string()))
                 .unwrap(),
             "10.250.0.1",
         )
@@ -95,4 +99,24 @@ async fn locks_are_the_incident_log(pool: PgPool) {
     let locks = app.get(&admin, "/admin/locks").await.ok().json();
     assert!(locks[0]["username"].is_null());
     assert_eq!(locks[0]["assessment"], "Only public posts; low risk, not reported.");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_lock_also_ends_the_notification_stream(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, admin) = (app.register("alice").await, app.admin().await);
+    let ticket = app.post(&alice, "/notifications/stream-ticket", json!({})).await.ok().json()["ticket"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    app.post(&admin, "/admin/users/alice/lock", json!({ "note": "Takeover" })).await.ok();
+
+    // A ticket from before the lock opens nothing ...
+    assert_eq!(app.anon_get_status(&format!("/notifications/stream?ticket={ticket}")).await, StatusCode::UNAUTHORIZED);
+    // ... and a stream already open ends at its next check, which asks the
+    // same question.
+    let opened = crate::auth::issued_now() - 60.0;
+    let mut conn = app.state.db.acquire().await.unwrap();
+    assert!(!crate::handlers::account_lock::session_valid(&mut conn, alice.id, opened).await.unwrap());
+    assert!(!crate::handlers::account_lock::session_valid(&mut conn, uuid::Uuid::new_v4(), opened).await.unwrap(), "gone");
 }

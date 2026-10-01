@@ -310,6 +310,11 @@ pub async fn accept_follow_request(
 ) -> Result<StatusCode, AppError> {
     let requester_id = find_user_id_by_username(&state.db, &requester_username).await?;
 
+    // Blocking deletes pending requests, but one may predate that rule.
+    if check_block(&state.db, auth.user_id, requester_id).await? {
+        return Err(AppError::bad_request("Cannot accept this request"));
+    }
+
     let deleted = sqlx::query_scalar::<_, Uuid>(
         "DELETE FROM follow_requests WHERE requester_id = $1 AND target_id = $2 RETURNING requester_id"
     )

@@ -77,6 +77,7 @@ function Avatar({ username, avatarUrl, size = 8 }: { username: string; avatarUrl
 function CommentRow({
   comment,
   currentUsername,
+  isAdmin,
   postUsername,
   postId,
   depth,
@@ -87,13 +88,14 @@ function CommentRow({
 }: {
   comment: Comment;
   currentUsername: string | undefined;
+  isAdmin: boolean;
   postUsername: string;
   postId: string;
   depth: number;
   onDelete: (id: string) => void;
   onEdited: (updated: Comment) => void;
   onReply: (username: string, commentId: string) => void;
-  onReport: (commentId: string) => void;
+  onReport: (commentId: string, username: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
@@ -115,6 +117,16 @@ function CommentRow({
   const isFlagged = comment.moderation_status === "flagged";
   const [revealFlagged, setRevealFlagged] = useState(false);
   const showPlaceholder = (isFlagged && !isAuthor && !revealFlagged);
+  const [copied, setCopied] = useState(false);
+
+  // The comment's own link, e.g. for a notice about illegal content.
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/posts/${postId}#comment-${comment.id}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
   useEffect(() => {
     if (editing) editInputRef.current?.focus();
@@ -152,8 +164,20 @@ function CommentRow({
     }
   };
 
+  // Removed by the moderation team: others replied to it, so it keeps
+  // its place in the thread, without its text.
+  if (comment.moderation_status === "removed") {
+    return (
+      <div id={`comment-${comment.id}`} className={`scroll-mt-20 ${depth > 0 ? "ml-8 mt-2" : "mt-3"}`}>
+        <p className="rounded-md bg-muted/60 px-2 py-1 text-xs italic text-muted-foreground">
+          Removed by moderation
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className={depth > 0 ? "ml-8 mt-2" : "mt-3"}>
+    <div id={`comment-${comment.id}`} className={`scroll-mt-20 ${depth > 0 ? "ml-8 mt-2" : "mt-3"}`}>
       <div className="flex gap-2.5">
         <Avatar username={comment.username} avatarUrl={comment.avatar_url} size={8} />
         <div className="flex-1 min-w-0">
@@ -220,9 +244,17 @@ function CommentRow({
                   <button onClick={() => onDelete(comment.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
                 )}
                 {currentUsername && !isAuthor && (
-                  <button onClick={() => onReport(comment.id)} className="text-xs text-muted-foreground hover:text-foreground" aria-label="Report comment">
+                  <button onClick={() => onReport(comment.id, comment.username)} className="text-xs text-muted-foreground hover:text-foreground" aria-label="Report comment">
                     Report
                   </button>
+                )}
+                <button onClick={copyLink} className="text-xs text-muted-foreground hover:text-foreground">
+                  {copied ? "Copied" : "Link"}
+                </button>
+                {isAdmin && !isAuthor && (
+                  <Link href={`/admin/cases/new?type=comment&id=${comment.id}`} className="text-xs text-muted-foreground hover:text-foreground">
+                    Moderate
+                  </Link>
                 )}
               </div>
             </>
@@ -273,7 +305,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
   const { user } = useAuth();
   const [deleting, setDeleting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
+  const [reportingComment, setReportingComment] = useState<{ id: string; username: string } | null>(null);
   // Reported (violence/self-harm/sexual-content severity) posts are
   // gated behind this until the viewer explicitly clicks through --
   // never auto-set true for the post's own owner, who should always be
@@ -306,6 +338,13 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
     postsApi.media(post.id).then((res) => { setMedia(res.filter((a) => a.medium_url)); }).catch(() => {});
     commentsApi.list(post.id).then(setAllComments).catch(() => {}).finally(() => setLoadingComments(false));
   }, [post.id, showInterstitial]);
+
+  // A comment's own link (…#comment-<id>) scrolls to it once loaded.
+  useEffect(() => {
+    if (loadingComments) return;
+    const hash = window.location.hash;
+    if (hash.startsWith("#comment-")) document.getElementById(hash.slice(1))?.scrollIntoView({ block: "center" });
+  }, [loadingComments]);
 
   // When replying, pre-fill @username and focus input
   const handleSetReply = useCallback((username: string, commentId: string) => {
@@ -413,13 +452,14 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
         <CommentRow
           comment={comment}
           currentUsername={user?.username}
+          isAdmin={!!user?.is_admin}
           postUsername={post.username}
           postId={post.id}
           depth={depth}
           onDelete={handleDelete}
           onEdited={handleEdited}
           onReply={handleSetReply}
-          onReport={setReportingCommentId}
+          onReport={(id, username) => setReportingComment({ id, username })}
         />
         {repliesMap[comment.id] && renderComments(repliesMap[comment.id], depth + 1)}
       </div>
@@ -449,6 +489,16 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
           <Flag size={18} />
         </button>
       )}
+      {/* The team's own case, or an authority's order, without a report. */}
+      {user?.is_admin && !isOwner && (
+        <Link
+          href={`/admin/cases/new?type=post&id=${post.id}`}
+          className="rounded-full p-1.5 text-muted-foreground hover:text-foreground"
+          aria-label="Moderate post"
+        >
+          <ShieldAlert size={18} />
+        </Link>
+      )}
     </div>
   );
 
@@ -472,9 +522,14 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
     </div>
   );
 
-  const pendingNote = isFlagged && isOwner && (
+  // The owner sees their own restricted post as before, so they're told
+  // what others see, and where the statement of reasons is.
+  const pendingNote = isOwner && (isFlagged || post.moderation_status === "hidden") && (
     <div className="border-b border-border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
-      Pending review — only visible to you and people who click through
+      {isFlagged
+        ? "Pending review — only visible to you and people who click through"
+        : "Hidden — only you can see this post."}{" "}
+      <Link href="/moderation" className="underline">See Moderation</Link>
     </div>
   );
 
@@ -588,10 +643,20 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
   const reportModals = (
     <>
       {showReportModal && (
-        <ReportModal targetType="post" targetId={post.id} onClose={() => setShowReportModal(false)} />
+        <ReportModal
+          targetType="post"
+          targetId={post.id}
+          authorUsername={post.username}
+          onClose={() => setShowReportModal(false)}
+        />
       )}
-      {reportingCommentId && (
-        <ReportModal targetType="comment" targetId={reportingCommentId} onClose={() => setReportingCommentId(null)} />
+      {reportingComment && (
+        <ReportModal
+          targetType="comment"
+          targetId={reportingComment.id}
+          authorUsername={reportingComment.username}
+          onClose={() => setReportingComment(null)}
+        />
       )}
     </>
   );

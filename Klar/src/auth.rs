@@ -17,6 +17,19 @@ use crate::handlers::auth::AppState;
 pub struct Claims {
     pub sub: Uuid,   // "subject", the authenticated user's ID (standard JWT claim name)
     pub exp: usize,  // "expiration", Unix timestamp (seconds) after which the token is invalid (standard JWT claim name)
+    /// "issued at", in seconds with microseconds (JWT allows a fraction):
+    /// tokens issued before the account's sessions were revoked (a lock, a
+    /// new password) stop working, see account_lock::enforce_session. Whole
+    /// seconds would let a token from the same second survive. 0 for tokens
+    /// from before this claim existed, which have expired by now anyway.
+    #[serde(default)]
+    pub iat: f64,
+}
+
+/// Now, as a token's `iat`: seconds with microseconds, from the same clock
+/// that marks a revocation (account_lock::revoke_sessions).
+pub fn issued_now() -> f64 {
+    chrono::Utc::now().timestamp_micros() as f64 / 1_000_000.0
 }
 
 /// Create a short-lived access token (15 minutes)
@@ -30,6 +43,7 @@ pub fn create_access_token(user_id: Uuid, secret: &str) -> Result<String, jsonwe
     let claims = Claims {
         sub: user_id,
         exp: expiration,
+        iat: issued_now(),
     };
 
     // Sign the claims into a JWT using HMAC with the default header (HS256) and the given secret.
@@ -100,6 +114,24 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
+/// The signed-in session behind a request, if any: who, and when its
+/// access token was issued. For the session middleware, which ends tokens
+/// issued before the account's sessions were revoked.
+#[derive(Debug)]
+pub struct OptionalSession {
+    pub session: Option<(Uuid, f64)>,
+}
+
+impl FromRequestParts<AppState> for OptionalSession {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        Ok(OptionalSession {
+            session: extract_claims(parts, &state.jwt_secret).map(|claims| (claims.sub, claims.iat)),
+        })
+    }
+}
+
 /// Extractor for optional auth: never fails, yields None if token is absent or invalid.
 /// Use this on endpoints that work for both authenticated and unauthenticated users.
 #[derive(Debug)]
@@ -143,6 +175,10 @@ pub fn cookie_value<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Optio
 /// set headers, authenticates with a single-use ticket instead (see
 /// notifications.rs's create_stream_ticket).
 fn extract_user_id(parts: &Parts, secret: &str) -> Option<Uuid> {
+    extract_claims(parts, secret).map(|claims| claims.sub)
+}
+
+fn extract_claims(parts: &Parts, secret: &str) -> Option<Claims> {
     // 1. Try to extract from httpOnly Cookie
     let mut token_str = cookie_value(&parts.headers, "klar_access_token");
 
@@ -158,10 +194,10 @@ fn extract_user_id(parts: &Parts, secret: &str) -> Option<Uuid> {
     // At this point, token_str is either the token found via one of the two methods
     // above, or None if all of them failed, in which case we return None here too.
     let token = token_str?;
-    // Validate the token's signature and expiry; on success, extract the user ID (the sub claim).
-    // .ok() converts a validation error into None (rather than propagating the error type),
-    // since both extractors above just want a plain Option<Uuid>.
-    validate_token(token, secret).ok().map(|claims| claims.sub)
+    // Validate the token's signature and expiry. .ok() converts a validation
+    // error into None (rather than propagating the error type), since the
+    // extractors above just want an Option.
+    validate_token(token, secret).ok()
 }
 
 #[cfg(test)]

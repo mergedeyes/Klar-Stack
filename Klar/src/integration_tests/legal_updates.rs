@@ -59,8 +59,8 @@ async fn existing_accounts_must_accept_changed_terms(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn emails_go_once_to_verified_addresses_only(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let (verified, _unverified, admin) = (app.register("verified").await, app.register("unverified").await, app.admin().await);
-    app.exec(&format!("UPDATE users SET email_verified = TRUE WHERE id = '{}'", verified.id)).await;
+    let (_verified, _unverified, admin) =
+        (app.register("verified").await, app.register_unverified("unverified").await, app.admin().await);
 
     let id = app.post(&admin, "/admin/legal-updates", json!({ "documents": ["terms", "privacy"], "summary": "Both documents changed today." }))
         .await

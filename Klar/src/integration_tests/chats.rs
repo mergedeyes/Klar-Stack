@@ -89,7 +89,7 @@ async fn a_deleted_accounts_messages_leave_the_partners_chat(pool: PgPool) {
     send(&app, &alice, &bob, "from alice").await;
     let conversation: Uuid = send(&app, &bob, &alice, "from bob").await["conversation_id"].as_str().unwrap().parse().unwrap();
 
-    app.delete(&bob, "/users/me").await.ok();
+    app.delete_account(&bob).await.ok();
 
     // Alice keeps the conversation with her own messages; bob is "Deleted
     // User" (no id, no name) and his messages are gone.
@@ -106,6 +106,35 @@ async fn a_deleted_accounts_messages_leave_the_partners_chat(pool: PgPool) {
     );
 
     // When alice goes too, nothing of the conversation is left.
-    app.delete(&alice, "/users/me").await.ok();
+    app.delete_account(&alice).await.ok();
     assert_eq!(app.count(&format!("SELECT 1 FROM conversations WHERE id = '{conversation}'")).await, 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_reported_message_keeps_its_edits_and_survives_its_deletion(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, bob) = (app.register("alice").await, app.register("bob").await);
+    befriend(&app, &alice, "alice", &bob, "bob").await;
+    let message: Uuid = send(&app, &alice, &bob, "You'll regret this").await["id"].as_str().unwrap().parse().unwrap();
+    let report = app.report(&bob, "message", message, "harassment").await;
+    let record = || {
+        let app = &app;
+        async move {
+            app.scalar(&format!(
+                "SELECT string_agg(v.cause, ',' ORDER BY v.captured_at, v.id) || '|' || COALESCE(e.deletion_trigger, '-') \
+                 FROM evidence_records e JOIN evidence_versions v ON v.evidence_id = e.id \
+                 WHERE e.target_id = '{message}' GROUP BY e.id"
+            ))
+            .await
+            .unwrap()
+        }
+    };
+
+    // Editing doesn't rewrite what was reported ...
+    app.patch(&alice, &format!("/chats/messages/{message}"), json!({ "body": "Just kidding" })).await.ok();
+    assert_eq!(record().await, "reported,edited|-");
+    // ... and deleting it for both doesn't erase it.
+    app.delete(&alice, &format!("/chats/messages/{message}")).await.ok();
+    assert_eq!(record().await, "reported,edited|user_deletion");
+    assert_eq!(app.scalar(&format!("SELECT status::text FROM reports WHERE id = '{report}'")).await.as_deref(), Some("pending"));
 }
