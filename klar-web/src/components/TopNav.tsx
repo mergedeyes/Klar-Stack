@@ -209,7 +209,8 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                 setShowNotifications(!showNotifications);
                 if (!showNotifications) markAllAsRead();
               }}
-              aria-label="Notifications"
+              // The red dot is only visual, so the count goes into the name.
+              aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
             >
               <Bell size={20} />
               {unreadCount > 0 && (
