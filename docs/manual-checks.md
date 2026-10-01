@@ -98,7 +98,8 @@ loads more as you scroll.
 - [ ] "Decide on the account" on an account report opens its standing page: a measure without strikes needs an explanation, which appears in the user's statement (with no score); the report closes as "action was taken against the account"
 - [ ] "Remove parts of the profile" removes the picture, bio, display name or username (replaced by user_…, changeable at once); the statement lists what went; an accepted objection puts them back
 - [ ] "Moderate" on a post or comment (admins) opens a case; with "An authority's order" the statement names the authority and the reference
-- [ ] Settings shows badges on the admin entries; the Decision log filters by decision, reason, source, admin and account and pages with "Load more"
+- [ ] Only an admin sees the shield button in the top nav (with a red dot while something waits); it opens `/admin`, which lists what's waiting (urgent first) and then every admin page under Moderation, Accounts, Legal and Testing, with badges; Settings no longer lists the admin pages
+- [ ] The Decision log filters by decision, reason, source, admin and account and pages with "Load more"
 - [ ] A report for a likely-illegal reason immediately creates a record under `/admin/evidence` with the reported state (the report in the queue links to it); a spam report creates nothing
 - [ ] Editing the reported item (caption, comment, bio, avatar) adds a version to the timeline; deleting it (as admin, as its author, or with the account) keeps the record and marks it deleted
 - [ ] Opening an evidence record or one of its files asks for a reason, and the audit trail shows exactly one entry per action

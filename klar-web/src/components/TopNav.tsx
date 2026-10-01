@@ -13,6 +13,7 @@ import {
   Bell,
   MessageCircle,
   Compass,
+  Shield,
   ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -20,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/hooks/use-notifications";
 import CreatePostModal from "@/components/CreatePostModal";
 import { getMediaUrl } from "@/lib/utils/media";
-import { followRequestsApi, type AppNotification } from "@/lib/api";
+import { adminModerationApi, followRequestsApi, type AppNotification } from "@/lib/api";
 
 export type TopNavSection = "feed" | "discovery" | "chats" | "search" | "profile";
 
@@ -134,6 +135,16 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
 
   useOutsideClick(dropdownRef, showNotifications, () => setShowNotifications(false));
 
+  // How much waits in the moderation queues, for the dot on the admin's
+  // button. Display-only, like the button itself: the backend computes
+  // is_admin (GET /users/me, see utils::is_admin_email) and refuses
+  // everyone else on every admin route.
+  const [adminWaiting, setAdminWaiting] = useState(0);
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    adminModerationApi.attention().then((a) => setAdminWaiting(a.total)).catch(() => {});
+  }, [user?.is_admin]);
+
   const handleLogout = async () => {
     await logout();
     router.push("/login");
@@ -169,7 +180,8 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
         <Link href="/feed" className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity">
           Klar
         </Link>
-        <div className="flex items-center gap-2">
+        {/* Tighter on phones, so the admin's extra button still fits. */}
+        <div className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="ghost"
             size="icon"
@@ -308,6 +320,20 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
           >
             <User size={20} />
           </Button>
+          {user?.is_admin && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`${iconClass()} relative`}
+              onClick={() => router.push("/admin")}
+              aria-label={adminWaiting > 0 ? `Moderation tools (${adminWaiting} waiting)` : "Moderation tools"}
+            >
+              <Shield size={20} />
+              {adminWaiting > 0 && (
+                <span className="absolute right-2 top-2 flex h-2 w-2 rounded-full bg-red-500" />
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
