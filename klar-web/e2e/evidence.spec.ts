@@ -53,3 +53,43 @@ test("an attack threat is flagged as a required report", async ({ browser, reque
   await adminPage.goto("/admin/evidence");
   await expect(adminPage.getByText("Report to authorities: required").first()).toBeVisible();
 });
+
+test("a legal hold and a report to the authorities are recorded on the record, each in the audit trail", async ({ browser, request }) => {
+  const admin = await adminSession();
+  const [author, reporter] = await Promise.all([signUp("threat"), signUp("reporter")]);
+  const id = await removedComment(request, {
+    author,
+    reporter,
+    admin,
+    reason: "terrorism",
+    violation: "terror_threat",
+    text: `at noon ${uniqueName("t")}`,
+  });
+
+  const adminPage = await pageFor(browser, admin);
+  await openRecord(adminPage, await evidenceFor(request, admin, id));
+  const trail = adminPage.locator("section", { hasText: "Audit trail" });
+  await expect(trail.getByText("Opened", { exact: true })).toHaveCount(1);
+
+  const holdReason = `Request from Staatsanwaltschaft ${uniqueName("az")}`;
+  await adminPage.getByPlaceholder("Reason (e.g. request from Staatsanwaltschaft, Az. …)").fill(holdReason);
+  await adminPage.getByRole("button", { name: "Set hold" }).click();
+  await expect(adminPage.getByRole("button", { name: "Lift hold" })).toBeVisible();
+
+  const today = new Date().toISOString().slice(0, 10);
+  const record = adminPage.getByRole("button", { name: "Record report" });
+  await adminPage.getByPlaceholder("Authority (e.g. BKA, jugendschutz.net)").fill("BKA");
+  await adminPage.locator('input[type="date"]').fill(today);
+  await adminPage.getByPlaceholder("Their reference / case number (optional)").fill("ST-4711");
+  await record.click();
+
+  await expect(trail.getByText("Legal hold set")).toHaveCount(1);
+  await expect(trail.getByText(`“${holdReason}”`)).toBeVisible();
+  await expect(trail.getByText("Reported to authority")).toHaveCount(1);
+  await expect(trail.getByText(`BKA on ${today} · ref. ST-4711`)).toBeVisible();
+  // Reopened later (logged again), the required report shows as done.
+  await openRecord(adminPage, await evidenceFor(request, admin, id));
+  await expect(adminPage.getByText("Reported to authorities", { exact: true })).toBeVisible();
+  await expect(adminPage.getByText("Report to authorities: required")).toBeHidden();
+  await expect(trail.getByText("Opened", { exact: true })).toHaveCount(2);
+});

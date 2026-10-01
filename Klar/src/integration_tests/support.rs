@@ -176,6 +176,15 @@ impl TestApp {
         self.json_request(Method::POST, path, None, Some(body)).await
     }
 
+    /// The status of an anonymous GET without reading its body, for the
+    /// notification stream, which never ends on its own.
+    pub async fn anon_get_status(&self, path: &str) -> StatusCode {
+        let mut req = Request::builder().method(Method::GET).uri(path).body(Body::empty()).unwrap();
+        req.headers_mut().insert("x-forwarded-for", next_ip().parse().unwrap());
+        req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))));
+        self.router.clone().oneshot(req).await.unwrap().status()
+    }
+
     // ── Common steps ──────────────────────────────────────────────────────────
 
     pub async fn register(&self, username: &str) -> User {

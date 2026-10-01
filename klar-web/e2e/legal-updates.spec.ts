@@ -67,11 +67,14 @@ test("the admin list filters by date and sorts by acceptance and emails", async 
   // "accepted" gets two acceptances, "ignored" none but more emails.
   await apiCall(request, reader, "POST", `/legal-updates/${a.id}/acknowledge`);
   await apiCall(request, other, "POST", `/legal-updates/${a.id}/acknowledge`);
+  // Publishing starts a background run that emails every verified account
+  // about each notice, one every 200 ms, so the real counts depend on how
+  // far it got and on how many accounts earlier tests verified. Marking
+  // every account as emailed about "ignored" puts it ahead for sure:
+  // "accepted" can only ever reach the verified ones, and reader and other
+  // aren't verified.
   await withDb((db) =>
-    db.query(
-      "INSERT INTO legal_update_emails (update_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING",
-      [b.id, reader.id, other.id],
-    ),
+    db.query("INSERT INTO legal_update_emails (update_id, user_id) SELECT $1, id FROM users ON CONFLICT DO NOTHING", [b.id]),
   );
   // The admin's own account existed before too: accept, so the notices
   // don't cover the page.

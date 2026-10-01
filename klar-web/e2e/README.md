@@ -2,8 +2,13 @@
 
 Playwright tests for what only a real page shows: the footer layout, the post
 modal's address and back button, sharing, the post page on phone and desktop,
-the link-preview tags, and the moderation and admin flows (reporting,
-classifying removals, standing, suspensions, objections, evidence, account
+the link-preview tags, signing up, verifying, resetting and changing the
+password, the data download and account deletion, follow requests, live
+notifications and chat messages, the profile grid's paging, and the
+moderation and admin flows (reporting posts, comments and profiles, CSAM and
+intimate-image hides with held-back statements, classifying removals,
+standing, suspensions, objections, evidence with legal holds and authority
+reports, rights claims from the public form, official accounts, account
 locks and reviews). Each test creates its own users and posts through the
 API, so they can run in parallel against any database; lists shared between
 tests (the report queue, the incident log) are always searched for the
@@ -28,5 +33,5 @@ The admin tests need an admin: start the backend with
 account and marks its email verified directly in the database, and a few
 tests read from it what the app only emails (a reset link) or move
 timestamps. Use a throwaway database for this, never a real one. Without
-`E2E_DATABASE_URL` the admin tests skip themselves. `--project desktop` or `--project phone` runs one screen size;
+`E2E_DATABASE_URL` the admin tests, and those that follow an emailed link, skip themselves. `--project desktop` or `--project phone` runs one screen size;
 `--ui` opens Playwright's test browser.
