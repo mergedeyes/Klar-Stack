@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Archive, Clock, FileWarning, Gauge, History, Plus, RotateCcw, Scale, ShieldAlert, Trash2, X } from "lucide-react";
+import { Archive, Clock, Gauge, Plus, RotateCcw, ShieldAlert, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { adminReportsApi, adminStandingApi, type QueueReport, type ReportGroup, type Violation } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -160,26 +160,11 @@ export default function AdminReportsPage() {
 
   return (
     <div className="flex-1 bg-background">
-      <header className="sticky top-0 z-10 flex h-14 items-center gap-3 overflow-x-auto border-b border-border bg-background/80 px-4 backdrop-blur">
+      <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton aria-label="Back" />
         <span className="flex-1 font-semibold">Reports</span>
         <Link href="/admin/cases/new" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <Plus size={16} /> Case
-        </Link>
-        <Link href="/admin/rights" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <FileWarning size={16} /> Claims
-        </Link>
-        <Link href="/admin/moderation" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <Scale size={16} /> Objections
-        </Link>
-        <Link href="/admin/decisions" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <History size={16} /> Log
-        </Link>
-        <Link href="/admin/standing" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <Gauge size={16} /> Standing
-        </Link>
-        <Link href="/admin/evidence" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <Archive size={16} /> Evidence
         </Link>
       </header>
 
