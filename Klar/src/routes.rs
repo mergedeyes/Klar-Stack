@@ -224,6 +224,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/rights-claims/{claim_id}/accept", post(handlers::rights::accept_claim))
         .route("/admin/rights-claims/{claim_id}/decline", post(handlers::rights::decline_claim))
         .route("/admin/legal-updates", get(handlers::legal_updates::list).post(handlers::legal_updates::publish))
+        .route("/admin/official-accounts", get(handlers::official_accounts::list))
+        .route("/admin/official-accounts/{user_id}/username", post(handlers::official_accounts::rename))
         .route("/admin/review-candidates", get(handlers::account_review::list_candidates))
         .route("/admin/users/{username}/review", post(handlers::account_review::open_review))
         .route("/admin/reviews/{review_id}/decide", post(handlers::account_review::decide_review))

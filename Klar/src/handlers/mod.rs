@@ -12,6 +12,7 @@ pub mod health;
 pub mod likes;
 pub mod moderation;
 pub mod notifications;
+pub mod official_accounts;
 pub mod posts;
 pub mod uploads;
 pub mod users;

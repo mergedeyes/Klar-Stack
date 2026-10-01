@@ -182,7 +182,7 @@ impl TestApp {
         self.register_with_email(username, &format!("{username}@example.test")).await
     }
 
-    async fn register_with_email(&self, username: &str, email: &str) -> User {
+    pub async fn register_with_email(&self, username: &str, email: &str) -> User {
         let res = self
             .anon_post(
                 "/auth/register",

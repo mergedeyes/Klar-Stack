@@ -23,6 +23,7 @@ mod evidence;
 mod feedback;
 mod legal_updates;
 mod moderation;
+mod official_accounts;
 mod previews;
 mod rights;
 mod standing;

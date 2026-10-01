@@ -15,11 +15,16 @@ pub const CAPTION_MAX: usize = 2000;
 pub const COMMENT_MAX: usize = 2000;
 pub const MESSAGE_MAX: usize = 2000;
 
-/// Usernames that would collide with fixed routes (/users/me,
-/// /users/search) or could be used to impersonate staff. Compared
+/// Usernames that collide with fixed routes (/users/me, /users/search).
+/// Never allowed, not even for official accounts. Compared
 /// case-insensitively.
-const RESERVED_USERNAMES: &[&str] = &[
-    "me", "search", "admin", "administrator", "mod", "moderator", "staff",
+const ROUTE_USERNAMES: &[&str] = &["me", "search"];
+
+/// Usernames that could be used to impersonate staff. Only official
+/// accounts may have them, and only through an admin rename
+/// (handlers/official_accounts.rs). Compared case-insensitively.
+const STAFF_USERNAMES: &[&str] = &[
+    "admin", "administrator", "mod", "moderator", "staff",
     "support", "help", "official", "system", "root", "klar", "klarsocial",
 ];
 
@@ -27,6 +32,16 @@ const RESERVED_USERNAMES: &[&str] = &[
 /// digits and underscores only (the same rule as the registration form),
 /// and not reserved. Returns the trimmed name with its case preserved.
 pub fn validate_username(raw: &str) -> Result<String, AppError> {
+    let username = validate_official_username(raw)?;
+    if STAFF_USERNAMES.contains(&username.to_ascii_lowercase().as_str()) {
+        return Err(AppError::bad_request("This username is not available"));
+    }
+    Ok(username)
+}
+
+/// validate_username without the staff names, for the admin rename of an
+/// official account (e.g. kontakt@klarsocial.eu becoming "Klar").
+pub fn validate_official_username(raw: &str) -> Result<String, AppError> {
     let username = raw.trim();
     let len = username.chars().count();
 
@@ -41,7 +56,7 @@ pub fn validate_username(raw: &str) -> Result<String, AppError> {
             "Username can only contain letters, numbers, and underscores",
         ));
     }
-    if RESERVED_USERNAMES.contains(&username.to_ascii_lowercase().as_str()) {
+    if ROUTE_USERNAMES.contains(&username.to_ascii_lowercase().as_str()) {
         return Err(AppError::bad_request("This username is not available"));
     }
 
@@ -151,6 +166,12 @@ mod tests {
         assert!(validate_username("Search").is_err());
         assert!(validate_username("admin").is_err());
         assert!(validate_username("meadow").is_ok());
+        // Official accounts may take staff names, but never route names.
+        assert_eq!(validate_official_username(" Klar ").unwrap(), "Klar");
+        assert!(validate_username("Klar").is_err());
+        assert!(validate_official_username("me").is_err());
+        assert!(validate_official_username("SEARCH").is_err());
+        assert!(validate_official_username("klar.social").is_err());
     }
 
     #[test]
