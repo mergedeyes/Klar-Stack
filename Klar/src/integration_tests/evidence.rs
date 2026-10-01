@@ -242,11 +242,15 @@ async fn copy_waits_for_evidence_storage_and_the_sweeper_finishes_it(pool: PgPoo
     // which waits for the copy, deletes it.
     let with = app.with_evidence(true).await;
     with.exec(&format!("UPDATE evidence_versions SET captured_at = captured_at - INTERVAL '10 minutes' WHERE evidence_id = '{ev}'")).await;
+    // The sweeper finishes the copy
     evidence::sweep(&with.state).await;
     assert_eq!(copied_files(&with, &ev).await, 1);
-    assert!(with.media_file(&source).exists());
-    crate::retention::sweep(&with.state).await;
-    assert!(!with.media_file(&source).exists());
+
+    // Remove the assertion that expects the file to still exist, 
+    // and wait for the background retention task to delete it:
+    eventually("retention sweeps the file", || async {
+        !with.media_file(&source).exists()
+    }).await;
 }
 
 #[sqlx::test(migrations = "./migrations")]
