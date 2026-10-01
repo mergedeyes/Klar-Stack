@@ -132,6 +132,19 @@ pub struct MeasureView {
     pub objection_status: Option<String>,
 }
 
+/// A pending report on the account itself, which a measure decided here
+/// can answer. Listed on the standing page whichever way the admin got
+/// there, so a measure isn't recorded as the team's own initiative while a
+/// report on the account is waiting.
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct PendingAccountReport {
+    pub id: Uuid,
+    pub reason: String,
+    /// "user_report", "public_notice", "own_initiative" or "authority_order".
+    pub source: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AdminStanding {
     pub user_id: Uuid,
@@ -144,6 +157,7 @@ pub struct AdminStanding {
     pub strikes: Vec<StrikeView>,
     pub measures: Vec<MeasureView>,
     pub thresholds: Vec<Threshold>,
+    pub pending_reports: Vec<PendingAccountReport>,
 }
 
 async fn admin_standing(conn: &mut PgConnection, user_id: Uuid, username: String) -> Result<AdminStanding, AppError> {
@@ -158,6 +172,17 @@ async fn admin_standing(conn: &mut PgConnection, user_id: Uuid, username: String
         strikes: current.strikes,
         measures: current.measures,
         thresholds: thresholds(),
+        pending_reports: sqlx::query_as::<_, PendingAccountReport>(
+            r#"
+            SELECT id, reason::text AS reason, source, created_at FROM reports
+            WHERE target_type = 'user' AND target_id = $1 AND status = 'pending'
+            ORDER BY created_at
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut *conn)
+        .await
+        .db_err("Database error")?,
     })
 }
 

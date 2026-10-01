@@ -532,3 +532,22 @@ async fn account_measures_record_their_source_and_the_log_filters_by_it(pool: Pg
     assert!(log("notice").await.is_empty());
     assert_eq!(app.count("SELECT 1 FROM moderation_decisions WHERE source IS NULL").await, 0);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_standing_page_lists_the_pending_reports_on_the_account(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (carol, bob, admin) = (app.register("carol").await, app.register("bob").await, app.admin().await);
+    let on_account = app.report(&bob, "user", carol.id, "impersonation").await;
+    // A report on carol's post isn't one a measure answers.
+    app.report(&bob, "post", app.upload(&carol, "Sunset").await, "spam").await;
+
+    let pending = app.get(&admin, "/admin/users/carol/standing").await.ok().json()["pending_reports"].clone();
+    assert_eq!(pending.as_array().unwrap().len(), 1);
+    assert_eq!(pending[0]["id"], on_account.to_string());
+    assert_eq!(pending[0]["reason"], "impersonation");
+    assert_eq!(pending[0]["source"], "user_report");
+
+    let measure = json!({ "measure": "warning", "reason": "impersonation", "explanation": "Gibt sich als Klar aus.", "report_ids": [on_account] });
+    let after = app.post(&admin, "/admin/users/carol/measures", measure).await.ok().json();
+    assert!(after["pending_reports"].as_array().unwrap().is_empty(), "answered by the measure");
+}

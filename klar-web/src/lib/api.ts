@@ -762,6 +762,15 @@ export interface AdminStanding extends MyStanding {
   // What the score suggests next; the admin decides.
   suggestion: AccountMeasure | null;
   measures: AccountMeasureRecord[];
+  // Pending reports on the account itself, which a measure can answer.
+  pending_reports: PendingAccountReport[];
+}
+
+export interface PendingAccountReport {
+  id: string;
+  reason: string;
+  source: ReportSource;
+  created_at: string;
 }
 
 export const standingApi = {
