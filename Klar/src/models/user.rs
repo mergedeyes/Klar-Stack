@@ -41,9 +41,9 @@ pub struct UserRow {
     // runtime.
     #[allow(dead_code)]
     pub terms_accepted_at: Option<DateTime<Utc>>,
-    /// Whether the account's interactions are logged for ranking the
-    /// Discovery page (handlers/events.rs).
-    pub personalization_enabled: bool,
+    /// When the account consented to its interactions being logged for
+    /// ranking the Discovery page (handlers/events.rs); None: it didn't.
+    pub personalization_consented_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -125,7 +125,7 @@ impl From<UserRow> for UserResponse {
             created_at: row.created_at,
             username_changed_at: row.username_changed_at,
             is_private: row.is_private,
-            personalization_enabled: row.personalization_enabled,
+            personalization_enabled: row.personalization_consented_at.is_some(),
         }
     }
 }

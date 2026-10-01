@@ -155,7 +155,7 @@ pub async fn get_me(
             // item and the real server-side check never disagree).
             let is_admin = user.email_verified && crate::utils::is_admin_email(&user.email);
             let (email, email_verified) = (user.email.clone(), user.email_verified);
-            let personalization_enabled = user.personalization_enabled;
+            let personalization_enabled = user.personalization_consented_at.is_some();
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
             response.is_admin = is_admin;
@@ -717,8 +717,8 @@ pub async fn export_my_data(
     // proof of when ToS/privacy consent was given is squarely personal
     // data about the account, even though it's never shown in the app UI.
     #[allow(clippy::type_complexity)]
-    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, bool)>(
-        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_enabled FROM users WHERE id = $1"
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_consented_at FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_one(&state.db)
@@ -1032,7 +1032,7 @@ pub async fn export_my_data(
             "created_at": profile.6,
             "terms_accepted_at": profile.7,
             "keep_after_test_at": profile.8,
-            "personalization_enabled": profile.9,
+            "personalization_consented_at": profile.9,
         },
         "posts": posts_json,
         "comments": comments_json,

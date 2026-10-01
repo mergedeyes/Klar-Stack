@@ -27,7 +27,7 @@ Social network with a chronological home feed, always: only the Discovery page m
 - Usernames: stored with case preserved; always compare `LOWER(username) = LOWER($1)`.
 - Counters (`follower_count`, `post_count`, `like_count`, `comment_count`) are denormalized — update them in the same transaction as the write that changes them.
 - Feed is fan-out-on-write into `feed_items`; follow/unfollow/block must backfill/clean it.
-- `post_events` (handlers/events.rs) logs server-side interactions for ranking Discovery only; the home feed never reads it. Nothing is logged without `users.personalization_enabled`, and switching it off deletes the account's events. No client-reported events (views etc.) without a consent mechanism first (TDDDG § 25).
+- `post_events` (handlers/events.rs) logs server-side interactions for ranking Discovery only; the home feed never reads it. Opt-in: nothing is logged without `users.personalization_consented_at` (consent, Art. 6(1)(a) GDPR), and withdrawing it deletes the account's events. No client-reported events (views etc.) without a consent mechanism first (TDDDG § 25).
 - Visibility: private accounts gated via `can_view_posts` (posts.rs); `moderation_status = 'hidden'` content is invisible to everyone but the owner.
 - Other users must only ever be serialized as `UserPublicResponse` — `UserResponse` contains the email and is for the account owner only.
 - Notifications: insert inside the tx, `publish_notification` to Redis only after commit.

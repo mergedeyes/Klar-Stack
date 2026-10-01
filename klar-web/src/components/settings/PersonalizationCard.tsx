@@ -5,15 +5,16 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 
-// The opt-out for the interaction log that ranks Discovery
-// (handlers/events.rs). The home feed stays chronological either way.
+// The consent to the interaction log that will rank Discovery
+// (handlers/events.rs): off until the account switches it on. The home
+// feed stays chronological either way.
 export default function PersonalizationCard() {
   const { user, refreshUser } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The switch follows the click at once and goes back if saving fails.
   const [pending, setPending] = useState<boolean | null>(null);
-  const enabled = pending ?? user?.personalization_enabled ?? true;
+  const enabled = pending ?? user?.personalization_enabled ?? false;
 
   const toggle = async () => {
     const next = !enabled;
@@ -40,9 +41,10 @@ export default function PersonalizationCard() {
         <div>
           <p className="text-sm font-medium" id="personalization-label">Personalised Discovery</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Discovery can show posts that fit what you like and comment on. For that, Klar stores which posts you
-            like, unlike or comment on, and deletes each month&apos;s entries once they are 12 months old. Your home
-            feed is always chronological. Switching this off deletes what was stored.{" "}
+            Off unless you switch it on. If you do, Klar stores which posts and comments you like, unlike or
+            comment on, so Discovery can later show you posts that fit. Nothing you only look at is stored, and
+            your home feed stays chronological. Entries are deleted once they are 12 months old (a month at a
+            time), and all of them as soon as you switch this off again.{" "}
             <Link href="/datenschutz#discovery" className="underline">Privacy policy</Link>
           </p>
         </div>

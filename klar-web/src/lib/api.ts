@@ -32,9 +32,9 @@ export interface User {
   // above. Display-only: the backend enforces the real check on every
   // /admin/* route regardless of what this says.
   is_admin?: boolean;
-  // Whether this account's likes and comments are logged to rank the
-  // Discovery page (the home feed never is). Only GET /users/me sets it,
-  // for the owner.
+  // Whether this account consented to its likes and comments being
+  // logged to rank the Discovery page (the home feed never is). Only
+  // GET /users/me sets it, for the owner.
   personalization_enabled?: boolean;
 }
 
@@ -444,7 +444,7 @@ export const users = {
       true
     ),
   me: () => request<User>("/users/me", {}, true),
-  // Switching it off also deletes the log (handlers/events.rs).
+  // Gives or withdraws the consent; withdrawing deletes the log (handlers/events.rs).
   setPersonalization: (enabled: boolean) =>
     request<{ enabled: boolean }>(
       "/users/me/personalization",

@@ -107,14 +107,14 @@ export default function TransparenzPage() {
           <div className="mb-4">
             <h3 className="mb-1 font-semibold">Einträge für die Entdecken-Seite</h3>
             <p>
-              Damit die Entdecken-Seite dir künftig passende Beiträge zeigen
-              kann, speichern wir, welche Beiträge du likest, nicht mehr
-              likest oder kommentierst und welche Kommentare du likest oder
-              nicht mehr likest — mit
-              Zeitpunkt. Was du dir nur ansiehst, speichern wir nicht. Dein
-              Feed nutzt diese Einträge nie. In den Einstellungen kannst du das
-              mit „Personalised Discovery“ abschalten; dann löschen wir sofort
-              alles, was gespeichert war. Sonst löschen wir die Einträge
+              Nur wenn du in den Einstellungen „Personalised Discovery“
+              einschaltest, speichern wir, welche Beiträge du likest, nicht
+              mehr likest oder kommentierst und welche Kommentare du likest
+              oder nicht mehr likest — mit Zeitpunkt —, damit die
+              Entdecken-Seite dir künftig passende Beiträge zeigen kann. Ohne
+              das speichern wir nichts davon, und was du dir nur ansiehst, nie.
+              Dein Feed nutzt diese Einträge nie. Schaltest du es wieder ab,
+              löschen wir sofort alles, was gespeichert war. Sonst löschen wir die Einträge
               monatsweise, sobald sie zwölf Monate alt sind. Ein früheres
               Protokoll dieser Art hatten wir im Oktober 2026 gelöscht, weil es
               keinen Zweck hatte; dieses dient nur der Entdecken-Seite (Details

@@ -132,21 +132,23 @@ export default function DatenschutzPage() {
             <strong>Personalisierte Entdecken-Seite:</strong> Dein Feed mit
             den Beiträgen der Menschen, denen du folgst, ist und bleibt
             chronologisch. Die Entdecken-Seite wollen wir künftig so ordnen,
-            dass sie dir Beiträge zeigt, die zu dir passen. Dafür speichern
-            wir ab jetzt, welche Beiträge du likest, nicht mehr likest oder
-            kommentierst und welche Kommentare du likest oder nicht mehr
-            likest, jeweils mit dem Beitrag und dem Zeitpunkt. Was du dir nur
-            ansiehst, speichern wir nicht. Aus diesen Angaben leiten wir ab,
+            dass sie dir Beiträge zeigt, die zu dir passen. Nur wenn du das in
+            den Einstellungen mit dem Schalter „Personalised Discovery“
+            einschaltest, speichern wir ab dann, welche Beiträge du likest,
+            nicht mehr likest oder kommentierst und welche Kommentare du
+            likest oder nicht mehr likest, jeweils mit dem Beitrag und dem
+            Zeitpunkt, sowie den Zeitpunkt deiner Einwilligung. Ohne deine
+            Einwilligung speichern wir nichts davon. Was du dir nur ansiehst,
+            speichern wir nie. Aus diesen Angaben leiten wir ab,
             welche Beiträge dich interessieren könnten (Profiling, Art. 4 Nr.
             4 DSGVO); Entscheidungen, die dir gegenüber rechtliche Wirkung
             entfalten oder dich ähnlich erheblich beeinträchtigen, treffen wir
-            damit nicht (Art. 22 DSGVO). Rechtsgrundlage ist unser
-            berechtigtes Interesse, dir auf der Entdecken-Seite passende
-            Beiträge zu zeigen (Art. 6 Abs. 1 lit. f DSGVO). Du kannst dem
-            jederzeit widersprechen (Art. 21 DSGVO), am einfachsten mit dem
-            Schalter „Personalised Discovery“ in den Einstellungen: Dann
-            speichern wir nichts mehr und löschen sofort, was gespeichert war.
-            Sonst löschen wir die Einträge monatsweise, sobald sie zwölf
+            damit nicht (Art. 22 DSGVO). Rechtsgrundlage ist deine
+            Einwilligung (Art. 6 Abs. 1 lit. a DSGVO). Du kannst sie jederzeit
+            mit demselben Schalter widerrufen (Art. 7 Abs. 3 DSGVO): Dann
+            speichern wir nichts mehr und löschen sofort, was gespeichert war;
+            die Rechtmäßigkeit der Verarbeitung bis zum Widerruf bleibt davon
+            unberührt. Sonst löschen wir die Einträge monatsweise, sobald sie zwölf
             Monate alt sind (ein Eintrag bleibt also höchstens 13 Monate
             gespeichert), und sofort, wenn du dein Konto löschst; wird ein
             Beitrag gelöscht, gehen die Einträge dazu mit. Wir nutzen diese

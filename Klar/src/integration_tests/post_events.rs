@@ -1,6 +1,6 @@
-//! The interaction log for ranking Discovery (handlers/events.rs): what it
-//! records, the opt-out that deletes it, the export, the account deletion
-//! and the retention period.
+//! The interaction log for ranking Discovery (handlers/events.rs): nothing
+//! without consent, what it records after, the withdrawal that deletes it,
+//! the export, the account deletion and the retention period.
 
 use serde_json::json;
 use sqlx::PgPool;
@@ -22,11 +22,29 @@ async fn toggle_like(app: &TestApp, user: &User, post: Uuid) {
     app.post(user, &format!("/posts/{post}/like"), json!({})).await.ok();
 }
 
+async fn consent(app: &TestApp, user: &User, enabled: bool) -> serde_json::Value {
+    app.patch(user, "/users/me/personalization", json!({ "enabled": enabled })).await.ok().json()
+}
+
 #[sqlx::test(migrations = "./migrations")]
-async fn likes_and_comments_are_logged_where_they_happen(pool: PgPool) {
+async fn nothing_is_logged_without_consent(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (alice, bob) = (app.register("alice").await, app.register("bob").await);
     let post = app.upload(&alice, "Sunset").await;
+
+    assert_eq!(app.get(&bob, "/users/me").await.ok().json()["personalization_enabled"], false);
+    toggle_like(&app, &bob, post).await;
+    app.comment(&bob, post, "Lovely").await;
+    assert_eq!(app.count("SELECT 1 FROM post_events").await, 0);
+    assert_eq!(app.export(&bob).await["profile"]["personalization_consented_at"], serde_json::Value::Null);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn after_consent_likes_and_comments_are_logged_where_they_happen(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, bob) = (app.register("alice").await, app.register("bob").await);
+    let post = app.upload(&alice, "Sunset").await;
+    assert_eq!(consent(&app, &bob, true).await["enabled"], true);
 
     toggle_like(&app, &bob, post).await;
     toggle_like(&app, &bob, post).await;
@@ -40,30 +58,37 @@ async fn likes_and_comments_are_logged_where_they_happen(pool: PgPool) {
     assert_eq!(app.get(&bob, "/users/me").await.ok().json()["personalization_enabled"], true);
     // Only the owner sees the setting.
     assert!(app.get(&alice, "/users/bob").await.ok().json().get("personalization_enabled").is_none());
+
+    // Consenting again keeps the date it was first given.
+    let given = app.scalar(&format!("SELECT personalization_consented_at FROM users WHERE id = '{}'", bob.id)).await;
+    consent(&app, &bob, true).await;
+    assert_eq!(app.scalar(&format!("SELECT personalization_consented_at FROM users WHERE id = '{}'", bob.id)).await, given);
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn switching_personalization_off_deletes_the_log_and_stops_it(pool: PgPool) {
+async fn withdrawing_consent_deletes_the_log_and_stops_it(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (alice, bob) = (app.register("alice").await, app.register("bob").await);
     let post = app.upload(&alice, "Sunset").await;
+    consent(&app, &bob, true).await;
+    consent(&app, &alice, true).await;
     toggle_like(&app, &bob, post).await;
     toggle_like(&app, &alice, post).await;
 
-    // Allowed while suspended: it's an objection (Art. 21 GDPR).
+    // Allowed while suspended (Art. 7(3) GDPR).
     app.exec(&format!("UPDATE users SET suspended_until = NOW() + INTERVAL '7 days' WHERE id = '{}'", bob.id)).await;
-    let off = app.patch(&bob, "/users/me/personalization", json!({ "enabled": false })).await.ok().json();
-    assert_eq!(off["enabled"], false);
+    assert_eq!(consent(&app, &bob, false).await["enabled"], false);
     assert_eq!(events(&app, &bob).await, "");
     assert_eq!(events(&app, &alice).await, "like", "other accounts' logs stay");
     assert_eq!(app.get(&bob, "/users/me").await.ok().json()["personalization_enabled"], false);
+    assert_eq!(app.scalar(&format!("SELECT personalization_consented_at FROM users WHERE id = '{}'", bob.id)).await, None);
 
     app.exec(&format!("UPDATE users SET suspended_until = NULL WHERE id = '{}'", bob.id)).await;
     toggle_like(&app, &bob, post).await;
     app.comment(&bob, post, "Still here").await;
-    assert_eq!(events(&app, &bob).await, "", "nothing is logged while it's off");
+    assert_eq!(events(&app, &bob).await, "", "nothing is logged after withdrawing");
 
-    app.patch(&bob, "/users/me/personalization", json!({ "enabled": true })).await.ok();
+    consent(&app, &bob, true).await;
     toggle_like(&app, &bob, post).await;
     assert_eq!(events(&app, &bob).await, "like");
 }
@@ -73,10 +98,11 @@ async fn the_export_lists_the_log_and_deleting_the_account_deletes_it(pool: PgPo
     let app = TestApp::new(pool).await;
     let (alice, bob) = (app.register("alice").await, app.register("bob").await);
     let post = app.upload(&alice, "Sunset").await;
+    consent(&app, &bob, true).await;
     toggle_like(&app, &bob, post).await;
 
     let export = app.export(&bob).await;
-    assert_eq!(export["profile"]["personalization_enabled"], true);
+    assert!(export["profile"]["personalization_consented_at"].is_string());
     let logged = export["discovery_interactions"].as_array().unwrap();
     assert_eq!(logged.len(), 1);
     assert_eq!(logged[0]["post_id"], post.to_string());

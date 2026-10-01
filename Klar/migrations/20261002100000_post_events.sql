@@ -9,8 +9,11 @@
 --   account says nothing about anybody's taste.
 -- - No metadata column; nothing needs one.
 -- - No 'view' type (see above).
--- - users.personalization_enabled is the opt-out (Art. 21 GDPR): while it
---   is off nothing is logged, and switching it off deletes what was.
+-- - Opt-in: nothing is logged until the account consents (Art. 6(1)(a)
+--   GDPR) by switching "Personalised Discovery" on in Settings.
+--   users.personalization_consented_at records when (Art. 7(1): consent
+--   must be demonstrable); NULL means off. Withdrawing it (Art. 7(3))
+--   clears the column and deletes the account's log.
 -- - Retention: monthly partitions are dropped once all their rows are
 --   older than 12 months (post_events_maintain, run by the retention
 --   sweep), so an event is kept 12 to 13 months.
@@ -35,7 +38,7 @@ CREATE TABLE post_events_default PARTITION OF post_events DEFAULT;
 CREATE INDEX idx_post_events_user ON post_events (user_id, created_at DESC);
 CREATE INDEX idx_post_events_post ON post_events (post_id, created_at DESC);
 
-ALTER TABLE users ADD COLUMN personalization_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE users ADD COLUMN personalization_consented_at TIMESTAMPTZ;
 
 -- Creates the partitions for this month and the next three, and drops the
 -- ones whose rows are all past the retention period. Every replica's
