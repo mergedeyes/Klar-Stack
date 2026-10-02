@@ -11,6 +11,7 @@
 //! - Accounts that never verified their address: 30 days after sign-up, a
 //!   week after a reminder with a fresh link.
 //! - Expired refresh tokens.
+//! - The log of audit exports: three years, like the decisions they list.
 //! - The interaction log for Discovery (post_events): whole months, once
 //!   all their entries are 12 months old, so an entry stays 12 to 13
 //!   months. The same step creates the coming months' partitions.
@@ -84,7 +85,7 @@ pub const UNVERIFIED_REMINDER_DAYS: i32 = 7;
 
 /// Records past their retention period; see the module doc.
 pub(crate) async fn delete_expired_records(state: &AppState) {
-    let steps: [(&str, &str, &[i32]); 5] = [
+    let steps: [(&str, &str, &[i32]); 6] = [
         (
             "reports",
             r#"
@@ -132,6 +133,11 @@ pub(crate) async fn delete_expired_records(state: &AppState) {
             &[READ_NOTIFICATION_DAYS, UNREAD_NOTIFICATION_DAYS],
         ),
         ("expired refresh tokens", "DELETE FROM refresh_tokens WHERE expires_at < NOW()", &[]),
+        (
+            "audit export log entries",
+            "DELETE FROM audit_exports WHERE created_at < NOW() - make_interval(days => $1)",
+            &[DECISION_RETENTION_DAYS],
+        ),
     ];
     for (what, sql, binds) in steps {
         let mut query = sqlx::query(sql);

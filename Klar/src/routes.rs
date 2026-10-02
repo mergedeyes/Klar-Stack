@@ -223,6 +223,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/moderation/reports/{report_id}/recheck", post(handlers::moderation::request_recheck))
         .route("/admin/cases", post(handlers::reports::create_case))
         .route("/admin/attention", get(handlers::moderation::admin_attention))
+        .route("/admin/audit-exports", get(handlers::audit_export::list_audit_exports)
+            .post(handlers::audit_export::create_audit_export))
         .route("/admin/decisions", get(handlers::moderation::decision_log))
         .route("/admin/users/{username}/profile-removal", post(handlers::profile_moderation::remove_from_profile))
         .route("/admin/moderation", get(handlers::moderation::admin_queue))

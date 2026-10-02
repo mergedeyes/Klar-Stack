@@ -4,11 +4,11 @@ import { adminSession, measure, pageFor, signIn, signUp } from "./helpers";
 // Admin pages: closed to everyone else, reached from the admin's header
 // button, and usable at phone width.
 
-const ADMIN_PAGES = ["/admin", "/admin/reports", "/admin/standing", "/admin/security", "/admin/moderation", "/admin/evidence"];
+const ADMIN_PAGES = ["/admin", "/admin/audit", "/admin/reports", "/admin/standing", "/admin/security", "/admin/moderation", "/admin/evidence"];
 
 test("the admin pages refuse ordinary accounts", async ({ page }) => {
   await signIn(page, await signUp("nosy"));
-  for (const path of ["/admin", "/admin/standing", "/admin/security", "/admin/reports"]) {
+  for (const path of ["/admin", "/admin/audit", "/admin/standing", "/admin/security", "/admin/reports"]) {
     await page.goto(path);
     await expect(page.getByText("Admin access required")).toBeVisible();
   }
@@ -35,7 +35,7 @@ test("only the admin gets the moderation tools button, which lists the admin pag
   const categories = {
     Moderation: ["Reports", "Statements & objections", "Rights claims", "Decision log"],
     Accounts: ["Account standing", "Account security", "Official accounts"],
-    Legal: ["Evidence", "Legal updates"],
+    Legal: ["Evidence", "Legal updates", "Audit export"],
     Testing: ["Feedback"],
   };
   for (const [title, labels] of Object.entries(categories)) {
