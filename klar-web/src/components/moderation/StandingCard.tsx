@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { StandingScore } from "@/components/moderation/StandingScore";
-import { MEASURE_LABELS, REASON_LABELS, SEVERITY_LABELS } from "@/lib/moderation";
+import { MEASURE_LABELS, REASON_LABELS, SEVERITY_LABELS, SOURCE_LABELS } from "@/lib/moderation";
 
 // One account's standing for admins: score, strikes, earlier measures, and
 // the two ways to act on the account itself -- a measure (warning or
@@ -160,9 +160,19 @@ export function StandingCard({
   const [measure, setMeasure] = useState<AccountMeasure>(initial.suggestion ?? "warning");
   const [reason, setReason] = useState<ReportReason>(mainReason(initial));
   const [explanation, setExplanation] = useState("");
-  // The linked reports are answered once; after that, a further measure
-  // stands on its own.
-  const [linked, setLinked] = useState(reportIds);
+  // The reports a measure answers: the ones the queue sent along, or else
+  // every pending report on the account, so a measure decided after
+  // opening this page some other way still rests on them (and its
+  // statement doesn't call it the team's own initiative). Authority orders
+  // aren't ticked by default, like in the queue. Answered once; after that,
+  // a further measure stands on its own.
+  const [linked, setLinked] = useState(
+    reportIds.length > 0
+      ? reportIds
+      : initial.pending_reports.filter((r) => r.source !== "authority_order").map((r) => r.id),
+  );
+  const toggleLinked = (id: string, on: boolean) =>
+    setLinked((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
   const [busy, setBusy] = useState(false);
 
   // The score explains a measure only when there are strikes and the
@@ -229,11 +239,29 @@ export function StandingCard({
         </p>
       )}
 
-      {linked.length > 0 && (
-        <p className="mb-2 rounded-md bg-primary/10 px-2 py-1 text-xs">
-          {linked.length === 1 ? "A report" : `${linked.length} reports`} on this account will be answered by what you
-          decide here; the reporters are told.
-        </p>
+      {s.pending_reports.length > 0 && (
+        <fieldset className="mb-2 rounded-md bg-primary/10 px-2 py-1 text-xs">
+          <legend className="sr-only">Pending reports on this account</legend>
+          <p className="mb-1">
+            Pending reports on this account. What you decide here answers the ticked ones; the reporters are told.
+          </p>
+          {s.pending_reports.map((r) => (
+            <label key={r.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={linked.includes(r.id)}
+                onChange={(e) => toggleLinked(r.id, e.target.checked)}
+              />
+              {REASON_LABELS[r.reason] ?? r.reason} · {SOURCE_LABELS[r.source] ?? r.source} ·{" "}
+              {new Date(r.created_at).toLocaleDateString()}
+            </label>
+          ))}
+          {linked.length === 0 && (
+            <p className="mt-1 text-muted-foreground">
+              None ticked: a measure counts as the team&apos;s own initiative, and its statement says so.
+            </p>
+          )}
+        </fieldset>
       )}
 
       <StandingScore standing={s} />

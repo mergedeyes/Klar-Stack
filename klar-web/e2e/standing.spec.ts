@@ -5,6 +5,7 @@ import {
   apiGet,
   pageFor,
   removedComment,
+  report,
   signIn,
   signUp,
   uniqueName,
@@ -168,6 +169,35 @@ test("a measure without strikes needs an explanation, which the statement shows"
   await page.getByRole("link", { name: /Warning · account/ }).click();
   await expect(page.getByText(/well-known journalist/)).toBeVisible();
   await expect(page.getByText(/von 100 Punkten/)).toHaveCount(0);
+});
+
+test("a measure answers the account's pending report even when the page wasn't opened from the queue", async ({ page, browser, request }) => {
+  const admin = await adminSession();
+  const [user, reporter] = [await signUp("impostor"), await signUp("noticer")];
+  await report(request, reporter, "user", user.id, "impersonation");
+
+  // Looked up directly, without ?reports=: the report is listed and ticked.
+  const adminPage = await pageFor(browser, admin);
+  const card = await lookUp(adminPage, user.username);
+  const pending = card.getByRole("group", { name: "Pending reports on this account" });
+  await expect(pending.getByRole("checkbox")).toBeChecked();
+  await card.getByLabel("Explanation for the user").fill("Your profile pretends to be Klar.");
+  await card.getByLabel("Main reason").selectOption("impersonation");
+  await card.getByRole("button", { name: "Apply" }).click();
+  await expect(card.getByText("1 earlier measure")).toBeVisible();
+  await expect(pending).toHaveCount(0);
+
+  const logged = await apiGet<{ source: string; report_count: number }[]>(
+    request, admin, `/admin/decisions?source=notice&affected=${user.username}`,
+  );
+  expect(logged).toHaveLength(1);
+  expect(logged[0].report_count).toBe(1);
+
+  await signIn(page, user);
+  await page.goto("/moderation");
+  await page.getByRole("link", { name: /Warning · account/ }).click();
+  await expect(page.getByText(/Meldung deines Kontos/)).toBeVisible();
+  await expect(page.getByText(/eigenen Prüfung/)).toHaveCount(0);
 });
 
 test("parts of a profile can be removed, and the statement lists them", async ({ page, browser, request }) => {
