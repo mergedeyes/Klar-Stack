@@ -395,3 +395,42 @@ async fn admins_see_what_waits_and_every_decision(pool: PgPool) {
 fn urlencode(text: &str) -> String {
     text.replace(':', "%3A").replace('+', "%2B")
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn closed_reports_list_what_the_queue_decided(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (alice, bob, admin) = (app.register("alice").await, app.trusted("bob").await, app.admin().await);
+    let removed = app.report(&bob, "post", app.upload(&alice, "spam one").await, "spam").await;
+    let dismissed = app.report(&bob, "post", app.upload(&alice, "fine").await, "spam").await;
+    app.report(&bob, "post", app.upload(&alice, "still waiting").await, "spam").await;
+    app.post(&admin, &format!("/admin/reports/{removed}/remove"), json!({})).await.ok();
+    app.post(&admin, &format!("/admin/reports/{dismissed}/dismiss"), json!({ "note": "Satire, no spam" })).await.ok();
+
+    assert_eq!(app.get(&bob, "/admin/reports/closed").await.status, StatusCode::FORBIDDEN);
+    let closed = app.get(&admin, "/admin/reports/closed").await.ok().json();
+    let closed = closed.as_array().unwrap();
+    assert_eq!(closed.len(), 2, "the pending one isn't listed");
+    // Most recently closed first; a dismissal leaves no decision.
+    assert_eq!(closed[0]["id"], dismissed.to_string());
+    assert_eq!(closed[0]["status"], "dismissed");
+    assert_eq!(closed[0]["outcome"], "no_violation");
+    assert_eq!(closed[0]["review_note"], "Satire, no spam");
+    assert!(closed[0]["decision_id"].is_null());
+    assert_eq!(closed[0]["reviewed_by_username"], "site_admin");
+    assert_eq!(closed[0]["reporter_username"], "bob");
+    assert_eq!(closed[0]["target_username"], "alice");
+    assert_eq!(closed[1]["id"], removed.to_string());
+    assert_eq!(closed[1]["outcome"], "removed");
+    assert!(closed[1]["decision_id"].is_string());
+    assert!(closed[1].get("target_preview").is_none(), "no content");
+
+    let only_removed = app.get(&admin, "/admin/reports/closed?outcome=removed").await.ok().json();
+    assert_eq!(only_removed.as_array().unwrap().len(), 1);
+    let cursor = format!(
+        "/admin/reports/closed?limit=1&before_time={}&before_id={}",
+        urlencode(closed[0]["reviewed_at"].as_str().unwrap()),
+        closed[0]["id"].as_str().unwrap()
+    );
+    let next = app.get(&admin, &cursor).await.ok().json();
+    assert_eq!(next[0]["id"], removed.to_string());
+}

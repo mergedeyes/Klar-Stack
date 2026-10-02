@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { adminReportsApi, adminStandingApi, type QueueReport, type ReportGroup, type Violation } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { SmartBackButton } from "@/components/SmartBackButton";
+import ClosedReports from "@/components/moderation/ClosedReports";
 import { getMediaUrl } from "@/lib/utils/media";
 import { ACCOUNT_REVIEW_REASONS, REASON_LABELS, SEVERITY_LABELS, SOURCE_LABELS } from "@/lib/moderation";
 
@@ -73,6 +74,7 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
   // Per card (keyOf): the internal note, the answer to a pending
   // objection, the violation type picked for a removal (unset: the first
   // reason's first type) and the justification for departing from it.
@@ -163,6 +165,10 @@ export default function AdminReportsPage() {
       <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton aria-label="Back" />
         <span className="flex-1 font-semibold">Reports</span>
+        <label className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
+          <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
+          Show closed
+        </label>
         <Link href="/admin/cases/new" className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <Plus size={16} /> Case
         </Link>
@@ -175,6 +181,7 @@ export default function AdminReportsPage() {
           </div>
         )}
 
+        {showClosed ? <ClosedReports onError={setError} /> : (<>
         {loading && (
           <div className="py-16 text-center text-sm text-muted-foreground animate-pulse">Loading…</div>
         )}
@@ -426,6 +433,7 @@ export default function AdminReportsPage() {
             );
           })}
         </div>
+        </>)}
       </main>
     </div>
   );

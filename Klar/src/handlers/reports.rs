@@ -26,7 +26,7 @@
 //! whoever registers it first keeps it either way).
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -532,6 +532,103 @@ fn severity_rank(severity: &str) -> u8 {
         "high" => 1,
         _ => 2,
     }
+}
+
+/// One closed report, for looking back at what the queue decided:
+/// dismissals leave no decision, so this is the only place they show.
+/// No content or thumbnail: closed items are often removed or CSAM; the
+/// decision and the evidence record are linked instead.
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ClosedReport {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    /// None when the system closed it (e.g. the content was deleted).
+    pub reviewed_by_username: Option<String>,
+    /// "actioned" or "dismissed".
+    pub status: String,
+    pub outcome: Option<String>,
+    pub reason: String,
+    pub source: String,
+    pub target_type: String,
+    pub target_id: Uuid,
+    pub target_username: Option<String>,
+    /// None for a public notice, an authority order or the team's own case.
+    pub reporter_username: Option<String>,
+    pub authority: Option<String>,
+    pub order_reference: Option<String>,
+    pub review_note: Option<String>,
+    pub recheck_requested_at: Option<DateTime<Utc>>,
+    /// The latest decision resting on this report, if any.
+    pub decision_id: Option<Uuid>,
+    pub evidence_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClosedReportsQuery {
+    /// "removed", "account_measure", "no_violation", "obsolete", "duplicate".
+    pub outcome: Option<String>,
+    /// Keyset cursor: the last row of the previous page (its reviewed_at).
+    pub before_time: Option<DateTime<Utc>>,
+    pub before_id: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+/// GET /admin/reports/closed (admin only) -- closed reports, most recently
+/// closed first, until retention deletes them (retention.rs).
+pub async fn closed_reports(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(q): Query<ClosedReportsQuery>,
+) -> Result<Json<Vec<ClosedReport>>, AppError> {
+    require_admin(&state.db, &auth).await?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let rows = sqlx::query_as::<_, ClosedReport>(
+        r#"
+        SELECT
+            r.id, r.created_at, r.reviewed_at, u_reviewer.username AS reviewed_by_username,
+            r.status::text AS status, r.outcome, r.reason::text AS reason, r.source,
+            r.target_type::text AS target_type, r.target_id,
+            COALESCE(
+                CASE r.target_type
+                    WHEN 'post' THEN (SELECT u.username FROM posts p JOIN users u ON u.id = p.user_id WHERE p.id = r.target_id)
+                    WHEN 'comment' THEN (SELECT u.username FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = r.target_id)
+                    WHEN 'user' THEN (SELECT u.username FROM users u WHERE u.id = r.target_id)
+                    WHEN 'message' THEN (SELECT u.username FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = r.target_id)
+                END,
+                -- Deleted since: the account behind the evidence copy.
+                (SELECT u.username FROM users u WHERE u.id = (
+                    SELECT (v.content->'author'->>'id')::uuid FROM evidence_versions v
+                    WHERE v.evidence_id = ev.id ORDER BY v.captured_at DESC LIMIT 1))
+            ) AS target_username,
+            u_reporter.username AS reporter_username,
+            r.authority, r.order_reference, r.review_note, r.recheck_requested_at,
+            (SELECT d.id FROM moderation_decisions d WHERE r.id = ANY(d.report_ids)
+             ORDER BY d.created_at DESC LIMIT 1) AS decision_id,
+            ev.id AS evidence_id
+        FROM reports r
+        LEFT JOIN users u_reviewer ON u_reviewer.id = r.reviewed_by
+        LEFT JOIN users u_reporter ON u_reporter.id = r.reporter_id
+        LEFT JOIN LATERAL (
+            SELECT e.id FROM evidence_records e
+            WHERE e.target_type = r.target_type AND e.target_id = r.target_id AND e.purged_at IS NULL
+            ORDER BY e.created_at DESC LIMIT 1
+        ) ev ON true
+        WHERE r.status != 'pending'
+          AND ($1::text IS NULL OR r.outcome = $1)
+          AND ($2::timestamptz IS NULL OR (r.reviewed_at, r.id) < ($2, $3))
+        ORDER BY r.reviewed_at DESC NULLS LAST, r.id DESC
+        LIMIT $4
+        "#,
+    )
+    .bind(q.outcome.as_deref().filter(|o| !o.is_empty()))
+    .bind(q.before_time)
+    .bind(q.before_id)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await
+    .db_err("Database error")?;
+    Ok(Json(rows))
 }
 
 /// GET /admin/reports (admin only) -- the review queue: pending reports

@@ -214,6 +214,7 @@ pub fn create_router(state: AppState) -> Router {
         // ── Reporting & moderation ───────────────────────────────
         .route("/reports", post(handlers::reports::create_report))
         .route("/admin/reports", get(handlers::reports::get_reports))
+        .route("/admin/reports/closed", get(handlers::reports::closed_reports))
         .route("/admin/reports/{report_id}/dismiss", post(handlers::reports::dismiss_report))
         .route("/admin/reports/{report_id}/remove", post(handlers::reports::remove_reported_content))
         .route("/moderation/decisions", get(handlers::moderation::my_decisions))

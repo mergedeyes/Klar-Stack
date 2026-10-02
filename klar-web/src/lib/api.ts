@@ -664,8 +664,46 @@ export const reportsApi = {
     ),
 };
 
+// A closed report, as GET /admin/reports/closed lists it: what the queue
+// decided, by whom and when. No content; the decision and the evidence
+// record are linked instead.
+export interface ClosedReport {
+  id: string;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by_username: string | null;
+  status: "actioned" | "dismissed";
+  outcome: ReportOutcome | null;
+  reason: string;
+  source: ReportSource;
+  target_type: string;
+  target_id: string;
+  target_username: string | null;
+  reporter_username: string | null;
+  authority: string | null;
+  order_reference: string | null;
+  review_note: string | null;
+  recheck_requested_at: string | null;
+  decision_id: string | null;
+  evidence_id: string | null;
+}
+
+export interface ClosedReportsFilter {
+  outcome?: ReportOutcome;
+  before_time?: string;
+  before_id?: string;
+  limit?: number;
+}
+
 export const adminReportsApi = {
   list: () => request<ReportGroup[]>("/admin/reports", {}, true),
+  closed: (filter: ClosedReportsFilter) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter)) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    return request<ClosedReport[]>(`/admin/reports/closed?${query}`, {}, true);
+  },
   // Closes every pending report on the item, or just this one (onlyThis).
   // objectionResponse answers a pending objection against an automatic
   // restriction the dismissal lifts; it is shown to the author.
