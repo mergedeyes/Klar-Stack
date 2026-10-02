@@ -1,5 +1,6 @@
 pub mod account_lock;
 pub mod account_review;
+pub mod audit_export;
 pub mod auth;
 pub mod blocks;
 pub mod comment_likes;

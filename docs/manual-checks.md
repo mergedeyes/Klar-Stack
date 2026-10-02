@@ -102,6 +102,7 @@ loads more as you scroll.
 - [ ] "Moderate" on a post or comment (admins) opens a case; with "An authority's order" the statement names the authority and the reference
 - [ ] Only an admin sees the shield button in the top nav (with a red dot while something waits); it opens `/admin`, which lists what's waiting (urgent first) and then every admin page under Moderation, Accounts, Legal and Testing, with badges; Settings no longer lists the admin pages
 - [ ] The Decision log filters by decision, reason, source, admin and account and pages with "Load more"
+- [ ] `/admin/audit` (Moderation tools → Legal) downloads a ZIP for the chosen period only once a reason is given; its CSVs open in Excel with umlauts and columns intact; accounts appear as K-… codes (the same in every file of one export, different in the next), with no content and no email addresses; "With identities" shows usernames instead and is marked in the list of earlier exports, where every export appears with its reason (and in the next export's `exporte.csv`)
 - [ ] A report for a likely-illegal reason immediately creates a record under `/admin/evidence` with the reported state (the report in the queue links to it); a spam report creates nothing
 - [ ] Editing the reported item (caption, comment, bio, avatar) adds a version to the timeline; deleting it (as admin, as its author, or with the account) keeps the record and marks it deleted
 - [ ] Opening an evidence record or one of its files asks for a reason, and the audit trail shows exactly one entry per action

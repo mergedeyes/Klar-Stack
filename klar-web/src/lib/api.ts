@@ -493,25 +493,57 @@ export const users = {
   // apiFetch rather than `request()` since we need the raw Blob and the
   // filename from Content-Disposition, not parsed JSON to use in state.
   exportData: async (): Promise<void> => {
-    const res = await apiFetch("/users/me/export", {}, true);
+    await saveDownload(await apiFetch("/users/me/export", {}, true), "klar-datenexport.zip");
+  },
+};
 
-    if (!res.ok) {
-      throw new Error(errorMessage(await parseBody(res), res.status));
-    }
+/** Hands a file response to the browser as a download, named as the
+ * server's Content-Disposition says. */
+async function saveDownload(res: Response, fallbackName: string): Promise<void> {
+  if (!res.ok) {
+    throw new Error(errorMessage(await parseBody(res), res.status));
+  }
 
-    const disposition = res.headers.get("Content-Disposition");
-    const match = disposition?.match(/filename="(.+)"/);
-    const filename = match?.[1] ?? "klar-datenexport.zip";
+  const disposition = res.headers.get("Content-Disposition");
+  const match = disposition?.match(/filename="(.+)"/);
+  const filename = match?.[1] ?? fallbackName;
 
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+// An earlier audit export, as the log lists it.
+export interface AuditExportEntry {
+  id: string;
+  created_at: string;
+  exported_by_username: string | null;
+  period_from: string;
+  period_to: string;
+  with_identities: boolean;
+  reason: string;
+}
+
+export const adminAuditApi = {
+  list: () => request<AuditExportEntry[]>("/admin/audit-exports", {}, true),
+  // Logged on the server before the file comes back (handlers/audit_export.rs).
+  download: async (from: string, to: string, withIdentities: boolean, reason: string): Promise<void> => {
+    const res = await apiFetch(
+      "/admin/audit-exports",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to, with_identities: withIdentities, reason }),
+      },
+      true,
+    );
+    await saveDownload(res, `klar-audit-${from}_${to}.zip`);
   },
 };
 

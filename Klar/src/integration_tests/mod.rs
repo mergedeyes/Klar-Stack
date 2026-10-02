@@ -23,6 +23,7 @@ mod support;
 mod account_lock;
 mod accounts;
 mod account_review;
+mod audit_export;
 mod chats;
 mod evidence;
 mod feedback;
