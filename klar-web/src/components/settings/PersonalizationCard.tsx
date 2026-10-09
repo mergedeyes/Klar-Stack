@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
 
 // The consent to the interaction log that will rank Discovery
 // (handlers/events.rs): off until the account switches it on. The home
@@ -48,23 +49,12 @@ export default function PersonalizationCard() {
             <Link href="/datenschutz#discovery" className="underline">Privacy policy</Link>
           </p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
+        <Switch
+          checked={enabled}
+          onCheckedChange={toggle}
           aria-labelledby="personalization-label"
-          onClick={toggle}
           disabled={saving || !user}
-          className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors disabled:opacity-60 ${
-            enabled ? "border-primary bg-primary" : "border-border bg-input"
-          }`}
-        >
-          <span
-            className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full border border-border/50 bg-white shadow transition-transform ${
-              enabled ? "translate-x-5" : "translate-x-0"
-            }`}
-          />
-        </button>
+        />
       </div>
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </div>

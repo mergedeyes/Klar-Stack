@@ -122,6 +122,24 @@ export function cursorAfter(page: Post[]): PostCursor {
   return { time: last.created_at, id: last.id };
 }
 
+/** A post the caller liked, as listed under Settings -> Your activity. */
+export interface LikedPost extends Post {
+  liked_at: string;
+}
+
+/** One of the caller's own comments, with enough of its post to link to it. */
+export interface ActivityComment {
+  id: string;
+  post_id: string;
+  parent_comment_id: string | null;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  moderation_status: 'visible' | 'flagged' | 'hidden';
+  post_username: string;
+  post_thumb_url: string | null;
+}
+
 export interface DiscoveryFeedResponse {
   data: Post[];
   next_cursor: PostCursor | null;
@@ -1534,7 +1552,27 @@ export const notifications = {
     request<{ ticket: string }>("/notifications/stream-ticket", { method: "POST" }, true),
 };
 
+// Settings -> Your activity: the caller's own likes and comments, newest
+// first, only on posts the caller can still see. Paged like the feeds, with
+// the cursor taken from the last item (liked_at for likes).
+function activityPage<T>(kind: "likes" | "comments", cursor?: PostCursor, limit = 30) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) {
+    params.set("cursor", cursor.time);
+    params.set("cursor_id", cursor.id);
+  }
+  return request<T[]>(`/users/me/activity/${kind}?${params}`, {}, true);
+}
+
+export const activity = {
+  likes: (cursor?: PostCursor, limit?: number) => activityPage<LikedPost>("likes", cursor, limit),
+  comments: (cursor?: PostCursor, limit?: number) => activityPage<ActivityComment>("comments", cursor, limit),
+};
+
 export const blocks = {
+  // Accounts the caller blocked, most recent first (Settings -> Blocked
+  // accounts). Not the ones that blocked the caller: who did is never shown.
+  list: () => request<User[]>("/users/me/blocked", {}, true),
   block: (username: string) =>
     request<{ message: string }>(`/users/${username}/block`, { method: "POST" }, true),
   unblock: (username: string) =>
