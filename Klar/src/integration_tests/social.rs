@@ -149,6 +149,37 @@ async fn odd_query_parameters_are_harmless(pool: PgPool) {
     assert_eq!(names(app.anon_get("/users/search?q=al_").await.ok().json()), vec!["al_ice"]);
 }
 
+#[sqlx::test(migrations = "./migrations")]
+async fn search_shows_the_relationship_and_hides_blocked_accounts(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let alice = app.register("alice").await;
+    let bob = app.register("bob").await;
+    app.register("carol").await;
+    let dave = app.register("dave").await;
+    app.patch(&dave, "/users/me", json!({ "is_private": true })).await.ok();
+    app.post(&alice, "/users/bob/follow", json!({})).await.ok();
+    app.post(&alice, "/users/dave/follow", json!({})).await.ok();
+
+    // The search cards' follow buttons start from this, so an account the
+    // viewer already follows must not show up as followable.
+    for (name, relationship) in [("alice", "self"), ("bob", "following"), ("carol", "not_following"), ("dave", "requested")] {
+        let res = app.get(&alice, &format!("/users/search?q={name}")).await.ok().json();
+        assert_eq!(res[0]["username"], name);
+        assert_eq!(res[0]["viewer_relationship"], relationship, "{name}");
+    }
+
+    // Logged out there's no relationship to show.
+    assert!(app.anon_get("/users/search?q=bob").await.ok().json()[0]["viewer_relationship"].is_null());
+
+    // A block hides both accounts from each other's search, and only theirs.
+    let carol = app.register("carolyn").await;
+    app.post(&carol, "/users/bob/block", json!({})).await.ok();
+    let found = |res: Value| res.as_array().unwrap().len();
+    assert_eq!(found(app.get(&carol, "/users/search?q=bob").await.ok().json()), 0);
+    assert_eq!(found(app.get(&bob, "/users/search?q=carolyn").await.ok().json()), 0);
+    assert_eq!(found(app.get(&alice, "/users/search?q=bob").await.ok().json()), 1);
+}
+
 /// Pages through `first` (the path with `?limit=`) until a short page,
 /// following the cursor the way the frontend does.
 async fn page_through(app: &TestApp, user: &User, first: &str, discovery: bool) -> Vec<String> {

@@ -14,10 +14,10 @@ export interface User {
   created_at: string;
   username_changed_at?: string | null;
   is_private: boolean;
-  // The *caller's* relationship to this profile. Only populated by
-  // GET /users/:username and GET /users/me -- other endpoints that also
-  // return a User-shaped object (search, followers/following lists) omit
-  // it, since computing it per-row there would be N extra lookups.
+  // The *caller's* relationship to this profile. Populated by
+  // GET /users/:username, GET /users/me and (when logged in) user search,
+  // whose cards have a follow button -- other endpoints that also return a
+  // User-shaped object (followers/following lists) omit it.
   viewer_relationship?: 'self' | 'following' | 'requested' | 'not_following' | null;
   // Reverse direction: does *this* profile have a pending request to
   // follow *me*? Lets accept/decline show up right on their profile page,
