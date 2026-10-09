@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, UserCheck, UserPlus } from "lucide-react";
+import { ArrowLeft, Clock, Search, UserCheck, UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi, follows, type User } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -21,20 +21,28 @@ function UserCard({
   isMe: boolean;
   onNavigate: (username: string) => void;
 }) {
-  const [following, setFollowing] = useState(false);
+  // Starts from the relationship the search response carries, so accounts
+  // the viewer already follows (or has asked to) don't offer "Follow" again.
+  const [relationship, setRelationship] = useState(
+    user.viewer_relationship ?? "not_following"
+  );
   const [loading, setLoading] = useState(false);
+  const following = relationship === "following";
+  const requested = relationship === "requested";
 
   const handleFollow = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (loading) return;
     setLoading(true);
     try {
-      if (following) {
+      // Unfollowing also withdraws a pending request. Following a private
+      // account only creates a request, which the response's status says.
+      if (following || requested) {
         await follows.unfollow(user.username);
-        setFollowing(false);
+        setRelationship("not_following");
       } else {
-        await follows.follow(user.username);
-        setFollowing(true);
+        const res = await follows.follow(user.username);
+        setRelationship(res.status);
       }
     } catch {
       // Silently ignore — user can retry
@@ -78,7 +86,7 @@ function UserCard({
       {!isMe && (
         <Button
           size="sm"
-          variant={following ? "outline" : "default"}
+          variant={following || requested ? "outline" : "default"}
           onClick={handleFollow}
           disabled={loading}
           className="shrink-0"
@@ -87,6 +95,11 @@ function UserCard({
             <>
               <UserCheck size={14} className="mr-1" />
               Following
+            </>
+          ) : requested ? (
+            <>
+              <Clock size={14} className="mr-1" />
+              Requested
             </>
           ) : (
             <>

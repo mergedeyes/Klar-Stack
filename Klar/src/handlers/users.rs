@@ -21,6 +21,7 @@ use crate::validation::{
     check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
 };
 use chrono::{DateTime, Duration, Utc};
+use std::collections::HashSet;
 use std::io::{Seek, Write};
 
 /// Search query parameters
@@ -34,6 +35,7 @@ pub struct SearchQuery {
 /// GET /users/search?q=term — search users by username or display name
 pub async fn search_users(
     State(state): State<AppState>,
+    auth: OptionalAuthUser,
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<UserPublicResponse>>, AppError> {
     let query = params.q.trim().to_string();
@@ -57,6 +59,11 @@ pub async fn search_users(
         SELECT * FROM users
         WHERE (username ILIKE $1 OR display_name ILIKE $1)
           AND (suspended_until IS NULL OR suspended_until <= NOW())
+          -- A block hides both accounts from each other, like in Discovery;
+          -- the blocker finds the account again under Settings -> Blocked.
+          AND NOT EXISTS(SELECT 1 FROM blocks b
+                         WHERE (b.blocker_id = $5 AND b.blocked_id = users.id)
+                            OR (b.blocker_id = users.id AND b.blocked_id = $5))
         ORDER BY
             CASE WHEN username ILIKE $2 THEN 0 ELSE 1 END,
             username
@@ -67,14 +74,53 @@ pub async fn search_users(
     .bind(format!("{}%", escaped))
     .bind(limit)
     .bind(offset)
+    .bind(auth.user_id)
     .fetch_all(&state.db)
     .await
     .db_err_ctx("Search query failed", "Search failed")?;
 
-    // No viewer_relationship computed here (would be N extra lookups per
-    // result) -- search results only need is_private, to show a lock icon;
-    // the profile page itself computes the real relationship when opened.
-    let responses: Vec<UserPublicResponse> = users.into_iter().map(UserPublicResponse::from).collect();
+    let mut responses: Vec<UserPublicResponse> = users.into_iter().map(UserPublicResponse::from).collect();
+
+    // The result cards have a follow button, so they need the viewer's
+    // relationship to each account. Fetched for the whole page in one query
+    // per table rather than the profile page's per-account lookups.
+    if let Some(viewer_id) = auth.user_id {
+        let ids: Vec<Uuid> = responses.iter().map(|u| u.id).collect();
+        let following: HashSet<Uuid> = sqlx::query_scalar(
+            "SELECT following_id FROM follows WHERE follower_id = $1 AND following_id = ANY($2)"
+        )
+        .bind(viewer_id)
+        .bind(&ids)
+        .fetch_all(&state.db)
+        .await
+        .db_err("Database error")?
+        .into_iter()
+        .collect();
+        let requested: HashSet<Uuid> = sqlx::query_scalar(
+            "SELECT target_id FROM follow_requests WHERE requester_id = $1 AND target_id = ANY($2)"
+        )
+        .bind(viewer_id)
+        .bind(&ids)
+        .fetch_all(&state.db)
+        .await
+        .db_err("Database error")?
+        .into_iter()
+        .collect();
+
+        for user in &mut responses {
+            let relationship = if user.id == viewer_id {
+                "self"
+            } else if following.contains(&user.id) {
+                "following"
+            } else if requested.contains(&user.id) {
+                "requested"
+            } else {
+                "not_following"
+            };
+            user.viewer_relationship = Some(relationship.to_string());
+        }
+    }
+
     Ok(Json(responses.resolve_media(&state.storage)))
 }
 

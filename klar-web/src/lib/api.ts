@@ -14,10 +14,10 @@ export interface User {
   created_at: string;
   username_changed_at?: string | null;
   is_private: boolean;
-  // The *caller's* relationship to this profile. Only populated by
-  // GET /users/:username and GET /users/me -- other endpoints that also
-  // return a User-shaped object (search, followers/following lists) omit
-  // it, since computing it per-row there would be N extra lookups.
+  // The *caller's* relationship to this profile. Populated by
+  // GET /users/:username, GET /users/me and (when logged in) user search,
+  // whose cards have a follow button -- other endpoints that also return a
+  // User-shaped object (followers/following lists) omit it.
   viewer_relationship?: 'self' | 'following' | 'requested' | 'not_following' | null;
   // Reverse direction: does *this* profile have a pending request to
   // follow *me*? Lets accept/decline show up right on their profile page,
@@ -120,6 +120,24 @@ export interface PostCursor {
 export function cursorAfter(page: Post[]): PostCursor {
   const last = page[page.length - 1];
   return { time: last.created_at, id: last.id };
+}
+
+/** A post the caller liked, as listed under Settings -> Your activity. */
+export interface LikedPost extends Post {
+  liked_at: string;
+}
+
+/** One of the caller's own comments, with enough of its post to link to it. */
+export interface ActivityComment {
+  id: string;
+  post_id: string;
+  parent_comment_id: string | null;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  moderation_status: 'visible' | 'flagged' | 'hidden';
+  post_username: string;
+  post_thumb_url: string | null;
 }
 
 export interface DiscoveryFeedResponse {
@@ -1534,7 +1552,27 @@ export const notifications = {
     request<{ ticket: string }>("/notifications/stream-ticket", { method: "POST" }, true),
 };
 
+// Settings -> Your activity: the caller's own likes and comments, newest
+// first, only on posts the caller can still see. Paged like the feeds, with
+// the cursor taken from the last item (liked_at for likes).
+function activityPage<T>(kind: "likes" | "comments", cursor?: PostCursor, limit = 30) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) {
+    params.set("cursor", cursor.time);
+    params.set("cursor_id", cursor.id);
+  }
+  return request<T[]>(`/users/me/activity/${kind}?${params}`, {}, true);
+}
+
+export const activity = {
+  likes: (cursor?: PostCursor, limit?: number) => activityPage<LikedPost>("likes", cursor, limit),
+  comments: (cursor?: PostCursor, limit?: number) => activityPage<ActivityComment>("comments", cursor, limit),
+};
+
 export const blocks = {
+  // Accounts the caller blocked, most recent first (Settings -> Blocked
+  // accounts). Not the ones that blocked the caller: who did is never shown.
+  list: () => request<User[]>("/users/me/blocked", {}, true),
   block: (username: string) =>
     request<{ message: string }>(`/users/${username}/block`, { method: "POST" }, true),
   unblock: (username: string) =>

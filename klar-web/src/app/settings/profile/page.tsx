@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Lock } from "lucide-react";
+import { Camera } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi } from "@/lib/api";
@@ -19,7 +19,6 @@ export default function EditProfilePage() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
-  const [isPrivate, setIsPrivate] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -44,7 +43,6 @@ export default function EditProfilePage() {
     setUsername(user.username ?? "");
     setDisplayName(user.display_name ?? "");
     setBio(user.bio ?? "");
-    setIsPrivate(user.is_private ?? false);
   }
 
   // Cooldown Calculation (14 days)
@@ -123,8 +121,7 @@ export default function EditProfilePage() {
       await usersApi.updateProfile(
         usernamePayload,
         displayName.trim(),
-        bio.trim(),
-        isPrivate
+        bio.trim()
       );
 
       // Refresh the cached user so other pages (e.g. "is this my own
@@ -293,46 +290,6 @@ export default function EditProfilePage() {
           <p className="text-xs text-muted-foreground">
             {bio.length}/500
           </p>
-        </div>
-
-        {/* Private account */}
-        <div className="flex items-center justify-between rounded-xl border border-border p-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
-              <Lock size={16} />
-            </div>
-            <div>
-              <p className="text-sm font-medium">Private account</p>
-              <p className="text-xs text-muted-foreground">
-                When on, only approved followers can see your posts. New
-                followers need your approval, and you can review pending
-                requests from your profile.
-              </p>
-            </div>
-          </div>
-          {/* Knob position bug: the base classes never set an explicit
-              `left`, so the "off" translate-x-0.5 had no reliable anchor
-              to translate *from* -- the browser's default static
-              position isn't guaranteed to be the track's left edge. Now
-              `left-0.5` is the actual base position, and translate-x-5
-              (20px) moves it flush to the right inset -- both consistent
-              with the 44px track / 20px knob / 2px inset math. */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={isPrivate}
-            onClick={() => setIsPrivate((v) => !v)}
-            disabled={saving}
-            className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors disabled:opacity-60 ${
-              isPrivate ? "border-primary bg-primary" : "border-border bg-input"
-            }`}
-          >
-            <span
-              className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full border border-border/50 bg-white shadow transition-transform ${
-                isPrivate ? "translate-x-5" : "translate-x-0"
-              }`}
-            />
-          </button>
         </div>
       </main>
     </div>

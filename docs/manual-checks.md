@@ -35,9 +35,13 @@ loads more as you scroll.
 ## Privacy and visibility
 
 - [ ] A private account's posts, profile grid and post permalinks are hidden from the other account until it's an accepted follower
+- [ ] Search shows "Following" for accounts you already follow and "Requested" for pending requests (also after a reload); following a private account from search turns the button into "Requested", not "Following"
 - [ ] After unfollowing or being blocked, the other account can no longer open the posts (reload the page; media links stop working once their signature expires)
 - [ ] Content hidden by moderation is visible only to its owner, who sees "Hidden — only you can see this post" with a link to Moderation; content removed by moderation is gone for everyone, its owner included
 - [ ] Blocking hides each account's posts from the other's discovery feed, and removes pending follow requests both ways
+- [ ] Blocking hides both accounts from each other's search; the blocked account shows up under Settings → Blocked accounts, where "Unblock" works (and turns into "Block" until the page is reloaded)
+- [ ] Settings → "Private account" switches at once and stays after a reload; switching back to public asks first; Edit profile no longer has the switch
+- [ ] Settings → Your activity lists liked posts (newest like first; unliking one in the opened post takes it off the grid) and own comments with their post; deleting a comment there removes it from the post too; a post that's become out of reach (blocked, private and not followed, removed) isn't listed
 - [ ] Other users' email addresses never appear in any response (check the Network tab on profiles, follower lists, notifications and search)
 - [ ] Settings → "Personalised Discovery" is off for a new account, and likes and comments made then never appear in the data download's `discovery_interactions`; after switching it on they do (with `personalization_consented_at` in the profile); switching it off asks first, stays off after a reload, and empties `discovery_interactions`
 - [ ] The home feed's order never changes with likes or comments (newest first, whatever the setting)

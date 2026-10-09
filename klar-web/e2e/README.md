@@ -3,7 +3,8 @@
 Playwright tests for what only a real page shows: the footer layout, the post
 modal's address and back button, sharing, the post page on phone and desktop,
 the link-preview tags, signing up, verifying, resetting and changing the
-password, the data download and account deletion, follow requests, live
+password, the data download and account deletion, follow requests, search,
+the settings (private account, blocked accounts, your activity), live
 notifications and chat messages, the profile grid's paging, and the
 moderation and admin flows (reporting posts, comments and profiles, CSAM and
 intimate-image hides with held-back statements, classifying removals,

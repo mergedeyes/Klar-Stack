@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Archive } from "lucide-react";
 import { users } from "@/lib/api";
 
 // Test phase only: everything is deleted before launch unless the owner
 // asks to keep their account. Remove with handlers/test_phase.rs once
 // Klar has launched.
-export default function KeepAccountCard() {
+export default function KeepAccountRow() {
   const [keep, setKeep] = useState<boolean | null>(null);
   const [since, setSince] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -36,29 +37,28 @@ export default function KeepAccountCard() {
   };
 
   return (
-    <div className="mt-4 rounded-xl border border-border px-4 py-4">
+    <div className="px-4 py-2.5">
       <label className="flex items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
+          <Archive size={16} />
+        </span>
+        <span className="flex-1">
+          <span className="block text-sm font-medium">Keep my account after the test</span>
+          <span className="block text-xs text-muted-foreground">
+            {keep && since
+              ? `Requested on ${new Date(since).toLocaleDateString()}. `
+              : "Test accounts are deleted before launch. "}
+            Yours keeps its posts and comments, and follows and chats with others who keep theirs.
+          </span>
+        </span>
         <input
           type="checkbox"
           checked={keep ?? false}
           disabled={keep === null}
           aria-busy={saving}
           onChange={(e) => toggle(e.target.checked)}
-          className="mt-1"
+          className="mt-2 h-4 w-4"
         />
-        <span className="flex-1">
-          <span className="block text-sm font-medium">Keep my account after the test</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Before Klar launches, all test accounts and their data are deleted. Tick this to keep yours: your
-            profile, posts and comments stay, and so do follows and chats with others who keep their accounts
-            too. You can change your mind until the launch.
-          </span>
-          {keep && since && (
-            <span className="mt-1 block text-xs text-muted-foreground">
-              Requested on {new Date(since).toLocaleDateString()}.
-            </span>
-          )}
-        </span>
       </label>
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </div>
