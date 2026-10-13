@@ -42,7 +42,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "concurrently": "^9.2.4",
+    "concurrently": "^9.2.5",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "pg": "^8.23.1",
