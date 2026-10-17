@@ -52,6 +52,10 @@ uploads
 TODO.md
 todo_p0.md
 
+# Local Bunny domain/cert scripts
+/check-bunny.fish
+/klar-cdn-cert.fish
+
 # Testing
 scripts
 # ...but not the scripts CI runs.
