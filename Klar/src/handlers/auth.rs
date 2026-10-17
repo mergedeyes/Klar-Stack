@@ -23,7 +23,7 @@ use crate::models::{
 };
 use crate::storage::{CdnPurger, EvidenceStorage, Storage};
 use crate::utils::{DbResultExt, ResolveMedia};
-use crate::validation::{normalize_email, validate_new_email, validate_password, validate_username};
+use crate::validation::{normalize_email, validate_locale, validate_new_email, validate_password, validate_username};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -161,6 +161,7 @@ pub async fn register(
     let username = validate_username(&input.username)?;
     let email = validate_new_email(&input.email)?;
     validate_password(&input.password)?;
+    let locale = input.locale.as_deref().map(validate_locale).transpose()?;
 
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -170,11 +171,12 @@ pub async fn register(
         .to_string();
 
     let user = sqlx::query_as::<_, UserRow>(
-        "INSERT INTO users (username, email, password_hash, terms_accepted_at) VALUES ($1, $2, $3, NOW()) RETURNING *"
+        "INSERT INTO users (username, email, password_hash, terms_accepted_at, locale) VALUES ($1, $2, $3, NOW(), $4) RETURNING *"
     )
     .bind(&username)
     .bind(&email)
     .bind(&password_hash)
+    .bind(&locale)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {

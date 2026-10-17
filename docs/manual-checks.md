@@ -19,6 +19,15 @@ realistic data volumes for the paging checks.
 - [ ] Loading state appears (skeleton or spinner) and is replaced by content, an empty state or an error, never left spinning
 - [ ] Browser console shows no new errors or React warnings
 
+## Language
+
+- [ ] Signed out, with the browser set to German, the page is German (`<html lang="de">`); set to French or anything else, English
+- [ ] Settings → Language switches the page at once, stays after a reload and on another device or browser after signing in there, even when that browser asks for the other language
+- [ ] An account created before this change gets its browser's language the first time it opens Klar (Settings shows it)
+- [ ] After logging out, the page follows the browser's language again (the `klar_locale` cookie is gone)
+- [ ] The notification dropdown reads naturally in German ("alice gefällt dein Beitrag"), with the name in bold
+- [ ] The legal pages stay German in both languages; the footer links keep their German names
+
 ## Paginated lists
 
 Applies to the home feed, discovery feed and profile grid, and to any list that

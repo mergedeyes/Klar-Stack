@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "description": "Fotos teilen, ohne deine Daten herzugeben"
+  },
+  "common": {
+    "back": "Zurück",
+    "on": "An",
+    "off": "Aus",
+    "couldntSave": "Konnte nicht gespeichert werden"
+  },
+  "footer": {
+    "feedback": "Feedback",
+    "guide": "Einführung"
+  },
+  "verifyBanner": {
+    "text": "Bitte bestätige deine E-Mail-Adresse. Wir haben einen Link an <strong>{email}</strong> geschickt. Bis dahin kannst du nichts posten, kommentieren, keine Nachrichten schreiben und nichts melden. Ein Konto, das unbestätigt bleibt, wird nach 30 Tagen gelöscht.",
+    "sent": "Neuer Link gesendet – schau in dein Postfach.",
+    "sending": "Wird gesendet …",
+    "resend": "E-Mail erneut senden"
+  },
+  "nav": {
+    "discovery": "Entdecken",
+    "search": "Suche",
+    "newPost": "Neuer Beitrag",
+    "notifications": "Benachrichtigungen",
+    "notificationsUnread": "Benachrichtigungen ({count} ungelesen)",
+    "noNotifications": "Noch keine Benachrichtigungen",
+    "chats": "Chats",
+    "profile": "Profil",
+    "moderationTools": "Moderationswerkzeuge",
+    "moderationToolsWaiting": "Moderationswerkzeuge ({count} offen)",
+    "settings": "Einstellungen",
+    "logOut": "Abmelden",
+    "accept": "Annehmen",
+    "decline": "Ablehnen"
+  },
+  "notifications": {
+    "post_like": "<actor>{name}</actor> gefällt dein Beitrag",
+    "comment": "<actor>{name}</actor> hat deinen Beitrag kommentiert",
+    "comment_like": "<actor>{name}</actor> gefällt dein Kommentar",
+    "follow": "<actor>{name}</actor> folgt dir jetzt",
+    "follow_request": "<actor>{name}</actor> möchte dir folgen",
+    "follow_accepted": "<actor>{name}</actor> hat deine Folgeanfrage angenommen",
+    "moderation_decision": "<actor>{name}</actor>: eine Moderationsentscheidung zu deinen Inhalten",
+    "report_outcome": "<actor>{name}</actor>: deine Meldung wurde geprüft",
+    "objection_resolved": "<actor>{name}</actor>: dein Widerspruch wurde beantwortet",
+    "other": "<actor>{name}</actor> hat mit dir interagiert"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "yourAccount": "Dein Konto",
+    "editProfile": "Profil bearbeiten",
+    "changePassword": "Passwort ändern",
+    "activity": "Deine Aktivität",
+    "language": "Sprache",
+    "privacy": "Privatsphäre",
+    "privateAccount": "Privates Konto",
+    "confirmPublic": "Dein Konto öffentlich machen? Dann kann jede Person deine Beiträge sehen.",
+    "blocked": "Blockierte Konten",
+    "discovery": "Personalisiertes Entdecken",
+    "yourData": "Deine Daten",
+    "moderation": "Moderation",
+    "download": "Deine Daten herunterladen",
+    "preparing": "Deine Daten werden vorbereitet …",
+    "exportFailed": "Export fehlgeschlagen",
+    "logOutOrDelete": "Abmelden oder Konto löschen"
+  }
+}

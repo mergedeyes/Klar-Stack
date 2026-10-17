@@ -3,12 +3,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import {
   ChevronRight,
   Compass,
   Download,
   History,
   KeyRound,
+  Languages,
   Lock,
   ShieldCheck,
   UserPen,
@@ -20,10 +22,11 @@ import { users } from "@/lib/api";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import { Switch } from "@/components/ui/switch";
 import KeepAccountRow from "@/components/settings/KeepAccountRow";
+import { LOCALES, LOCALE_NAMES, isLocale } from "@/i18n/config";
 
 // One short line per row and grouped under headings, so the page still fits
-// one screen (e2e/layout.spec.ts); anything that needs explaining gets its
-// own page.
+// one screen (e2e/layout.spec.ts; the desktop one is 800px high, with little
+// to spare); anything that needs explaining gets its own page.
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -46,7 +49,7 @@ function RowContent({ icon: Icon, label, value }: { icon: LucideIcon; label: str
   );
 }
 
-const rowClass = "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50";
+const rowClass = "flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-muted/50";
 
 function LinkRow({ href, icon, label, value }: { href: string; icon: LucideIcon; label: string; value?: string }) {
   return (
@@ -60,6 +63,10 @@ function LinkRow({ href, icon, label, value }: { href: string; icon: LucideIcon;
 export default function SettingsPage() {
   const { user, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
+  const t = useTranslations("settings");
+  const tc = useTranslations("common");
+  const locale = useLocale();
+  const [savingLocale, setSavingLocale] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   // The switch follows the click at once and goes back if saving fails.
@@ -75,7 +82,7 @@ export default function SettingsPage() {
   const isPrivate = pendingPrivate ?? user.is_private ?? false;
 
   const handlePrivacy = async (next: boolean) => {
-    if (!next && !window.confirm("Make your account public? Anyone will be able to see your posts.")) return;
+    if (!next && !window.confirm(t("confirmPublic"))) return;
     setPendingPrivate(next);
     setSavingPrivacy(true);
     setError(null);
@@ -83,10 +90,25 @@ export default function SettingsPage() {
       await users.updateProfile(null, null, null, next);
       await refreshUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save");
+      setError(err instanceof Error ? err.message : tc("couldntSave"));
     } finally {
       setPendingPrivate(null);
       setSavingPrivacy(false);
+    }
+  };
+
+  // Saved to the account; LocaleSync then renders the page in it.
+  const handleLocale = async (next: string) => {
+    if (!isLocale(next)) return;
+    setSavingLocale(true);
+    setError(null);
+    try {
+      await users.setLocale(next);
+      await refreshUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tc("couldntSave"));
+    } finally {
+      setSavingLocale(false);
     }
   };
 
@@ -98,7 +120,7 @@ export default function SettingsPage() {
     try {
       await users.exportData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      setError(err instanceof Error ? err.message : t("exportFailed"));
     } finally {
       setExporting(false);
     }
@@ -108,8 +130,8 @@ export default function SettingsPage() {
     <div className="flex-1 bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
-          <span className="font-semibold">Settings</span>
+          <SmartBackButton aria-label={tc("back")} />
+          <span className="font-semibold">{t("title")}</span>
         </div>
       </header>
 
@@ -118,35 +140,51 @@ export default function SettingsPage() {
           <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
         )}
 
-        <Group title="Your account">
-          <LinkRow href="/settings/profile" icon={UserPen} label="Edit profile" />
-          <LinkRow href="/settings/password" icon={KeyRound} label="Change password" />
-          <LinkRow href="/settings/activity" icon={History} label="Your activity" />
+        <Group title={t("yourAccount")}>
+          <LinkRow href="/settings/profile" icon={UserPen} label={t("editProfile")} />
+          <LinkRow href="/settings/password" icon={KeyRound} label={t("changePassword")} />
+          <LinkRow href="/settings/activity" icon={History} label={t("activity")} />
+          <label className="flex items-center gap-3 px-4 py-2">
+            <RowContent icon={Languages} label={t("language")} />
+            <select
+              value={locale}
+              onChange={(e) => handleLocale(e.target.value)}
+              disabled={savingLocale}
+              aria-label={t("language")}
+              className="rounded-md border border-input bg-background px-2 py-1 text-sm disabled:opacity-60"
+            >
+              {LOCALES.map((l) => (
+                <option key={l} value={l} lang={l}>
+                  {LOCALE_NAMES[l]}
+                </option>
+              ))}
+            </select>
+          </label>
         </Group>
 
-        <Group title="Privacy">
-          <div className="flex items-center gap-3 px-4 py-2.5">
-            <RowContent icon={Lock} label="Private account" />
+        <Group title={t("privacy")}>
+          <div className="flex items-center gap-3 px-4 py-2">
+            <RowContent icon={Lock} label={t("privateAccount")} />
             <Switch
               checked={isPrivate}
               onCheckedChange={handlePrivacy}
               disabled={savingPrivacy}
-              aria-label="Private account"
+              aria-label={t("privateAccount")}
             />
           </div>
-          <LinkRow href="/settings/blocked" icon={UserX} label="Blocked accounts" />
+          <LinkRow href="/settings/blocked" icon={UserX} label={t("blocked")} />
           <LinkRow
             href="/settings/discovery"
             icon={Compass}
-            label="Personalised Discovery"
-            value={user.personalization_enabled ? "On" : "Off"}
+            label={t("discovery")}
+            value={user.personalization_enabled ? tc("on") : tc("off")}
           />
         </Group>
 
-        <Group title="Your data">
-          <LinkRow href="/moderation" icon={ShieldCheck} label="Moderation" />
+        <Group title={t("yourData")}>
+          <LinkRow href="/moderation" icon={ShieldCheck} label={t("moderation")} />
           <button onClick={handleExport} disabled={exporting} className={`${rowClass} disabled:opacity-60`}>
-            <RowContent icon={Download} label={exporting ? "Preparing your data…" : "Download your data"} value="ZIP" />
+            <RowContent icon={Download} label={exporting ? t("preparing") : t("download")} value="ZIP" />
           </button>
           <KeepAccountRow />
         </Group>
@@ -155,7 +193,7 @@ export default function SettingsPage() {
           href="/settings/account"
           className="block px-1 text-sm text-destructive underline-offset-4 hover:underline"
         >
-          Log out or delete account
+          {t("logOutOrDelete")}
         </Link>
       </main>
     </div>

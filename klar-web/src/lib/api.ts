@@ -1,4 +1,5 @@
 import { ENV } from '@/env';
+import { DEFAULT_LOCALE, type AppLocale } from '@/i18n/config';
 const API_URL = ENV.API_URL
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -39,6 +40,9 @@ export interface User {
   // Whether the owner has finished or closed the welcome guide. Only
   // GET /users/me sets it, for the owner.
   guide_seen?: boolean;
+  // The language the owner sees Klar in ("en" or "de"); missing or null
+  // until the app has set it (components/LocaleSync.tsx).
+  locale?: string | null;
 }
 
 export interface Post {
@@ -304,8 +308,16 @@ export async function getAccessToken(): Promise<string | null> {
 
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
 
+// The language the root layout rendered the page in (<html lang>).
+function pageLocale(): string {
+  return typeof document === "undefined" ? DEFAULT_LOCALE : document.documentElement.lang || DEFAULT_LOCALE;
+}
+
 async function buildFetchOptions(options: RequestInit): Promise<RequestInit> {
   const headers: Record<string, string> = {
+    // The language the page is shown in, which may be the account's rather
+    // than the browser's, for the backend's messages.
+    "Accept-Language": pageLocale(),
     ...(options.headers as Record<string, string>),
   };
   // FormData needs the browser to set its own multipart Content-Type
@@ -408,7 +420,7 @@ export const auth = {
   register: (username: string, email: string, password: string, acceptTerms: boolean) =>
     request<AuthResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ username, email, password, accept_terms: acceptTerms }),
+      body: JSON.stringify({ username, email, password, accept_terms: acceptTerms, locale: pageLocale() }),
     }),
 
   // `login` is an email address or a username.
@@ -467,6 +479,8 @@ export const users = {
     ),
   me: () => request<User>("/users/me", {}, true),
   markGuideSeen: () => request<void>("/users/me/guide-seen", { method: "POST" }, true),
+  setLocale: (locale: AppLocale) =>
+    request<void>("/users/me/locale", { method: "PATCH", body: JSON.stringify({ locale }) }, true),
   // Gives or withdraws the consent; withdrawing deletes the log (handlers/events.rs).
   setPersonalization: (enabled: boolean) =>
     request<{ enabled: boolean }>(

@@ -63,6 +63,17 @@ pub fn validate_official_username(raw: &str) -> Result<String, AppError> {
     Ok(username.to_string())
 }
 
+/// The languages Klar is translated into (klar-web/messages/).
+pub const LOCALES: [&str; 2] = ["en", "de"];
+
+pub fn validate_locale(raw: &str) -> Result<String, AppError> {
+    LOCALES
+        .iter()
+        .find(|l| **l == raw)
+        .map(|l| l.to_string())
+        .ok_or_else(|| AppError::bad_request("Unsupported language"))
+}
+
 /// Canonical form of an email for storage and lookup: trimmed and
 /// lowercased. Emails are unique and matched case-insensitively
 /// (migration 20260929000000), so "Foo@x.de" and "foo@x.de" are one

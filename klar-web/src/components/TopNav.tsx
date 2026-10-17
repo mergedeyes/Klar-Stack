@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   LogOut,
   Plus,
@@ -32,21 +33,30 @@ interface TopNavProps {
   onPostCreated?: () => void;
 }
 
-/** Human-readable text for each notification type. 'message' never
- * reaches this dropdown (see use-notifications.ts), so it's not listed. */
-function notificationText(typeName: string): string {
-  switch (typeName) {
-    case "post_like": return " liked your post";
-    case "comment": return " commented on your post";
-    case "comment_like": return " liked your comment";
-    case "follow": return " started following you";
-    case "follow_request": return " wants to follow you";
-    case "follow_accepted": return " accepted your follow request";
-    case "moderation_decision": return ": a moderation decision about your content";
-    case "report_outcome": return ": your report was reviewed";
-    case "objection_resolved": return ": your objection was answered";
-    default: return " interacted with you";
-  }
+// The notification types with a text of their own (messages/*.json,
+// "notifications"). 'message' never reaches this dropdown (see
+// use-notifications.ts), so it's not listed.
+const NOTIFICATION_TYPES = [
+  "post_like",
+  "comment",
+  "comment_like",
+  "follow",
+  "follow_request",
+  "follow_accepted",
+  "moderation_decision",
+  "report_outcome",
+  "objection_resolved",
+] as const;
+
+/** One notification's line, with the actor's name in bold; the name's
+ * place in the sentence depends on the language. */
+function NotificationText({ n }: { n: AppNotification }) {
+  const t = useTranslations("notifications");
+  const type = NOTIFICATION_TYPES.find((known) => known === n.type_name) ?? "other";
+  return t.rich(type, {
+    name: n.actor?.username ?? "Klar",
+    actor: (chunks) => <span className="font-semibold">{chunks}</span>,
+  });
 }
 
 /** Where clicking a notification should go: the post for like/comment
@@ -119,6 +129,7 @@ function NotificationPreview({ n }: { n: AppNotification }) {
 export default function TopNav({ active, onPostCreated }: TopNavProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const t = useTranslations("nav");
 
   const { notifications, unreadCount, markAllAsRead, chatUnreadCount } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -187,7 +198,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             size="icon"
             className={iconClass("discovery")}
             onClick={() => router.push("/feed/discovery")}
-            aria-label="Discovery"
+            aria-label={t("discovery")}
           >
             <Compass size={20} />
           </Button>
@@ -196,7 +207,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             size="icon"
             className={iconClass("search")}
             onClick={() => router.push("/search")}
-            aria-label="Search"
+            aria-label={t("search")}
           >
             <Search size={20} />
           </Button>
@@ -205,7 +216,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             size="icon"
             className={iconClass()}
             onClick={() => setShowCreate(true)}
-            aria-label="New post"
+            aria-label={t("newPost")}
           >
             <Plus size={20} />
           </Button>
@@ -222,7 +233,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                 if (!showNotifications) markAllAsRead();
               }}
               // The red dot is only visual, so the count goes into the name.
-              aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
+              aria-label={unreadCount > 0 ? t("notificationsUnread", { count: unreadCount }) : t("notifications")}
             >
               <Bell size={20} />
               {unreadCount > 0 && (
@@ -232,10 +243,10 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
 
             {showNotifications && (
               <div className="absolute inset-x-4 top-full z-30 mt-1 rounded-md border border-border bg-background shadow-lg sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
-                <div className="p-3 text-sm font-semibold border-b border-border">Notifications</div>
+                <div className="p-3 text-sm font-semibold border-b border-border">{t("notifications")}</div>
                 <div className="max-h-80 overflow-y-auto">
                   {visibleNotifications.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">No notifications yet</div>
+                    <div className="p-4 text-center text-sm text-muted-foreground">{t("noNotifications")}</div>
                   ) : (
                     visibleNotifications.map((n) =>
                       n.type_name === "follow_request" && n.actor ? (
@@ -254,8 +265,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                           >
                             <NotificationPreview n={n} />
                             <span className="min-w-0 truncate">
-                              <span className="font-semibold">{n.actor.username}</span>
-                              {notificationText(n.type_name)}
+                              <NotificationText n={n} />
                             </span>
                           </Link>
                           <div className="flex shrink-0 gap-1">
@@ -264,14 +274,14 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                               disabled={requestActionLoading === n.id}
                               className="rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
                             >
-                              Accept
+                              {t("accept")}
                             </button>
                             <button
                               onClick={() => handleRequestAction(n, false)}
                               disabled={requestActionLoading === n.id}
                               className="rounded border border-border px-2 py-1 text-xs font-medium disabled:opacity-50"
                             >
-                              Decline
+                              {t("decline")}
                             </button>
                           </div>
                         </div>
@@ -284,8 +294,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
                         >
                           <NotificationPreview n={n} />
                           <span className="min-w-0">
-                            <span className="font-semibold">{n.actor?.username ?? "Klar"}</span>
-                            {notificationText(n.type_name)}
+                            <NotificationText n={n} />
                           </span>
                         </Link>
                       )
@@ -302,7 +311,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
               size="icon"
               className={iconClass("chats")}
               onClick={() => router.push("/chats")}
-              aria-label="Chats"
+              aria-label={t("chats")}
             >
               <MessageCircle size={20} />
             </Button>
@@ -316,7 +325,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             size="icon"
             className={iconClass("profile")}
             onClick={() => user && router.push(`/users/${user.username}`)}
-            aria-label="Profile"
+            aria-label={t("profile")}
           >
             <User size={20} />
           </Button>
@@ -326,7 +335,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
               size="icon"
               className={`${iconClass()} relative`}
               onClick={() => router.push("/admin")}
-              aria-label={adminWaiting > 0 ? `Moderation tools (${adminWaiting} waiting)` : "Moderation tools"}
+              aria-label={adminWaiting > 0 ? t("moderationToolsWaiting", { count: adminWaiting }) : t("moderationTools")}
             >
               <Shield size={20} />
               {adminWaiting > 0 && (
@@ -339,7 +348,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             size="icon"
             className={iconClass()}
             onClick={() => router.push("/settings")}
-            aria-label="Settings"
+            aria-label={t("settings")}
           >
             <Settings size={20} />
           </Button>
@@ -348,7 +357,7 @@ export default function TopNav({ active, onPostCreated }: TopNavProps) {
             size="icon"
             className={iconClass()}
             onClick={handleLogout}
-            aria-label="Log out"
+            aria-label={t("logOut")}
           >
             <LogOut size={20} />
           </Button>

@@ -17,6 +17,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3001",
     trace: "retain-on-failure",
+    // The app follows the browser's language; the tests look for English.
+    locale: "en-US",
   },
   projects: [
     {

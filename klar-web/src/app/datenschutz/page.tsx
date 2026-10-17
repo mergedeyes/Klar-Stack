@@ -257,6 +257,19 @@ export default function DatenschutzPage() {
             Zugriff, enden alle Anmeldungen sofort; dazu speichern wir den
             Zeitpunkt.
           </p>
+          <p className="mt-2">
+            Klar gibt es auf Deutsch und auf Englisch. Bist du nicht
+            angemeldet, richtet sich die Sprache nach der Spracheinstellung
+            deines Browsers, ohne dass wir etwas speichern. In deinem Konto
+            speichern wir die Sprache, in der du Klar nutzt: anfangs die
+            deines Browsers, änderbar in den Einstellungen. Solange du
+            angemeldet bist, liegt sie zusätzlich im Cookie
+            <code className="mx-1 rounded bg-muted px-1">klar_locale</code>,
+            damit die Seiten gleich in dieser Sprache geladen werden; beim
+            Abmelden löschen wir es. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b
+            DSGVO; das Cookie ist für diese Funktion unbedingt erforderlich
+            (§ 25 Abs. 2 Nr. 2 TDDDG).
+          </p>
         </section>
 
         <section className="mb-6">

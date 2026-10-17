@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MailWarning } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { auth } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -13,6 +14,7 @@ import { useAuth } from "@/lib/auth-context";
 export default function VerifyEmailBanner() {
   const { user } = useAuth();
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const t = useTranslations("verifyBanner");
 
   // Strictly `false`: the field is only present on GET /users/me and the
   // login/register responses, so undefined means "unknown", not "unverified".
@@ -36,12 +38,13 @@ export default function VerifyEmailBanner() {
       <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
         <MailWarning size={16} className="shrink-0" />
         <span className="flex-1">
-          Please verify your email address. We sent a link to{" "}
-          <strong className="break-all">{user.email}</strong>. Until then you can&rsquo;t post, comment, send messages or
-          report, and an account that stays unverified is deleted after 30 days.
+          {t.rich("text", {
+            email: user.email,
+            strong: (chunks) => <strong className="break-all">{chunks}</strong>,
+          })}
         </span>
         {status === "sent" ? (
-          <span className="font-medium">New link sent — check your inbox.</span>
+          <span className="font-medium">{t("sent")}</span>
         ) : (
           <button
             type="button"
@@ -49,7 +52,7 @@ export default function VerifyEmailBanner() {
             disabled={status === "sending"}
             className="font-medium underline underline-offset-4 disabled:opacity-60"
           >
-            {status === "sending" ? "Sending…" : "Resend email"}
+            {status === "sending" ? t("sending") : t("resend")}
           </button>
         )}
       </div>

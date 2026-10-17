@@ -47,6 +47,8 @@ pub struct UserRow {
     /// When the owner finished or closed the welcome guide; None: a new
     /// account that hasn't yet (migration 20261017100000).
     pub guide_seen_at: Option<DateTime<Utc>>,
+    /// "en" or "de"; None until the app has set it (migration 20261017120000).
+    pub locale: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -95,6 +97,9 @@ pub struct UserPublicResponse {
     /// Whether the owner has seen the welcome guide; only get_me sets it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guide_seen: Option<bool>,
+    /// The owner's language; only get_me sets it, and only once it's known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
 }
 
 /// Public API response
@@ -116,6 +121,7 @@ pub struct UserResponse {
     pub username_changed_at: Option<DateTime<Utc>>,
     pub is_private: bool,
     pub personalization_enabled: bool,
+    pub locale: Option<String>,
 }
 
 impl From<UserRow> for UserResponse {
@@ -132,6 +138,7 @@ impl From<UserRow> for UserResponse {
             username_changed_at: row.username_changed_at,
             is_private: row.is_private,
             personalization_enabled: row.personalization_consented_at.is_some(),
+            locale: row.locale,
         }
     }
 }
@@ -176,6 +183,7 @@ impl From<UserRow> for UserPublicResponse {
             email_verified: None,
             personalization_enabled: None,
             guide_seen: None,
+            locale: None,
         }
     }
 }
@@ -191,6 +199,9 @@ pub struct RegisterRequest {
     /// server-side so it can't be skipped by calling the API directly
     /// instead of going through the registration form.
     pub accept_terms: bool,
+    /// The language the app was shown in while signing up ("en" or "de").
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 /// Login request
@@ -216,6 +227,12 @@ pub struct AuthResponse {
 pub struct RefreshResponse {
     pub access_token: String,
     pub refresh_token: String,
+}
+
+/// PATCH /users/me/locale
+#[derive(Debug, Deserialize)]
+pub struct LocaleRequest {
+    pub locale: String,
 }
 
 /// Profile update request
