@@ -144,6 +144,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/me/activity/comments", get(handlers::activity::my_comments))
         .route("/users/me/export", get(handlers::users::export_my_data))
         .route("/users/me/personalization", patch(handlers::events::set_personalization))
+        .route("/users/me/guide-seen", post(handlers::users::mark_guide_seen))
         .route("/users/me/standing", get(handlers::standing::my_standing))
         .route("/legal-updates/pending", get(handlers::legal_updates::pending))
         .route("/legal-updates/{update_id}/acknowledge", post(handlers::legal_updates::acknowledge))

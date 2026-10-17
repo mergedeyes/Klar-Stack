@@ -36,6 +36,9 @@ export interface User {
   // logged to rank the Discovery page (the home feed never is). Only
   // GET /users/me sets it, for the owner.
   personalization_enabled?: boolean;
+  // Whether the owner has finished or closed the welcome guide. Only
+  // GET /users/me sets it, for the owner.
+  guide_seen?: boolean;
 }
 
 export interface Post {
@@ -462,6 +465,7 @@ export const users = {
       true
     ),
   me: () => request<User>("/users/me", {}, true),
+  markGuideSeen: () => request<void>("/users/me/guide-seen", { method: "POST" }, true),
   // Gives or withdraws the consent; withdrawing deletes the log (handlers/events.rs).
   setPersonalization: (enabled: boolean) =>
     request<{ enabled: boolean }>(

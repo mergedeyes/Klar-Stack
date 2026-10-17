@@ -9,8 +9,11 @@ test("the private account switch saves at once and asks before going public", as
   await page.goto("/settings");
   const toggle = page.getByRole("switch", { name: "Private account" });
   await expect(toggle).toHaveAttribute("aria-checked", "false");
+  // The switch flips before the save is done; a reload must not cancel it.
+  const saved = page.waitForResponse((r) => r.url().endsWith("/users/me") && r.request().method() === "PATCH");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await saved;
   await page.reload();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
 

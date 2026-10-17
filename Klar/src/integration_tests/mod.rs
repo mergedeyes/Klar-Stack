@@ -28,6 +28,7 @@ mod audit_export;
 mod chats;
 mod evidence;
 mod feedback;
+mod guide;
 mod legal_updates;
 mod moderation;
 mod notices;

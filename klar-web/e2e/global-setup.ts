@@ -22,7 +22,7 @@ export default async function globalSetup() {
     await context.dispose();
   }
   await withDb(async (db) => {
-    const res = await db.query("UPDATE users SET email_verified = TRUE WHERE LOWER(email) = $1", [ADMIN_EMAIL]);
+    const res = await db.query("UPDATE users SET email_verified = TRUE, guide_seen_at = COALESCE(guide_seen_at, NOW()) WHERE LOWER(email) = $1", [ADMIN_EMAIL]);
     if (res.rowCount !== 1) throw new Error(`Admin account ${ADMIN_EMAIL} wasn't created`);
   });
 }

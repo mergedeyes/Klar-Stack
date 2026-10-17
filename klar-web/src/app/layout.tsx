@@ -22,6 +22,7 @@ import { NotificationsProvider } from "@/hooks/use-notifications";
 import Footer from "@/components/Footer";
 import LegalUpdateNotice from "@/components/LegalUpdateNotice";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
+import { GuideProvider } from "@/components/WelcomeGuide";
 
 const geist = Geist({ subsets: ["latin"] });
 
@@ -51,12 +52,15 @@ export default function RootLayout({
           edge and a long one scrolls with the footer pinned below it. */}
       <body className={`${geist.className} flex min-h-dvh flex-col`}>
         <AuthProvider>
-          <VerifyEmailBanner />
-          <div className="flex min-h-0 flex-1 flex-col">
-            <NotificationsProvider>{children}</NotificationsProvider>
-          </div>
-          {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
-          <Footer />
+          {/* Around the footer too, which has the link that opens the guide. */}
+          <GuideProvider>
+            <VerifyEmailBanner />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <NotificationsProvider>{children}</NotificationsProvider>
+            </div>
+            {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
+            <Footer />
+          </GuideProvider>
           {/* Changed Terms / privacy policy, once per notice. */}
           <LegalUpdateNotice />
         </AuthProvider>
