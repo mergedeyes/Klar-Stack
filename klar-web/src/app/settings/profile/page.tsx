@@ -12,6 +12,36 @@ import { Label } from "@/components/ui/label";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import { getMediaUrl } from "@/lib/utils/media";
 
+// Unsaved edits are kept per tab, so a reload doesn't throw them away:
+// Chrome on iOS reloads the page when you pull down at the top, and iOS
+// reloads tabs it discarded in the background. Leaving the page in the app
+// clears the draft, so abandoned edits don't reappear on the next visit.
+const DRAFT_KEY = "klar_profile_draft";
+
+interface ProfileDraft {
+  userId: string;
+  username: string;
+  displayName: string;
+  bio: string;
+}
+
+function readDraft(userId: string): ProfileDraft | null {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as ProfileDraft | null;
+    return draft?.userId === userId ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // Storage blocked (private mode etc.) -- nothing was kept either.
+  }
+}
+
 export default function EditProfilePage() {
   const { user, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
@@ -36,14 +66,39 @@ export default function EditProfilePage() {
   // Pre-fill from the current profile whenever the user object changes
   // (first load, and after a save refreshes it). Adjusted during render,
   // React's recommended alternative to an effect that copies props/context
-  // into state.
+  // into state. Only the first fill picks up a draft from before a reload;
+  // the refresh after a save must show what was saved.
   const [prefilledFrom, setPrefilledFrom] = useState<typeof user>(null);
   if (user && user !== prefilledFrom) {
+    const draft = prefilledFrom === null ? readDraft(user.id) : null;
     setPrefilledFrom(user);
-    setUsername(user.username ?? "");
-    setDisplayName(user.display_name ?? "");
-    setBio(user.bio ?? "");
+    setUsername(draft?.username ?? user.username ?? "");
+    setDisplayName(draft?.displayName ?? user.display_name ?? "");
+    setBio(draft?.bio ?? user.bio ?? "");
   }
+
+  // Keep the draft only while it differs from the saved profile.
+  useEffect(() => {
+    if (!user) return;
+    const changed =
+      username !== user.username ||
+      displayName !== (user.display_name ?? "") ||
+      bio !== (user.bio ?? "");
+    if (!changed) {
+      clearDraft();
+      return;
+    }
+    try {
+      const draft: ProfileDraft = { userId: user.id, username, displayName, bio };
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // Storage blocked -- the edits just don't survive a reload.
+    }
+  }, [user, username, displayName, bio]);
+
+  // A reload doesn't unmount the page, so this only runs when it's left
+  // within the app (back button, or the redirect after saving).
+  useEffect(() => clearDraft, []);
 
   // Cooldown Calculation (14 days)
   const COOLDOWN_DAYS = 14;
