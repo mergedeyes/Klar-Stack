@@ -37,6 +37,10 @@ export default function Footer() {
               {t("guide")}
             </button>
             <span aria-hidden="true">·</span>
+            <Link href="/whats-new" className="hover:underline">
+              {t("whatsNew")}
+            </Link>
+            <span aria-hidden="true">·</span>
           </>
         )}
         {/* The legal pages are German in every language: these name them. */}

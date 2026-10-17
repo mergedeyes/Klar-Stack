@@ -43,6 +43,9 @@ export interface User {
   // The language the owner sees Klar in ("en" or "de"); missing or null
   // until the app has set it (components/LocaleSync.tsx).
   locale?: string | null;
+  // The newest "What's new" release the owner has seen, or their sign-up
+  // date ("YYYY-MM-DD") before they've seen one. Only GET /users/me sets it.
+  whats_new_seen?: string;
 }
 
 export interface Post {
@@ -479,6 +482,8 @@ export const users = {
     ),
   me: () => request<User>("/users/me", {}, true),
   markGuideSeen: () => request<void>("/users/me/guide-seen", { method: "POST" }, true),
+  markWhatsNewSeen: (id: string) =>
+    request<void>("/users/me/whats-new-seen", { method: "POST", body: JSON.stringify({ id }) }, true),
   setLocale: (locale: AppLocale) =>
     request<void>("/users/me/locale", { method: "PATCH", body: JSON.stringify({ locale }) }, true),
   // Gives or withdraws the consent; withdrawing deletes the log (handlers/events.rs).

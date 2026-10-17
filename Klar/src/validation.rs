@@ -74,6 +74,26 @@ pub fn validate_locale(raw: &str) -> Result<String, AppError> {
         .ok_or_else(|| AppError::bad_request("Unsupported language"))
 }
 
+/// A "What's new" release id: its date, "YYYY-MM-DD", optionally followed by
+/// "-" and a short lowercase suffix for a second release on the same day.
+/// Ids compare as text, so they must sort by date.
+pub fn validate_release_id(raw: &str) -> Result<String, AppError> {
+    let invalid = || AppError::bad_request("Invalid release id");
+    let (date, suffix) = match raw.get(10..) {
+        Some("") => (raw, None),
+        Some(rest) if rest.starts_with('-') => (&raw[..10], Some(&rest[1..])),
+        _ => return Err(invalid()),
+    };
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| invalid())?;
+    if let Some(suffix) = suffix {
+        let ok = !suffix.is_empty() && suffix.len() <= 20 && suffix.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit());
+        if !ok {
+            return Err(invalid());
+        }
+    }
+    Ok(raw.to_string())
+}
+
 /// Canonical form of an email for storage and lookup: trimmed and
 /// lowercased. Emails are unique and matched case-insensitively
 /// (migration 20260929000000), so "Foo@x.de" and "foo@x.de" are one

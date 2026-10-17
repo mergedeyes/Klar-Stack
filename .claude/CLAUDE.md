@@ -20,6 +20,10 @@ Social network with a chronological home feed, always: only the Discovery page m
 - Browser tests (`klar-web/e2e/`, Playwright, needs the stack running): `npm run test:e2e`. UI behaviour worth keeping gets a test there.
 - Manual: for behaviour changes, copy the matching sections of `docs/manual-checks.md` into the PR test plan (unticked — the user checks them in a browser). Add a check there when a change introduces behaviour worth re-testing.
 
+## What's new
+
+User-facing release notes live in `klar-web/src/whats-new/releases.ts` (English and German, newest first, id = release date). The newest is shown once to older accounts. Only add an entry when the user decides a set of changes is worth announcing; draft it in the PR for them to review.
+
 ## Backend conventions
 
 - Errors: return `AppError`; wrap sqlx results with `.db_err("…")` / `.db_err_ctx(log, client)` from `utils.rs` — never leak raw DB errors to clients.

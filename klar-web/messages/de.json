@@ -10,7 +10,8 @@
   },
   "footer": {
     "feedback": "Feedback",
-    "guide": "Einführung"
+    "guide": "Einführung",
+    "whatsNew": "Neuigkeiten"
   },
   "verifyBanner": {
     "text": "Bitte bestätige deine E-Mail-Adresse. Wir haben einen Link an <strong>{email}</strong> geschickt. Bis dahin kannst du nichts posten, kommentieren, keine Nachrichten schreiben und nichts melden. Ein Konto, das unbestätigt bleibt, wird nach 30 Tagen gelöscht.",
@@ -63,7 +64,8 @@
     "preparing": "Deine Daten werden vorbereitet …",
     "exportFailed": "Export fehlgeschlagen",
     "logOutOrDelete": "Abmelden oder Konto löschen",
-    "appearance": "Sprache und App-Symbol"
+    "appearance": "Sprache und App-Symbol",
+    "language": "Sprache"
   },
   "feed": {
     "newPosts": "{count, plural, one {# neuer Beitrag} other {# neue Beiträge}}",
@@ -76,5 +78,13 @@
     "thisDevice": "Gilt für dieses Gerät: für den Browser-Tab und für Klar auf deinem Startbildschirm.",
     "homeScreen": "Dein Startbildschirm behält das Symbol, das Klar beim Hinzufügen hatte. Chrome auf Android bietet eventuell an, es beim nächsten Öffnen von dort zu aktualisieren; sonst, und auf dem iPhone, entferne Klar vom Startbildschirm und füge es neu hinzu.",
     "default": "Standard"
+  },
+  "whatsNew": {
+    "title": "Neu bei Klar",
+    "gotIt": "Alles klar",
+    "allUpdates": "Alle Neuigkeiten",
+    "close": "Schließen",
+    "tryIt": "Ausprobieren",
+    "empty": "Noch nichts hier."
   }
 }

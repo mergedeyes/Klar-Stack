@@ -49,6 +49,8 @@ pub struct UserRow {
     pub guide_seen_at: Option<DateTime<Utc>>,
     /// "en" or "de"; None until the app has set it (migration 20261017120000).
     pub locale: Option<String>,
+    /// The newest "What's new" release seen (migration 20261018100000).
+    pub whats_new_seen: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -100,6 +102,10 @@ pub struct UserPublicResponse {
     /// The owner's language; only get_me sets it, and only once it's known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    /// The newest "What's new" release the owner has seen, or their sign-up
+    /// date ("YYYY-MM-DD") before they've seen one; only get_me sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub whats_new_seen: Option<String>,
 }
 
 /// Public API response
@@ -184,6 +190,7 @@ impl From<UserRow> for UserPublicResponse {
             personalization_enabled: None,
             guide_seen: None,
             locale: None,
+            whats_new_seen: None,
         }
     }
 }
@@ -227,6 +234,12 @@ pub struct AuthResponse {
 pub struct RefreshResponse {
     pub access_token: String,
     pub refresh_token: String,
+}
+
+/// POST /users/me/whats-new-seen
+#[derive(Debug, Deserialize)]
+pub struct WhatsNewSeenRequest {
+    pub id: String,
 }
 
 /// PATCH /users/me/locale

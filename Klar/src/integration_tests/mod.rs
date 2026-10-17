@@ -46,3 +46,4 @@ mod social;
 mod standing;
 mod test_phase;
 mod uptime;
+mod whats_new;

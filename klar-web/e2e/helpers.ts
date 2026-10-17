@@ -40,8 +40,14 @@ export function clientIp(): string {
  * Without E2E_DATABASE_URL a test that needs a verified account skips.
  *
  * The welcome guide is marked as seen, since it would cover the feed in
- * every other test; `guide: true` keeps it for e2e/guide.spec.ts. */
-export async function signUp(prefix = "user", email?: string, { verified = true, guide = false } = {}): Promise<Session> {
+ * every other test; `guide: true` keeps it for e2e/guide.spec.ts. So is
+ * every "What's new" release, which would cover the feed of an account
+ * dated back before it (trustedSignUp); `whatsNew: true` keeps it. */
+export async function signUp(
+  prefix = "user",
+  email?: string,
+  { verified = true, guide = false, whatsNew = false } = {},
+): Promise<Session> {
   if (verified) test.skip(!process.env.E2E_DATABASE_URL, "verifying the address needs E2E_DATABASE_URL (see e2e/README.md)");
   const username = uniqueName(prefix);
   const context = await playwrightRequest.newContext();
@@ -55,6 +61,13 @@ export async function signUp(prefix = "user", email?: string, { verified = true,
     if (!guide) {
       const seen = await context.post(`${API}/users/me/guide-seen`, {
         headers: { Authorization: `Bearer ${body.access_token}`, "X-Forwarded-For": clientIp() },
+      });
+      expect(seen.ok(), await seen.text()).toBeTruthy();
+    }
+    if (!whatsNew) {
+      const seen = await context.post(`${API}/users/me/whats-new-seen`, {
+        headers: { Authorization: `Bearer ${body.access_token}`, "X-Forwarded-For": clientIp() },
+        data: { id: "9999-12-31" },
       });
       expect(seen.ok(), await seen.text()).toBeTruthy();
     }
