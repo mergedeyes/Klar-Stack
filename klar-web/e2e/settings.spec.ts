@@ -64,3 +64,21 @@ test("your activity lists liked posts and own comments, which can be deleted the
   await page.getByRole("tab", { name: "Comments" }).click();
   await expect(page.getByText("Comments you write show up here.")).toBeVisible();
 });
+
+test("unsaved profile edits survive a reload but not leaving the page", async ({ page }) => {
+  await signIn(page, await signUp("draft"));
+  await page.goto("/settings");
+  await page.getByRole("link", { name: "Edit profile" }).click();
+  const bio = page.getByLabel("Bio");
+  await bio.fill("Half-written bio");
+
+  // An accidental pull-to-refresh on a phone is a reload.
+  await page.reload();
+  await expect(bio).toHaveValue("Half-written bio");
+
+  // Leaving within the app drops the draft.
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await page.getByRole("link", { name: "Edit profile" }).click();
+  await expect(bio).toHaveValue("");
+});

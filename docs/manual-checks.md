@@ -68,6 +68,7 @@ loads more as you scroll.
 - [ ] Account deletion asks for the password (a wrong one is refused) and removes the profile, posts and media; the chat partner sees the "account deleted" notice; the like, comment and follower counts on other people's posts and profiles drop accordingly
 - [ ] A deleted or mistyped profile shows "Profil nicht gefunden" instead of jumping to the feed
 - [ ] Clearing the bio or display name in Edit profile and saving empties it; "Remove photo" removes the picture
+- [ ] On an iPhone in Chrome, typing in Edit profile and then pulling down at the top (which reloads the page) keeps what was typed; going back and opening Edit profile again shows the saved profile instead
 - [ ] Locking an account or changing its password closes an open notification stream on its other devices within half a minute (the bell stops updating there)
 - [ ] Locking an account in `/admin/security` signs it out within seconds on every device (next request goes to the login page) and sends an email whose link sets a new password; replying to that email goes to kontakt@klarsocial.eu
 - [ ] Logging in to a locked account with the right password shows "Your account is locked" (a wrong password shows the usual error); "Send the link again" works once, then asks to wait 15 minutes
