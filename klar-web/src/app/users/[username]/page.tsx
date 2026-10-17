@@ -25,6 +25,7 @@ import ReportModal from "@/components/ReportModal";
 import { SmartBackButton } from '@/components/SmartBackButton';
 import UserListModal from "@/components/UserListModal";
 import TopNav from "@/components/TopNav";
+import PullToRefresh from "@/components/PullToRefresh";
 
 // ── Post grid cell ────────────────────────────────────────────────────────────
 
@@ -205,6 +206,15 @@ export default function ProfilePage() {
     return () => { cancelled = true; };
   }, [username, router]);
 
+  // Pull-to-refresh: the profile and its counts again; the posts follow
+  // through the effect below once the new profile is in.
+  const refreshProfile = useCallback(async () => {
+    if (!username) return;
+    const [profileData, profileStats] = await Promise.all([usersApi.get(username), usersApi.stats(username)]);
+    setProfile(profileData);
+    setStats(profileStats);
+  }, [username]);
+
   // Fetch posts once we know whether we're allowed to see them (depends
   // on the profile fetch above having resolved viewer_relationship).
   useEffect(() => {
@@ -345,6 +355,7 @@ export default function ProfilePage() {
 
   return (
     <div className="flex-1 bg-background pb-12">
+      <PullToRefresh onRefresh={refreshProfile} />
       {/* Own profile uses the shared primary nav; viewing someone else uses a back-button header */}
       {isMe ? (
         <TopNav active="profile" onPostCreated={refreshPosts} />
