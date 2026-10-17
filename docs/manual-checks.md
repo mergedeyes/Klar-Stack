@@ -28,6 +28,13 @@ realistic data volumes for the paging checks.
 - [ ] The notification dropdown reads naturally in German ("alice gefällt dein Beitrag"), with the name in bold
 - [ ] The legal pages stay German in both languages; the footer links keep their German names
 
+## Home screen app
+
+- [ ] Android (Chrome and Samsung Internet): "Add to home screen" / "Install" offers Klar as an app with the K icon (round or squircle, nothing cut off) and the name "Klar"; it opens full screen on the feed, whatever page was open when it was added
+- [ ] iPhone (Safari → Share → Add to Home Screen): the K icon and "Klar"; it opens full screen. It asks for the passcode and the login once (iOS keeps the app's storage apart from Safari's), and keeps both afterwards
+- [ ] In the app: every page has a way back without the browser's back button; external links (e.g. in the legal pages) open in a browser view; the status bar matches light and dark mode
+- [ ] The browser tab shows the K favicon instead of the triangle
+
 ## Paginated lists
 
 Applies to the home feed, discovery feed and profile grid, and to any list that

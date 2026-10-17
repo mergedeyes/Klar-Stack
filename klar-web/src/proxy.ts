@@ -28,6 +28,13 @@ const PUBLIC_PATHS = [
   "/rights",
   "/notices",
   "/favicon.ico",
+  // For adding Klar to the home screen: browsers fetch the manifest
+  // without cookies, so behind the gate it would be the passcode page.
+  // Neither reveals more than the name and the icon.
+  "/manifest.webmanifest",
+  "/icons",
+  "/icon.svg",
+  "/apple-icon.png",
 ];
 
 // Next.js 16 renamed middleware.ts -> proxy.ts (exported function
