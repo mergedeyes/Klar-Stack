@@ -16,20 +16,23 @@
 
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { NotificationsProvider } from "@/hooks/use-notifications";
 import Footer from "@/components/Footer";
 import LegalUpdateNotice from "@/components/LegalUpdateNotice";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
+import LocaleSync from "@/components/LocaleSync";
 import { GuideProvider } from "@/components/WelcomeGuide";
 
 const geist = Geist({ subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  title: "Klar",
-  description: "Privacy-first photo sharing",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: "Klar", description: t("description") };
+}
 
 // Without this, mobile browsers default to a ~980px desktop-width viewport
 // and shrink the whole page to fit it — that's the "too zoomed in / wrong
@@ -40,30 +43,35 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // The browser's language, or the signed-in account's (i18n/request.ts).
+  const locale = await getLocale();
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       {/* A full-height column: the page fills whatever the banner and the
           footer leave, so a short page ends exactly at the screen's bottom
           edge and a long one scrolls with the footer pinned below it. */}
       <body className={`${geist.className} flex min-h-dvh flex-col`}>
-        <AuthProvider>
-          {/* Around the footer too, which has the link that opens the guide. */}
-          <GuideProvider>
-            <VerifyEmailBanner />
-            <div className="flex min-h-0 flex-1 flex-col">
-              <NotificationsProvider>{children}</NotificationsProvider>
-            </div>
-            {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
-            <Footer />
-          </GuideProvider>
-          {/* Changed Terms / privacy policy, once per notice. */}
-          <LegalUpdateNotice />
-        </AuthProvider>
+        <NextIntlClientProvider>
+          <AuthProvider>
+            <LocaleSync />
+            {/* Around the footer too, which has the link that opens the guide. */}
+            <GuideProvider>
+              <VerifyEmailBanner />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <NotificationsProvider>{children}</NotificationsProvider>
+              </div>
+              {/* Inside AuthProvider: it shows the Feedback link to signed-in users. */}
+              <Footer />
+            </GuideProvider>
+            {/* Changed Terms / privacy policy, once per notice. */}
+            <LegalUpdateNotice />
+          </AuthProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

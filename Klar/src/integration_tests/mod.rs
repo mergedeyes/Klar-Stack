@@ -30,6 +30,7 @@ mod evidence;
 mod feedback;
 mod guide;
 mod legal_updates;
+mod locale;
 mod moderation;
 mod notices;
 mod post_events;

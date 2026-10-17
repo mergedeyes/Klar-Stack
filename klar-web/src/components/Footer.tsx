@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/lib/auth-context";
 import { useGuide } from "@/components/WelcomeGuide";
 
@@ -9,6 +10,7 @@ export default function Footer() {
   const { user } = useAuth();
   const pathname = usePathname();
   const { openGuide } = useGuide();
+  const t = useTranslations("footer");
 
   return (
     // Sticky: pinned to the screen's bottom edge while a long page scrolls
@@ -24,7 +26,7 @@ export default function Footer() {
         {user && pathname !== "/feedback" && (
           <>
             <Link href={`/feedback?from=${encodeURIComponent(pathname)}`} className="font-medium text-foreground hover:underline">
-              Feedback
+              {t("feedback")}
             </Link>
             <span aria-hidden="true">·</span>
           </>
@@ -32,11 +34,12 @@ export default function Footer() {
         {user && (
           <>
             <button onClick={openGuide} className="hover:underline">
-              Guide
+              {t("guide")}
             </button>
             <span aria-hidden="true">·</span>
           </>
         )}
+        {/* The legal pages are German in every language: these name them. */}
         <Link href="/impressum" className="hover:underline">
           Impressum
         </Link>

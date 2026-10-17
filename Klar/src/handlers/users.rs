@@ -14,11 +14,12 @@ use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::evidence;
 use crate::media;
 use crate::moderation;
-use crate::models::{RefreshResponse, UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
+use crate::models::{LocaleRequest, RefreshResponse, UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
 use crate::standing;
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{
-    check_max_len, escape_like, page_limit, validate_password, validate_username, BIO_MAX, DISPLAY_NAME_MAX,
+    check_max_len, escape_like, page_limit, validate_locale, validate_password, validate_username, BIO_MAX,
+    DISPLAY_NAME_MAX,
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashSet;
@@ -203,6 +204,7 @@ pub async fn get_me(
             let (email, email_verified) = (user.email.clone(), user.email_verified);
             let personalization_enabled = user.personalization_consented_at.is_some();
             let guide_seen = user.guide_seen_at.is_some();
+            let locale = user.locale.clone();
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
             response.is_admin = is_admin;
@@ -210,6 +212,7 @@ pub async fn get_me(
             response.email_verified = Some(email_verified);
             response.personalization_enabled = Some(personalization_enabled);
             response.guide_seen = Some(guide_seen);
+            response.locale = locale;
             Ok(Json(response.resolve_media(&state.storage)))
         }
         None => Err(AppError::not_found("User not found")),
@@ -223,6 +226,24 @@ pub async fn mark_guide_seen(
     auth: AuthUser,
 ) -> Result<StatusCode, AppError> {
     sqlx::query("UPDATE users SET guide_seen_at = COALESCE(guide_seen_at, NOW()) WHERE id = $1")
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await
+        .db_err("Database error")?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// PATCH /users/me/locale -- the language the app is shown in. Separate from
+/// the profile: it's a setting, not content, so it can be changed while
+/// suspended and doesn't touch the profile form's rules.
+pub async fn set_locale(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(input): Json<LocaleRequest>,
+) -> Result<StatusCode, AppError> {
+    let locale = validate_locale(&input.locale)?;
+    sqlx::query("UPDATE users SET locale = $1 WHERE id = $2")
+        .bind(&locale)
         .bind(auth.user_id)
         .execute(&state.db)
         .await
@@ -779,8 +800,8 @@ pub async fn export_my_data(
     // proof of when ToS/privacy consent was given is squarely personal
     // data about the account, even though it's never shown in the app UI.
     #[allow(clippy::type_complexity)]
-    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
-        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_consented_at, guide_seen_at FROM users WHERE id = $1"
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<String>)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_consented_at, guide_seen_at, locale FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_one(&state.db)
@@ -1096,6 +1117,7 @@ pub async fn export_my_data(
             "keep_after_test_at": profile.8,
             "personalization_consented_at": profile.9,
             "guide_seen_at": profile.10,
+            "locale": profile.11,
         },
         "posts": posts_json,
         "comments": comments_json,

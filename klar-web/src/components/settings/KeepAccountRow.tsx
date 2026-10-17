@@ -37,7 +37,7 @@ export default function KeepAccountRow() {
   };
 
   return (
-    <div className="px-4 py-2.5">
+    <div className="px-4 py-2">
       <label className="flex items-start gap-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
           <Archive size={16} />

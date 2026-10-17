@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "description": "Privacy-first photo sharing"
+  },
+  "common": {
+    "back": "Back",
+    "on": "On",
+    "off": "Off",
+    "couldntSave": "Couldn't save"
+  },
+  "footer": {
+    "feedback": "Feedback",
+    "guide": "Guide"
+  },
+  "verifyBanner": {
+    "text": "Please verify your email address. We sent a link to <strong>{email}</strong>. Until then you can't post, comment, send messages or report, and an account that stays unverified is deleted after 30 days.",
+    "sent": "New link sent — check your inbox.",
+    "sending": "Sending…",
+    "resend": "Resend email"
+  },
+  "nav": {
+    "discovery": "Discovery",
+    "search": "Search",
+    "newPost": "New post",
+    "notifications": "Notifications",
+    "notificationsUnread": "Notifications ({count} unread)",
+    "noNotifications": "No notifications yet",
+    "chats": "Chats",
+    "profile": "Profile",
+    "moderationTools": "Moderation tools",
+    "moderationToolsWaiting": "Moderation tools ({count} waiting)",
+    "settings": "Settings",
+    "logOut": "Log out",
+    "accept": "Accept",
+    "decline": "Decline"
+  },
+  "notifications": {
+    "post_like": "<actor>{name}</actor> liked your post",
+    "comment": "<actor>{name}</actor> commented on your post",
+    "comment_like": "<actor>{name}</actor> liked your comment",
+    "follow": "<actor>{name}</actor> started following you",
+    "follow_request": "<actor>{name}</actor> wants to follow you",
+    "follow_accepted": "<actor>{name}</actor> accepted your follow request",
+    "moderation_decision": "<actor>{name}</actor>: a moderation decision about your content",
+    "report_outcome": "<actor>{name}</actor>: your report was reviewed",
+    "objection_resolved": "<actor>{name}</actor>: your objection was answered",
+    "other": "<actor>{name}</actor> interacted with you"
+  },
+  "settings": {
+    "title": "Settings",
+    "yourAccount": "Your account",
+    "editProfile": "Edit profile",
+    "changePassword": "Change password",
+    "activity": "Your activity",
+    "language": "Language",
+    "privacy": "Privacy",
+    "privateAccount": "Private account",
+    "confirmPublic": "Make your account public? Anyone will be able to see your posts.",
+    "blocked": "Blocked accounts",
+    "discovery": "Personalised Discovery",
+    "yourData": "Your data",
+    "moderation": "Moderation",
+    "download": "Download your data",
+    "preparing": "Preparing your data…",
+    "exportFailed": "Export failed",
+    "logOutOrDelete": "Log out or delete account"
+  }
+}
