@@ -8,6 +8,8 @@ import PostCard from "@/components/PostCard";
 import PostModal from "@/components/PostModal";
 import { Button } from "@/components/ui/button";
 import TopNav from "@/components/TopNav";
+import NewPostsPill from "@/components/NewPostsPill";
+import { useNewPosts } from "@/hooks/use-new-posts";
 
 function PostSkeleton() {
   return (
@@ -71,6 +73,9 @@ export default function FeedPage() {
     loadFirstPage();
   }, [authLoading, user, loadFirstPage]);
 
+  const fetchLatest = useCallback(() => postsApi.feed(undefined, 20), []);
+  const newPosts = useNewPosts(feedPosts[0], fetchLatest);
+
   const loadMore = useCallback(async () => {
     if (!cursorRef.current) return;
     try {
@@ -120,6 +125,9 @@ export default function FeedPage() {
       <TopNav active="feed" onPostCreated={refreshFeed} />
 
       <main className="mx-auto max-w-3xl px-4">
+        {/* Loads the first page again in place, without the skeletons. */}
+        <NewPostsPill newPosts={newPosts} onShow={loadFirstPage} />
+
         {showSkeletons && (
           <>
             <PostSkeleton />

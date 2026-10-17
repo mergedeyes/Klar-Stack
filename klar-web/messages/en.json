@@ -64,5 +64,9 @@
     "preparing": "Preparing your data…",
     "exportFailed": "Export failed",
     "logOutOrDelete": "Log out or delete account"
+  },
+  "feed": {
+    "newPosts": "{count, plural, one {# new post} other {# new posts}}",
+    "newPostsMore": "{count}+ new posts"
   }
 }

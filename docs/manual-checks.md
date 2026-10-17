@@ -39,6 +39,7 @@ loads more as you scroll.
 - [ ] On a tall window where the first page doesn't fill the screen, the next page loads without scrolling
 - [ ] Switching quickly between two lists of the same kind (e.g. two profiles) never mixes their items
 - [ ] With the network cut off (DevTools → Network → Offline) while loading more, you get an error or retry option rather than an endless spinner or a request loop; after reconnecting, retrying continues where it stopped
+- [ ] With the feed (or Discovery) open, another account posts: within two minutes, or at once after switching away and back, a "1 new post" pill appears under the top bar without moving the list; tapping it shows the post at the top and scrolls up; in German it says "1 neuer Beitrag"
 - [ ] Creating or deleting a post updates the list without breaking further paging
 
 ## Privacy and visibility
