@@ -64,5 +64,9 @@
     "preparing": "Deine Daten werden vorbereitet …",
     "exportFailed": "Export fehlgeschlagen",
     "logOutOrDelete": "Abmelden oder Konto löschen"
+  },
+  "feed": {
+    "newPosts": "{count, plural, one {# neuer Beitrag} other {# neue Beiträge}}",
+    "newPostsMore": "{count}+ neue Beiträge"
   }
 }
