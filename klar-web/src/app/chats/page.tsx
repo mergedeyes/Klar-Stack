@@ -65,7 +65,7 @@ function markReadAndRefresh(conversationId: string, refresh: () => void) {
 function UnifiedChatsPageContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const { lastMessageEvent, refreshChatUnreadCount } = useNotifications();
+  const { lastMessageEvent, refreshChatUnreadCount, resyncedAt } = useNotifications();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,12 +120,14 @@ function UnifiedChatsPageContent() {
   // This fires for reactions too (chats.rs's toggle_reaction publishes
   // the same event type), which is exactly what's wanted here -- the
   // richer preview needs to reflect a reaction as "last activity" too.
+  // Also after catching up (back from the background, or a reconnect),
+  // when nothing was pushed for what happened meanwhile.
   useEffect(() => {
-    if (!lastMessageEvent) return;
+    if (!lastMessageEvent && !resyncedAt) return;
     chatsApi.getConversations()
       .then(setConversations)
       .catch(err => console.error("Failed to refresh conversations:", err));
-  }, [lastMessageEvent]);
+  }, [lastMessageEvent, resyncedAt]);
 
   const selectConversation = (conv: Conversation) => {
     setActiveChat({

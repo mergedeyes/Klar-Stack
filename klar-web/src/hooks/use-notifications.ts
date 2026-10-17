@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, createElement } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useState, useCallback, createElement } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { notifications as notificationsApi, chatsApi, getAccessToken, type AppNotification } from "@/lib/api";
 import { ENV } from '@/env';
@@ -34,6 +34,11 @@ interface NotificationsContextValue {
    * updates on the next full mount of this provider (e.g. a page reload),
    * since nothing else tells it a conversation was just cleared. */
   refreshChatUnreadCount: () => void;
+  /** When the app last caught up after missing live events: the stream
+   * reconnected, or the app came back to the foreground (phones close the
+   * connection in the background). Pages showing live data (an open chat,
+   * the chat list) reload when it changes; 0 until the first catch-up. */
+  resyncedAt: number;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -55,6 +60,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [lastMessageEvent, setLastMessageEvent] = useState<LastMessageEvent | null>(null);
+  const [resyncedAt, setResyncedAt] = useState(0);
 
   const refreshChatUnreadCount = useCallback(() => {
     if (!user) return;
@@ -63,18 +69,29 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       .catch(err => console.error("Chat unread count refresh failed:", err));
   }, [user]);
 
-  useEffect(() => {
+  const loadNotifications = useCallback(() => {
     if (!user) return;
-
     notificationsApi.list()
       .then((data) => {
         setNotifications(data);
         setUnreadCount(data.filter(n => !n.is_read).length);
       })
       .catch(err => console.error("Notification fetch failed:", err));
+  }, [user]);
 
+  useEffect(() => {
+    loadNotifications();
     refreshChatUnreadCount();
-  }, [user, refreshChatUnreadCount]);
+  }, [loadNotifications, refreshChatUnreadCount]);
+
+  // Whatever arrived while the stream was down was never pushed, so it's
+  // fetched instead. An effect event, so the stream below isn't torn down
+  // and reopened whenever these callbacks change.
+  const resync = useEffectEvent(() => {
+    loadNotifications();
+    refreshChatUnreadCount();
+    setResyncedAt(Date.now());
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -83,10 +100,24 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     let eventSource: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let retryDelay = RETRY_MIN_MS;
+    // True while a connection is being set up (the ticket request), so a
+    // return to the foreground doesn't start a second one.
+    let connecting = false;
+    // Set whenever the stream is down, so the next connection catches up
+    // on what it didn't push meanwhile.
+    let missedEvents = false;
 
     const connect = async () => {
-      if (cancelled) return;
+      if (cancelled || connecting) return;
+      connecting = true;
+      try {
+        await openStream();
+      } finally {
+        connecting = false;
+      }
+    };
 
+    const openStream = async () => {
       // A fresh single-use ticket per connection attempt. Fetched through
       // request(), so an expiring access token is refreshed via the same
       // shared refresh as every other call (refreshing separately here used
@@ -98,6 +129,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         ({ ticket } = await notificationsApi.streamTicket());
       } catch (err) {
         console.error("SSE ticket request failed:", err);
+        missedEvents = true;
         if (cancelled) return;
         retryTimer = setTimeout(connect, retryDelay);
         retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
@@ -112,6 +144,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
       eventSource.onopen = () => {
         retryDelay = RETRY_MIN_MS;
+        if (missedEvents) {
+          missedEvents = false;
+          resync();
+        }
       };
 
       eventSource.onmessage = (event) => {
@@ -142,16 +178,36 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       // connect() fetches a new ticket each time.
       eventSource.onerror = () => {
         eventSource?.close();
+        missedEvents = true;
         if (cancelled) return;
         retryTimer = setTimeout(connect, retryDelay);
         retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
       };
     };
 
+    // Back in the foreground: a stream that died in the background may sit
+    // in its backoff for up to a minute, so it's reopened at once (its
+    // onopen then catches up). One that survived may still have missed
+    // events while the phone slept, so catch up anyway.
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+        if (connecting) return;
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = null;
+        retryDelay = RETRY_MIN_MS;
+        void connect();
+      } else {
+        resync();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     void connect();
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (retryTimer) clearTimeout(retryTimer);
       eventSource?.close();
     };
@@ -175,6 +231,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     chatUnreadCount,
     lastMessageEvent,
     refreshChatUnreadCount,
+    resyncedAt,
   };
 
   return createElement(NotificationsContext.Provider, { value }, children);

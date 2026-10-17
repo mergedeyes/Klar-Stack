@@ -62,6 +62,7 @@ loads more as you scroll.
 - [ ] On a phone, /chats shows the list full width; tapping a chat opens it full screen with the input above the footer, reply/react buttons are visible without hovering, and the back arrow returns to the list
 - [ ] The unread badges clear when the conversation or dropdown is opened
 - [ ] After the laptop sleeps or the network drops briefly, the stream reconnects and events arrive again
+- [ ] On a phone, with a chat open: lock the screen, have the other account send a message and like a post, unlock: the message is in the chat, the chat list shows it, and the bell has the like, without reloading
 
 ## Accounts and sessions
 
