@@ -37,26 +37,28 @@ const PUBLIC_PATHS = [
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (
-    pathname.startsWith("/_next") ||
-    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-  ) {
+  if (pathname.startsWith("/_next")) {
     return NextResponse.next();
   }
-
-  const expectedPasscode = process.env.SITE_ACCESS_PASSCODE;
 
   // No passcode configured -- gate is effectively disabled (e.g. local
   // dev, where you generally don't want to bother setting this up).
   // Production deploys must set SITE_ACCESS_PASSCODE for the gate to
   // actually do anything.
-  if (!expectedPasscode) {
-    return NextResponse.next();
+  const expectedPasscode = process.env.SITE_ACCESS_PASSCODE;
+  const unlocked = !expectedPasscode || req.cookies.get("klar_gate")?.value === expectedPasscode;
+
+  // Someone already through the gate has no use for the form. A home
+  // screen shortcut saved on it (the first visit always lands there)
+  // would otherwise ask for the passcode on every launch.
+  if (pathname === "/welcome" && unlocked) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    return NextResponse.redirect(url);
   }
 
-  const cookieValue = req.cookies.get("klar_gate")?.value;
-
-  if (cookieValue === expectedPasscode) {
+  if (unlocked || PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.next();
   }
 

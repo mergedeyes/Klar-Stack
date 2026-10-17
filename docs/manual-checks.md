@@ -140,6 +140,7 @@ loads more as you scroll.
 ## Legal pages and passcode gate
 
 - [ ] Impressum, Datenschutz, Nutzungsbedingungen and Transparenz load without the passcode
+- [ ] After entering the passcode, opening /welcome again (or a home screen shortcut saved on it, e.g. in Samsung Internet) goes straight to the app instead of asking again; in a fresh private window /welcome still shows the form
 - [ ] Signed out, "Rechtswidrige Inhalte melden" in the footer opens the notice form (not the passcode gate); a notice about a post, a comment link ("Link" on the comment) or a profile goes into the queue as a public notice; the confirmation email's link shows the status, and the decision arrives by email; a CSAM notice works without name and email
 - [ ] If the change adds a sub-processor or changes what data is kept, the Datenschutz and Transparenz pages say so
 - [ ] After a deploy with a new file in `klar-web/legal-updates/` (once the page shows its new Stand date), `/admin/legal-updates` lists it and every older account sees a dialog with the summary on its next visit; it can only be accepted, the legal pages and Settings stay reachable, and accepting makes it disappear for good; accounts created afterwards never see it
