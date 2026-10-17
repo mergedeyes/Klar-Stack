@@ -39,3 +39,44 @@ test("a new message appears in the open chat without reloading", async ({ page, 
   await apiCall(request, bob, "POST", "/chats/send", { receiver_id: alice.id, body: "second, live" });
   await expect(page.getByText("second, live").last()).toBeVisible();
 });
+
+// Phones close the stream while the app is in the background, so whatever
+// happened meanwhile is never pushed. Blocking the stream stands in for
+// that; a visibilitychange stands in for coming back.
+async function blockStream(page: Page) {
+  await page.route("**/notifications/stream?**", (route) => route.abort());
+}
+async function comeBack(page: Page) {
+  await page.unroute("**/notifications/stream?**");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+}
+
+test("a message sent while the stream was down appears on coming back", async ({ page, request }) => {
+  const [alice, bob] = await Promise.all([signUp("alice"), signUp("bob")]);
+  await apiCall(request, alice, "POST", `/users/${bob.username}/follow`);
+  await apiCall(request, bob, "POST", `/users/${alice.username}/follow`);
+  await apiCall(request, bob, "POST", "/chats/send", { receiver_id: alice.id, body: "before" });
+
+  await signIn(page, alice);
+  await blockStream(page);
+  await page.goto("/chats");
+  await page.getByRole("button", { name: new RegExp(bob.username) }).click();
+  await expect(page.getByText("before").last()).toBeVisible();
+
+  await apiCall(request, bob, "POST", "/chats/send", { receiver_id: alice.id, body: "while you were away" });
+  await comeBack(page);
+  await expect(page.getByText("while you were away").last()).toBeVisible();
+});
+
+test("a like while the stream was down reaches the bell on coming back", async ({ page, request }) => {
+  const [alice, bob] = await Promise.all([signUp("alice"), signUp("bob")]);
+  const post = await upload(request, alice, "quiet post");
+  await signIn(page, alice);
+  await blockStream(page);
+  await page.goto("/feed");
+  await expect(page.getByRole("button", { name: "Notifications" })).toBeVisible();
+
+  await apiCall(request, bob, "POST", `/posts/${post}/like`);
+  await comeBack(page);
+  await expect(page.getByRole("button", { name: "Notifications (1 unread)" })).toBeVisible();
+});

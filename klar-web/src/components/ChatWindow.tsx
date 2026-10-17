@@ -61,7 +61,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
   const receiverDeleted = receiverId === null;
   const displayName = receiverUsername ?? DELETED_USER_LABEL;
   const { user } = useAuth();
-  const { lastMessageEvent, refreshChatUnreadCount } = useNotifications();
+  const { lastMessageEvent, refreshChatUnreadCount, resyncedAt } = useNotifications();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -111,6 +111,20 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
       .then(() => refreshChatUnreadCount())
       .catch(err => console.error("Failed to mark conversation as read", err));
   }, [lastMessageEvent, conversationId, receiverId, refreshChatUnreadCount]);
+
+  // Back from the background or a dropped connection: messages sent
+  // meanwhile were never pushed, so the conversation is fetched again and,
+  // being on screen, marked read.
+  useEffect(() => {
+    if (!resyncedAt) return;
+    if (!conversationId || conversationId === "new") return;
+    chatsApi.getMessages(conversationId)
+      .then(setMessages)
+      .catch(err => console.error("Could not refresh messages:", err));
+    chatsApi.markConversationRead(conversationId)
+      .then(() => refreshChatUnreadCount())
+      .catch(err => console.error("Failed to mark conversation as read", err));
+  }, [resyncedAt, conversationId, refreshChatUnreadCount]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
