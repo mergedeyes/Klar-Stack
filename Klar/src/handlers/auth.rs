@@ -228,17 +228,9 @@ pub async fn login(
     Json(input): Json<LoginRequest>,
 ) -> Result<(HeaderMap, Json<AuthResponse>), AppError> {
 
-    let user = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE LOWER(email) = $1"
-    )
-    .bind(normalize_email(&input.email))
-    .fetch_optional(&state.db)
-    .await
-    .db_err("Database error")?;
-
-    let user = user.ok_or_else(|| {
-        AppError::bad_request("Invalid email or password")
-    })?;
+    let user = find_by_login(&state.db, &input.login)
+        .await?
+        .ok_or_else(|| AppError::bad_request(BAD_LOGIN))?;
     verify_password(&user, &input.password)?;
 
     // Only after the password checks out, so the lock can't be used to
@@ -523,17 +515,35 @@ pub async fn create_reset_token(conn: &mut sqlx::PgConnection, user_id: uuid::Uu
     Ok(token)
 }
 
+/// One message for an unknown account and a wrong password, so the login
+/// form doesn't say which email addresses have an account.
+pub const BAD_LOGIN: &str = "Invalid email, username or password";
+
+/// Finds the account someone signs in as: by email address or by username.
+/// Usernames can't contain "@", so the two can't be confused.
+pub async fn find_by_login(db: &sqlx::PgPool, login: &str) -> Result<Option<UserRow>, AppError> {
+    let login = login.trim();
+    let query = if login.contains('@') {
+        sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE LOWER(email) = $1")
+            .bind(normalize_email(login))
+    } else {
+        sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE LOWER(username) = LOWER($1)")
+            .bind(login.to_string())
+    };
+    query.fetch_optional(db).await.db_err("Database error")
+}
+
 /// Checks a login password against the user's stored hash. The same
-/// message for a wrong password as for an unknown email.
+/// message for a wrong password as for an unknown account.
 pub fn verify_password(user: &UserRow, password: &str) -> Result<(), AppError> {
     let stored_hash = user.password_hash.as_ref().ok_or_else(|| {
-        AppError::bad_request("Invalid email or password")
+        AppError::bad_request(BAD_LOGIN)
     })?;
     let parsed_hash = PasswordHash::new(stored_hash)
         .map_err(|_| AppError::internal("Failed to parse password hash"))?;
     Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::bad_request("Invalid email or password"))
+        .map_err(|_| AppError::bad_request(BAD_LOGIN))
 }
 
 /// POST /auth/reset-password

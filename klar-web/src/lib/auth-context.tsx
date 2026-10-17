@@ -14,7 +14,7 @@ import { auth, tokens, users, type User } from "@/lib/api";
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (emailOrUsername: string, password: string) => Promise<void>;
   register: (
     username: string,
     email: string,
@@ -63,8 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     restore();
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await auth.login(email, password);
+  const login = useCallback(async (emailOrUsername: string, password: string) => {
+    const res = await auth.login(emailOrUsername, password);
     tokens.set(res.access_token, res.refresh_token);
     setUser(res.user);
     // The login response is the owner-only UserResponse, which has no

@@ -196,7 +196,10 @@ pub struct RegisterRequest {
 /// Login request
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    pub email: String,
+    /// An email address or a username. Still accepted as "email", the
+    /// field's name before usernames could sign in.
+    #[serde(alias = "email")]
+    pub login: String,
     pub password: String,
 }
 

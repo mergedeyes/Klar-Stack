@@ -31,7 +31,8 @@ import { Input } from "@/components/ui/input";
 // ── Schema ────────────────────────────────────────────────────────────────────
 
 const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  // An email address or a username; the server tells them apart.
+  login: z.string().trim().min(1, "Enter your email or username"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -54,13 +55,13 @@ export default function LoginPage() {
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { login: "", password: "" },
   });
 
   const onSubmit = async (values: LoginValues) => {
     setError(null);
     try {
-      await login(values.email, values.password);
+      await login(values.login, values.password);
       router.push("/feed");
     } catch (err) {
       if (err instanceof HttpError && err.status === 423) {
@@ -76,7 +77,7 @@ export default function LoginPage() {
     if (!locked) return;
     setResend({ busy: true, message: null, error: false });
     try {
-      const res = await auth.resendLockLink(locked.email, locked.password);
+      const res = await auth.resendLockLink(locked.login, locked.password);
       setResend({ busy: false, message: res.message, error: false });
     } catch (err) {
       setResend({ busy: false, message: err instanceof Error ? err.message : "Couldn't send the link", error: true });
@@ -148,15 +149,18 @@ export default function LoginPage() {
 
               <FormField
                 control={form.control}
-                name="email"
+                name="login"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Email or username</FormLabel>
                     <FormControl>
                       <Input
-                        type="email"
+                        type="text"
                         placeholder="you@example.com"
-                        autoComplete="email"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         {...field}
                       />
                     </FormControl>

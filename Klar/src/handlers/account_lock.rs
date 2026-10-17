@@ -27,11 +27,9 @@ use uuid::Uuid;
 
 use crate::auth::{AuthUser, OptionalSession};
 use crate::errors::AppError;
-use crate::handlers::auth::{create_reset_token, verify_password, AppState};
+use crate::handlers::auth::{create_reset_token, find_by_login, verify_password, AppState, BAD_LOGIN};
 use crate::handlers::reports::require_admin;
-use crate::models::UserRow;
 use crate::utils::DbResultExt;
-use crate::validation::normalize_email;
 
 /// Reset links from a lock email or a resend stay valid this long: the
 /// owner may not read the email for a while.
@@ -151,7 +149,9 @@ pub async fn revoke_sessions(conn: &mut PgConnection, user_id: Uuid) -> Result<(
 
 #[derive(Debug, Deserialize)]
 pub struct ResendRequest {
-    pub email: String,
+    /// The email address or username the login form was given.
+    #[serde(alias = "email")]
+    pub login: String,
     pub password: String,
 }
 
@@ -160,12 +160,9 @@ pub async fn resend_link(
     State(state): State<AppState>,
     Json(input): Json<ResendRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE LOWER(email) = $1")
-        .bind(normalize_email(&input.email))
-        .fetch_optional(&state.db)
-        .await
-        .db_err("Database error")?
-        .ok_or_else(|| AppError::bad_request("Invalid email or password"))?;
+    let user = find_by_login(&state.db, &input.login)
+        .await?
+        .ok_or_else(|| AppError::bad_request(BAD_LOGIN))?;
     verify_password(&user, &input.password)?;
 
     let mut tx = state.db.begin().await.db_err("Database error")?;

@@ -18,6 +18,27 @@ async fn refresh(app: &TestApp, token: &str) -> Resp {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn the_username_signs_in_like_the_email(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    app.register("alice").await;
+    let sign_in = |login: &'static str, password: &'static str| {
+        app.anon_post("/auth/login", json!({ "login": login, "password": password }))
+    };
+
+    // Either works, in any case and with stray spaces from a phone keyboard.
+    let by_name = sign_in("Alice ", PASSWORD).await.ok().json();
+    assert_eq!(by_name["user"]["username"], "alice");
+    sign_in(" ALICE@example.test", PASSWORD).await.ok();
+
+    // A wrong password and an unknown account get the same answer.
+    let wrong = sign_in("alice", "wrong-password-1").await;
+    let unknown = sign_in("nobody", PASSWORD).await;
+    assert_eq!(wrong.status, StatusCode::BAD_REQUEST);
+    assert_eq!(unknown.status, StatusCode::BAD_REQUEST);
+    assert_eq!(wrong.json(), unknown.json());
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn refresh_tokens_work_once(pool: PgPool) {
     let app = TestApp::new(pool).await;
     app.register("alice").await;
