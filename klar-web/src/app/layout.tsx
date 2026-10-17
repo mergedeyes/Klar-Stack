@@ -31,7 +31,13 @@ const geist = Geist({ subsets: ["latin"] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("meta");
-  return { title: "Klar", description: t("description") };
+  return {
+    title: "Klar",
+    description: t("description"),
+    // iOS: open from the home screen without Safari's bars, as the
+    // manifest (app/manifest.ts) asks of the other browsers.
+    appleWebApp: { capable: true, title: "Klar", statusBarStyle: "default" },
+  };
 }
 
 // Without this, mobile browsers default to a ~980px desktop-width viewport
@@ -41,6 +47,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // The page background in light and dark mode (globals.css), for the
+  // browser's bars and the home screen app's status bar.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f5f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default async function RootLayout({
