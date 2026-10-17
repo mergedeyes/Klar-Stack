@@ -411,10 +411,11 @@ export const auth = {
       body: JSON.stringify({ username, email, password, accept_terms: acceptTerms }),
     }),
 
-  login: (email: string, password: string) =>
+  // `login` is an email address or a username.
+  login: (login: string, password: string) =>
     request<AuthResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ login, password }),
     }),
 
   logout: (refreshToken?: string | null) =>
@@ -425,10 +426,10 @@ export const auth = {
 
   // After a 423 on login: the account was locked because a takeover is
   // suspected; this sends the owner a new reset link (rate-limited).
-  resendLockLink: (email: string, password: string) =>
+  resendLockLink: (login: string, password: string) =>
     request<{ message: string }>("/auth/locked/resend-link", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ login, password }),
     }),
 
   forgotPassword: (email: string) =>

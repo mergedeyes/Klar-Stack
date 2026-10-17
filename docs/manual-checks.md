@@ -58,6 +58,7 @@ loads more as you scroll.
 
 - [ ] Settings → "Keep my account after the test" is off for a new account; ticking it shows "Requested on …" and stays ticked after a reload; unticking clears it
 - [ ] Register, verify the email via the link, log in, log out
+- [ ] Logging in works with the username as well as the email, in any case; on a phone the field doesn't capitalise the first letter; a wrong password and an unknown name both say "Invalid email, username or password"
 - [ ] Right after registering, the welcome guide opens over the feed (also on a phone, where it scrolls if it's too tall); ticking "Keep my account" on its last step shows up ticked in Settings; after Skip, ✕, Escape or "Let's go" it doesn't come back on another device or browser, and "Guide" in the footer opens it again; an account that existed before this change never sees it on its own
 - [ ] Before verifying, the banner says posting, commenting, messaging and reporting need a verified address; trying any of them shows that message, liking and following work
 - [ ] An unverified account gets a reminder email a week before its deletion (move `users.created_at` back 24 days on a local stack and wait for the hourly sweep, or restart the backend)

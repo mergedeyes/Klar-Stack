@@ -9,7 +9,8 @@ const PASSWORD = "test-password-123";
 
 async function logIn(page: import("@playwright/test").Page, username: string, password: string) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(`${username}@example.test`);
+  // By username, so resending the link has to work without the email too.
+  await page.getByLabel("Email or username").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
@@ -39,7 +40,7 @@ test("a locked account is signed out, the login explains the lock, and a new pas
 
   // A wrong password looks like any wrong password...
   await logIn(page, victim.username, "wrong-password-9");
-  await expect(page.getByText("Invalid email or password")).toBeVisible();
+  await expect(page.getByText("Invalid email, username or password")).toBeVisible();
   await expect(page.getByText("Your account is locked")).toBeHidden();
 
   // ...the right one explains the lock; a new link only every 15 minutes.

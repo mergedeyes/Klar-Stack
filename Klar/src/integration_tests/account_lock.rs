@@ -34,7 +34,8 @@ async fn a_locked_account_is_signed_out_and_unlocked_by_a_new_password(pool: PgP
 
     // Resending: needs the password, and not more than every 15 minutes.
     let resend = |password: &'static str| {
-        app.anon_post("/auth/locked/resend-link", json!({ "email": "alice@example.test", "password": password }))
+        // By username: the lock notice resends with whatever the login form got.
+        app.anon_post("/auth/locked/resend-link", json!({ "login": "alice", "password": password }))
     };
     assert_eq!(resend("wrong-password-1").await.status, StatusCode::BAD_REQUEST);
     assert_eq!(resend(PASSWORD).await.status, StatusCode::TOO_MANY_REQUESTS);
