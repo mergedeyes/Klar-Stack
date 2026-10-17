@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useGuide } from "@/components/WelcomeGuide";
 
 export default function Footer() {
   const { user } = useAuth();
   const pathname = usePathname();
+  const { openGuide } = useGuide();
 
   return (
     // Sticky: pinned to the screen's bottom edge while a long page scrolls
@@ -24,6 +26,14 @@ export default function Footer() {
             <Link href={`/feedback?from=${encodeURIComponent(pathname)}`} className="font-medium text-foreground hover:underline">
               Feedback
             </Link>
+            <span aria-hidden="true">·</span>
+          </>
+        )}
+        {user && (
+          <>
+            <button onClick={openGuide} className="hover:underline">
+              Guide
+            </button>
             <span aria-hidden="true">·</span>
           </>
         )}

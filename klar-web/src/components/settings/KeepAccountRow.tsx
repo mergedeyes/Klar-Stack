@@ -46,9 +46,9 @@ export default function KeepAccountRow() {
           <span className="block text-sm font-medium">Keep my account after the test</span>
           <span className="block text-xs text-muted-foreground">
             {keep && since
-              ? `Requested on ${new Date(since).toLocaleDateString()}. `
-              : "Test accounts are deleted before launch. "}
-            Yours keeps its posts and comments, and follows and chats with others who keep theirs.
+              ? `Requested on ${new Date(since).toLocaleDateString()}. Your`
+              : "Test accounts are deleted before launch. If you keep yours, your"}{" "}
+            posts and comments stay, and so do follows and chats with others who keep theirs.
           </span>
         </span>
         <input

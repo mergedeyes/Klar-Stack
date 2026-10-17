@@ -44,6 +44,9 @@ pub struct UserRow {
     /// When the account consented to its interactions being logged for
     /// ranking the Discovery page (handlers/events.rs); None: it didn't.
     pub personalization_consented_at: Option<DateTime<Utc>>,
+    /// When the owner finished or closed the welcome guide; None: a new
+    /// account that hasn't yet (migration 20261017100000).
+    pub guide_seen_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize)]
@@ -89,6 +92,9 @@ pub struct UserPublicResponse {
     /// The owner's own setting, like email above: only get_me sets it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub personalization_enabled: Option<bool>,
+    /// Whether the owner has seen the welcome guide; only get_me sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guide_seen: Option<bool>,
 }
 
 /// Public API response
@@ -169,6 +175,7 @@ impl From<UserRow> for UserPublicResponse {
             email: None,
             email_verified: None,
             personalization_enabled: None,
+            guide_seen: None,
         }
     }
 }
