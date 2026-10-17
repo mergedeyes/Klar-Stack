@@ -9,6 +9,7 @@ import PostModal from "@/components/PostModal";
 import { Button } from "@/components/ui/button";
 import TopNav from "@/components/TopNav";
 import NewPostsPill from "@/components/NewPostsPill";
+import PullToRefresh from "@/components/PullToRefresh";
 import { useNewPosts } from "@/hooks/use-new-posts";
 
 function PostSkeleton() {
@@ -46,7 +47,7 @@ export default function FeedPage() {
   // so the initial load can run from an effect; refreshFeed adds the
   // resets for a manual refresh (e.g. after creating a post).
   const loadFirstPage = useCallback(() => {
-    postsApi.feed(undefined, 20)
+    return postsApi.feed(undefined, 20)
       .then((page) => {
         setFeedPosts(page);
         setHasMore(page.length >= 20);
@@ -127,6 +128,12 @@ export default function FeedPage() {
       <main className="mx-auto max-w-3xl px-4">
         {/* Loads the first page again in place, without the skeletons. */}
         <NewPostsPill newPosts={newPosts} onShow={loadFirstPage} />
+        <PullToRefresh
+          onRefresh={() => {
+            newPosts.dismiss();
+            return loadFirstPage();
+          }}
+        />
 
         {showSkeletons && (
           <>

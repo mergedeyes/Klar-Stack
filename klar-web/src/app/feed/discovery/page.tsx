@@ -8,6 +8,7 @@ import PostCard from "@/components/PostCard";
 import PostModal from "@/components/PostModal";
 import TopNav from "@/components/TopNav";
 import NewPostsPill from "@/components/NewPostsPill";
+import PullToRefresh from "@/components/PullToRefresh";
 import { useNewPosts } from "@/hooks/use-new-posts";
 
 function PostSkeleton() {
@@ -45,7 +46,7 @@ export default function DiscoveryPage() {
   // so the initial load can run from an effect; refreshDiscovery adds the
   // resets for a manual refresh (e.g. after creating a post).
   const loadFirstPage = useCallback(() => {
-    postsApi.discoveryFeed(undefined, 15)
+    return postsApi.discoveryFeed(undefined, 15)
       .then((res) => {
         setPosts(res.data);
         cursorRef.current = res.next_cursor ?? undefined;
@@ -123,6 +124,12 @@ export default function DiscoveryPage() {
       <main className="mx-auto max-w-3xl px-4">
         {/* Loads the first page again in place, without the skeletons. */}
         <NewPostsPill newPosts={newPosts} onShow={loadFirstPage} />
+        <PullToRefresh
+          onRefresh={() => {
+            newPosts.dismiss();
+            return loadFirstPage();
+          }}
+        />
 
         <div className="py-6">
           <h1 className="text-2xl font-bold tracking-tight">Discovery</h1>
