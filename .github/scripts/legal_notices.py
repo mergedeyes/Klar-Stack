@@ -6,7 +6,10 @@ legal page:
 
     documents: terms, privacy
     ---
-    A short summary in plain German of what changed.
+    A short summary in plain German of what changed in the Terms or the
+    privacy policy and what that means for the reader's data and rights.
+    Not a feature announcement (that's What's New), and no next step: the
+    app and the email say whether there's anything to do.
 
 `check BASE HEAD` (CI, on pull requests) fails when the Terms or the privacy
 page changed without a new or edited notice naming that document, unless the
@@ -36,6 +39,10 @@ PAGES = {
 NO_NOTICE_LABEL = "legal: no notice"
 KEY = re.compile(r"^[a-z0-9-]+\.md$")
 SUMMARY_MIN, SUMMARY_MAX = 20, 2000
+# The in-app dialog and the email add the next step themselves ("Du musst
+# nichts tun." or the request to accept the Terms), so a summary that says
+# it too shows it twice.
+NEXT_STEP = re.compile(r"musst nichts tun|nichts tun musst|stimme\b.*\bzu\b", re.IGNORECASE)
 
 
 def parse(path):
@@ -57,6 +64,11 @@ def parse(path):
     summary = summary.strip()
     if not SUMMARY_MIN <= len(summary) <= SUMMARY_MAX:
         raise ValueError(f"{name}: the summary must be {SUMMARY_MIN} to {SUMMARY_MAX} characters")
+    if NEXT_STEP.search(summary):
+        raise ValueError(
+            f"{name}: leave out what the reader has to do (e.g. 'Du musst nichts tun.'); "
+            "the app and the email add it"
+        )
     return documents, summary
 
 

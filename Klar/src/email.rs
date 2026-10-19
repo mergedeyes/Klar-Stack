@@ -563,7 +563,7 @@ impl EmailService {
                       kannst du diese E-Mails nicht abbestellen.";
 
         let text = format!(
-            "Hallo {},\n\nwir haben {} geändert.\n\nDas ist neu:\n{}\n\n{}\n\nDie vollständige Fassung: {}\n\n--\n{}",
+            "Hallo {},\n\nwir haben {} geändert.\n\nWas sich ändert:\n{}\n\n{}\n\nDie vollständige Fassung: {}\n\n--\n{}",
             username, what, summary, next, url, footer
         );
         // Escaped, and its line breaks (the notice files are written as short
@@ -574,7 +574,7 @@ impl EmailService {
             &headline,
             // The preheader is hidden, so the headline is repeated in the body.
             &format!(
-                "Hallo {},<br><br><strong>wir haben {} geändert.</strong><br><br>Das ist neu:<br>{}",
+                "Hallo {},<br><br><strong>wir haben {} geändert.</strong><br><br>Was sich ändert:<br>{}",
                 escape_html(username),
                 what,
                 escaped

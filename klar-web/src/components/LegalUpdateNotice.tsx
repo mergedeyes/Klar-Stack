@@ -68,7 +68,7 @@ export default function LegalUpdateNotice() {
         <p className="mb-1 text-xs text-muted-foreground">
           {new Date(update.published_at).toLocaleDateString("de-DE")}
         </p>
-        <p className="mb-3 text-sm font-medium">Das ist neu:</p>
+        <p className="mb-3 text-sm font-medium">Was sich ändert:</p>
         <p className="mb-4 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">{update.summary}</p>
         <p className="mb-4 text-sm">
           Die vollständige Fassung:{" "}
@@ -80,13 +80,16 @@ export default function LegalUpdateNotice() {
             <Link href="/datenschutz" className="underline">Datenschutzerklärung</Link>
           )}
         </p>
-        {update.requires_acceptance && (
+        {update.requires_acceptance ? (
           <p className="mb-4 text-xs text-muted-foreground">
             Um Klar weiter zu nutzen, stimme bitte den neuen Nutzungsbedingungen zu. Bist du nicht
             einverstanden, kannst du in den{" "}
             <Link href="/settings" className="underline">Einstellungen</Link> deine Daten exportieren und dein
             Konto löschen.
           </p>
+        ) : (
+          // As in the email: the summary itself never says it (legal_notices.py).
+          <p className="mb-4 text-xs text-muted-foreground">Du musst nichts tun.</p>
         )}
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <Button className="w-full" onClick={acknowledge} disabled={busy}>
