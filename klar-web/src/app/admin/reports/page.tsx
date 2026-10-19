@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Archive, Clock, Gauge, Plus, RotateCcw, ShieldAlert, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -74,7 +74,10 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [showClosed, setShowClosed] = useState(false);
+  // ?closed=1 opens the closed reports directly (the decision log links
+  // here for dismissals, which leave no decision).
+  const searchParams = useSearchParams();
+  const [showClosed, setShowClosed] = useState(searchParams.get("closed") === "1");
   // Per card (keyOf): the internal note, the answer to a pending
   // objection, the violation type picked for a removal (unset: the first
   // reason's first type) and the justification for departing from it.
