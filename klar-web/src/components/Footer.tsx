@@ -18,8 +18,9 @@ export default function Footer() {
     // covers content for good. One line of fixed height; on narrow screens
     // the links scroll sideways instead of wrapping into a taller bar; the
     // faded right edge hints at that, and the extra right padding lets the
-    // last link scroll clear of the fade.
-    <footer className="sticky bottom-0 z-20 h-10 shrink-0 overflow-x-auto border-t border-border bg-background/80 text-xs text-muted-foreground backdrop-blur max-sm:[mask-image:linear-gradient(to_right,black_80%,transparent)]">
+    // last link scroll clear of the fade. In the home screen app it grows
+    // by the gesture bar's height, so its links stay clear of it.
+    <footer className="sticky bottom-0 z-20 h-[calc(2.5rem+env(safe-area-inset-bottom,0px))] shrink-0 pb-[env(safe-area-inset-bottom,0px)] overflow-x-auto border-t border-border bg-background/80 text-xs text-muted-foreground backdrop-blur max-sm:[mask-image:linear-gradient(to_right,black_80%,transparent)]">
       <nav className="mx-auto flex h-full w-max items-center gap-3 whitespace-nowrap px-4 max-sm:pr-16">
         {/* Signed-in only (sending needs an account). Passes the current
             page along, so a bug report says where it happened. */}

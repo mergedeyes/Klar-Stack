@@ -14,7 +14,7 @@ export default function WhatsNewPage() {
 
   return (
     <div className="flex-1 bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
+      <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
           <SmartBackButton aria-label={tc("back")} />
           <h1 className="font-semibold">{t("title")}</h1>

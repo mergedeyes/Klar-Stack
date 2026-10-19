@@ -1,30 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { apiCall, signIn, signUp, upload } from "./helpers";
+import { apiCall, asHomeScreenApp, signIn, signUp, upload } from "./helpers";
 
 // Pulling down at the top reloads the page, but only in the home screen
 // app; a browser tab keeps its own pull-to-refresh.
 
 test.skip(({ isMobile }) => !isMobile, "a touch gesture");
-
-/** Makes the page believe it was opened from the home screen. */
-async function asHomeScreenApp(page: Page) {
-  await page.addInitScript(() => {
-    const real = window.matchMedia.bind(window);
-    window.matchMedia = (query: string) =>
-      query.includes("display-mode: standalone")
-        ? ({
-            matches: true,
-            media: query,
-            onchange: null,
-            addEventListener() {},
-            removeEventListener() {},
-            addListener() {},
-            removeListener() {},
-            dispatchEvent: () => false,
-          } as MediaQueryList)
-        : real(query);
-  });
-}
 
 /** A real touch drag from (200, y) down by `distance` pixels. */
 async function pullDown(page: Page, distance: number) {

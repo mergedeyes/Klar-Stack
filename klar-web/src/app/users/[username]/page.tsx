@@ -334,7 +334,7 @@ export default function ProfilePage() {
   if (notFound) {
     return (
       <div className="flex-1 bg-background">
-        <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
+        <header className="sticky top-safe z-20 border-b border-border bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
             <SmartBackButton aria-label="Back" />
           </div>
@@ -360,7 +360,7 @@ export default function ProfilePage() {
       {isMe ? (
         <TopNav active="profile" onPostCreated={refreshPosts} />
       ) : (
-        <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
+        <header className="sticky top-safe z-20 border-b border-border bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
             <SmartBackButton aria-label="Back" />
             <span className="font-semibold flex-1">{profile.username}</span>

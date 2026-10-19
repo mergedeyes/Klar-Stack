@@ -39,7 +39,7 @@ export default function PostPageClient() {
   // on phones the page scrolls as a whole.
   return (
     <div data-fill-viewport-md className="flex min-h-0 flex-1 flex-col bg-background">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur">
+      <header className="sticky top-safe z-20 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
           <SmartBackButton aria-label="Back" />
           <span className="font-semibold">Post</span>

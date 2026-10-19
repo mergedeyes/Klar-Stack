@@ -27,6 +27,7 @@ import Footer from "@/components/Footer";
 import LegalUpdateNotice from "@/components/LegalUpdateNotice";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 import LocaleSync from "@/components/LocaleSync";
+import EdgeToEdge from "@/components/EdgeToEdge";
 import WhatsNew from "@/components/WhatsNew";
 import { GuideProvider } from "@/components/WelcomeGuide";
 
@@ -79,6 +80,11 @@ export default async function RootLayout({
           footer leave, so a short page ends exactly at the screen's bottom
           edge and a long one scrolls with the footer pinned below it. */}
       <body className={`${geist.className} flex min-h-dvh flex-col`}>
+        <EdgeToEdge />
+        {/* In the home screen app, the status bar's strip in the page's
+            colour, so content scrolling up doesn't show behind it (sticky
+            headers stop below it, top-safe). No height in a browser tab. */}
+        <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[env(safe-area-inset-top,0px)] bg-background" />
         <NextIntlClientProvider>
           <AuthProvider>
             <LocaleSync />

@@ -257,3 +257,23 @@ export async function pageFor(browser: Browser, session: Session): Promise<Page>
   await signIn(page, session);
   return page;
 }
+
+/** Makes the page believe it was opened from the home screen. */
+export async function asHomeScreenApp(page: Page) {
+  await page.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    window.matchMedia = (query: string) =>
+      query.includes("display-mode: standalone")
+        ? ({
+            matches: true,
+            media: query,
+            onchange: null,
+            addEventListener() {},
+            removeEventListener() {},
+            addListener() {},
+            removeListener() {},
+            dispatchEvent: () => false,
+          } as MediaQueryList)
+        : real(query);
+  });
+}
