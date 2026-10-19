@@ -40,3 +40,26 @@ async fn pings_success_while_healthy_and_fail_when_the_database_is_gone(pool: Pg
     run_once(&app.state, &client, &url).await;
     assert_eq!(pings.recv().await.unwrap(), "/ping-uuid/fail");
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_dropped_redis_connection_is_not_reported_as_down(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (url, mut pings) = fake_healthchecks().await;
+    let client = reqwest::Client::new();
+
+    // Closes the backend's connection from the server's side, as Upstash
+    // does with idle ones. Only this one, by its id: other tests share the
+    // Redis server.
+    let mut conn = app.state.redis.clone();
+    let id: i64 = redis::cmd("CLIENT").arg("ID").query_async(&mut conn).await.unwrap();
+    let mut other = redis::Client::open(std::env::var("REDIS_URL").unwrap())
+        .unwrap()
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    let killed: i64 = redis::cmd("CLIENT").arg("KILL").arg("ID").arg(id).query_async(&mut other).await.unwrap();
+    assert_eq!(killed, 1);
+
+    run_once(&app.state, &client, &url).await;
+    assert_eq!(pings.recv().await.unwrap(), "/ping-uuid", "a reconnect, not an outage");
+}

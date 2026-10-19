@@ -27,6 +27,7 @@ mod media;
 mod moderation;
 mod models;
 mod rate_limit;
+mod redis_retry;
 mod retention;
 mod routes;
 mod standing;

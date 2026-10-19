@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::auth::{generate_refresh_token, hash_refresh_token, AuthUser};
 use crate::errors::AppError;
 use crate::handlers::auth::AppState;
+use crate::redis_retry::retry_once;
 use crate::models::NotificationActor;
 use crate::utils::{DbResultExt, ResolveMedia};
 
@@ -218,8 +219,12 @@ pub async fn publish_notification(state: &AppState, event: &NotificationEvent) {
         }
     };
 
-    let mut conn = state.redis.clone();
-    if let Err(e) = conn.publish::<_, _, ()>(NOTIFICATION_CHANNEL, payload).await {
+    let published = retry_once(&state.redis, |mut conn| {
+        let payload = payload.clone();
+        async move { conn.publish::<_, _, ()>(NOTIFICATION_CHANNEL, payload).await }
+    })
+    .await;
+    if let Err(e) = published {
         tracing::error!("Failed to publish notification to Redis: {}", e);
     }
 }
@@ -296,12 +301,15 @@ pub async fn create_stream_ticket(
     auth: AuthUser,
 ) -> Result<Json<StreamTicketResponse>, AppError> {
     let ticket = generate_refresh_token();
-    let mut conn = state.redis.clone();
     // With the time it was issued: the stream measures the session against
     // it (account_lock::session_valid).
     let value = format!("{} {}", auth.user_id, crate::auth::issued_now());
-    conn.set_ex::<_, _, ()>(stream_ticket_key(&ticket), value, STREAM_TICKET_TTL_SECS)
-        .await
+    let key = stream_ticket_key(&ticket);
+    retry_once(&state.redis, |mut conn| {
+        let (key, value) = (key.clone(), value.clone());
+        async move { conn.set_ex::<_, _, ()>(key, value, STREAM_TICKET_TTL_SECS).await }
+    })
+    .await
         .map_err(|e| {
             tracing::error!("Failed to store SSE ticket: {}", e);
             AppError::internal("Could not create stream ticket")
@@ -315,13 +323,11 @@ pub async fn create_stream_ticket(
 /// user and when the ticket was issued (auth::issued_now).
 async fn redeem_stream_ticket(state: &AppState, ticket: &str) -> Result<(Uuid, f64), AppError> {
     let key = stream_ticket_key(ticket);
-    let mut conn = state.redis.clone();
-    let (user_id, _): (Option<String>, i64) = redis::pipe()
-        .atomic()
-        .get(&key)
-        .del(&key)
-        .query_async(&mut conn)
-        .await
+    let (user_id, _): (Option<String>, i64) = retry_once(&state.redis, |mut conn| {
+        let key = key.clone();
+        async move { redis::pipe().atomic().get(&key).del(&key).query_async(&mut conn).await }
+    })
+    .await
         .map_err(|e| {
             tracing::error!("Failed to redeem SSE ticket: {}", e);
             AppError::internal("Could not open stream")
