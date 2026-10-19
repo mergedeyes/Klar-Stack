@@ -14,7 +14,7 @@ realistic data volumes for the paging checks.
 ## Any UI change
 
 - [ ] Works at phone width (about 375 px): no horizontal scroll, nothing hidden behind the top nav or the browser's address bar
-- [ ] Works in light and dark mode
+- [ ] Works in light and dark mode (Klar follows the device's setting: switch the phone or the computer between light and dark; no text is hard to read, badges and banners have readable colours)
 - [ ] A short page doesn't scroll and the footer sits on the bottom edge; on a long page the footer stays pinned while scrolling and nothing ends up hidden behind it
 - [ ] Loading state appears (skeleton or spinner) and is replaced by content, an empty state or an error, never left spinning
 - [ ] Browser console shows no new errors or React warnings
@@ -33,7 +33,7 @@ realistic data volumes for the paging checks.
 - [ ] Android (Chrome and Samsung Internet): "Add to home screen" / "Install" offers Klar as an app with the chosen app icon, Phaser Violett by default (round or squircle, nothing important cut off) and the name "Klar"; it opens full screen on the feed, whatever page was open when it was added
 - [ ] iPhone (Safari → Share → Add to Home Screen): the chosen app icon and "Klar"; it opens full screen. It asks for the passcode and the login once (iOS keeps the app's storage apart from Safari's), and keeps both afterwards
 - [ ] In the app on Android (Chrome): no black bars at the top or bottom; the status bar shows over the page's colour with the header right below it (not behind the camera), scrolled content doesn't show behind the clock, and the footer's links sit above the gesture bar (with gesture navigation and with buttons); in a normal browser tab nothing changes
-- [ ] In the app: every page has a way back without the browser's back button; external links (e.g. in the legal pages) open in a browser view; the status bar matches light and dark mode
+- [ ] In the app: every page has a way back without the browser's back button; external links (e.g. in the legal pages) open in a browser view; the status bar matches the page in light and dark mode; swiping the footer sideways shows no scrollbar
 - [ ] The browser tab shows the chosen app icon (Phaser Violett by default) instead of the triangle
 - [ ] Settings → "Language and app icon": the icons are grouped by category (Klar, Viewfinder/Sucher, ... Retro with 80s/90s/Y2K); picking one ticks it, changes the tab icon at once, and stays after a reload; picking the default again removes the `klar_app_icon` cookie; the language picker there works as before
 - [ ] After picking another icon, adding Klar to the home screen uses it (Android and iPhone); with Klar already installed on Android in Chrome, opening it from the home screen may offer to update the icon (allow a day)

@@ -217,7 +217,7 @@ export default function AdminSecurityPage() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="font-medium">@{c.username}</span>
                   {c.flags.map((f) => (
-                    <span key={f} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+                    <span key={f} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">
                       {FLAG_LABELS[f]}
                     </span>
                   ))}

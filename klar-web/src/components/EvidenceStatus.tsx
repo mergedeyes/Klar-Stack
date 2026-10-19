@@ -17,7 +17,7 @@ export function AuthorityReportBadge({ record }: { record: EvidenceSummary }) {
       <Landmark size={11} /> Report to authorities: required
     </span>
   ) : (
-    <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+    <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">
       <Landmark size={11} /> Report to authorities: recommended
     </span>
   );
@@ -37,7 +37,7 @@ export default function EvidenceStatus({ record }: { record: EvidenceSummary }) 
     );
   }
   if (!record.decided_at) {
-    return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">Awaiting decision</span>;
+    return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">Awaiting decision</span>;
   }
   if (record.decision === "dismissed") {
     return <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Dismissed, purging</span>;

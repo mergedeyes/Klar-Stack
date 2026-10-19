@@ -72,7 +72,7 @@ export default function ChangePasswordPage() {
               </div>
             )}
             {success && (
-              <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-600">
+              <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-600 dark:text-green-400">
                 Password changed! Redirecting…
               </div>
             )}

@@ -241,7 +241,7 @@ function ToolRow({ page, count, urgent }: { page: ToolPage; count?: number; urge
       {!!count && (
         <span
           aria-label={`${count} waiting`}
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${urgent ? "bg-destructive text-white" : "bg-muted"}`}
+          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${urgent ? "bg-destructive text-white dark:bg-red-600" : "bg-muted"}`}
         >
           {count}
         </span>

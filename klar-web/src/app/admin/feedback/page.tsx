@@ -95,7 +95,7 @@ export default function AdminFeedbackPage() {
                 <div key={entry.id} className="rounded-xl border border-border p-3">
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
                     <span className="flex items-center gap-1 font-medium"><Icon size={14} /> {label}</span>
-                    <span className={`rounded px-1.5 py-0.5 text-xs ${entry.status === "new" ? "bg-amber-500/15 font-semibold text-amber-600" : "bg-muted text-muted-foreground"}`}>
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${entry.status === "new" ? "bg-amber-500/15 font-semibold text-amber-800 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>
                       {STATUS_LABELS[entry.status]}
                     </span>
                     <span className="text-xs text-muted-foreground">

@@ -303,7 +303,7 @@ export default function EditProfilePage() {
             className={isOnCooldown ? "opacity-60 bg-muted cursor-not-allowed" : ""}
           />
           {isOnCooldown ? (
-            <p className="text-xs text-amber-500 font-medium">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-400">
               You recently changed your username. You can change it again on {unlockDateStr}.
             </p>
           ) : (

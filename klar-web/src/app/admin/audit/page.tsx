@@ -133,7 +133,7 @@ export default function AuditExportPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{x.period_from} – {x.period_to}</span>
                   {x.with_identities && (
-                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">
                       with identities
                     </span>
                   )}
