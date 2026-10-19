@@ -563,7 +563,7 @@ impl EmailService {
                       kannst du diese E-Mails nicht abbestellen.";
 
         let text = format!(
-            "Hallo {},\n\nwir haben {} geändert.\n\nDas ist neu:\n{}\n\n{}\n\nDie vollständige Fassung: {}\n\n--\n{}",
+            "Rechtlicher Hinweis\n\nHallo {},\n\nwir haben {} geändert.\n\nWas sich ändert:\n{}\n\n{}\n\nDie vollständige Fassung: {}\n\n--\n{}",
             username, what, summary, next, url, footer
         );
         // Escaped, and its line breaks (the notice files are written as short
@@ -574,7 +574,7 @@ impl EmailService {
             &headline,
             // The preheader is hidden, so the headline is repeated in the body.
             &format!(
-                "Hallo {},<br><br><strong>wir haben {} geändert.</strong><br><br>Das ist neu:<br>{}",
+                "<span style=\"font-size: 12px; font-weight: bold; letter-spacing: 0.08em; text-transform: uppercase; color: #59636e;\">Rechtlicher Hinweis</span><br><br>Hallo {},<br><br><strong>wir haben {} geändert.</strong><br><br>Was sich ändert:<br>{}",
                 escape_html(username),
                 what,
                 escaped
@@ -585,7 +585,14 @@ impl EmailService {
             footer,
         );
 
-        self.send(to_email, "Aktualisierte Bedingungen bei Klar", &text, &html).await
+        // Says which document it is, so it reads as a legal notice and not
+        // as news about Klar.
+        let subject = match (terms, privacy) {
+            (true, true) => "Rechtlicher Hinweis: geänderte Nutzungsbedingungen und Datenschutzerklärung",
+            (true, false) => "Rechtlicher Hinweis: geänderte Nutzungsbedingungen",
+            _ => "Rechtlicher Hinweis: geänderte Datenschutzerklärung",
+        };
+        self.send(to_email, subject, &text, &html).await
     }
 
     /// Send password reset link

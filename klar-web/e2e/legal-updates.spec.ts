@@ -34,6 +34,7 @@ test("existing accounts accept changed Terms once; new accounts never see the no
   await expect(dialog.getByText(summary)).toBeVisible();
   // A Terms change can only be accepted, not dismissed.
   await expect(dialog.getByRole("button", { name: "Verstanden" })).toHaveCount(0);
+  await expect(dialog.getByText("Du musst nichts tun.")).toHaveCount(0);
 
   // The new version can be read without the notice in the way.
   await dialog.getByRole("link", { name: "Nutzungsbedingungen" }).click();
@@ -131,6 +132,10 @@ test("a privacy notice is only acknowledged", async ({ page, request }) => {
   await page.goto("/feed");
   const dialog = page.getByRole("dialog", { name: "Wir haben unsere Datenschutzerklärung geändert" });
   await expect(dialog).toBeVisible();
+  // Marked as a legal notice, so it doesn't read like What's New.
+  await expect(dialog.getByText("Rechtlicher Hinweis")).toBeVisible();
+  // The dialog says there's nothing to do (the summary never does, legal_notices.py).
+  await expect(dialog.getByText("Du musst nichts tun.")).toHaveCount(1);
   await dialog.getByRole("button", { name: "Verstanden" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });

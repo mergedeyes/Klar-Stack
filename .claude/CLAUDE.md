@@ -39,7 +39,7 @@ User-facing release notes live in `klar-web/src/whats-new/releases.ts` (English 
 
 ## Compliance
 
-A change to the Terms (`nutzungsbedingungen`) or the privacy page (`datenschutz`) needs a notice for existing users in `klar-web/legal-updates/` in the same PR: `documents: terms, privacy`, a `---` line, then a short summary in plain German (format in `.github/scripts/legal_notices.py`). CI refuses the change without one, unless the PR has the label `legal: no notice` (typo fixes). The frontend deploy publishes each file once, after the new page is live.
+A change to the Terms (`nutzungsbedingungen`) or the privacy page (`datenschutz`) needs a notice for existing users in `klar-web/legal-updates/` in the same PR: `documents: terms, privacy`, a `---` line, then a short summary in plain German (format in `.github/scripts/legal_notices.py`). The summary says what changes in the Terms or the privacy policy and what that means for people's data and rights — not what the new feature does ("Du kannst jetzt …" belongs in What's New), and no next step: the dialog and the email add "Du musst nichts tun." or the request to accept (CI rejects a summary that says it). CI refuses the change without one, unless the PR has the label `legal: no notice` (typo fixes). The frontend deploy publishes each file once, after the new page is live.
 
 Klar is an EU service run from Germany, so always consider the GDPR (DSGVO) and German/EU law (DSA, TDDDG, StGB §184b for CSAM) when designing a change. Check data minimisation, retention and deletion, sub-processors (update the Datenschutz page when one is added), evidence preservation for illegal content, and whether the action leaves an audit trail (who, what, when, why). Flag legal questions for review instead of guessing.
 

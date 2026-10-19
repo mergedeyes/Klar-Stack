@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText } from "lucide-react";
+import { Scale } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { legalUpdatesApi, type LegalUpdate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -62,14 +62,24 @@ export default function LegalUpdateNotice() {
         aria-labelledby="legal-update-title"
         className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-xl bg-background p-5 shadow-xl"
       >
-        <h2 id="legal-update-title" className="mb-2 flex items-center gap-2 font-semibold">
-          <FileText size={18} /> Wir haben {documentsLabel(update)} geändert
+        {/* Looks unlike What's New (a sparkle in a circle): a legal notice is
+            a change to the Terms or the privacy policy, not feature news. */}
+        <div className="mb-3 flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
+            <Scale size={20} />
+          </span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Rechtlicher Hinweis
+          </span>
+        </div>
+        <h2 id="legal-update-title" className="font-semibold">
+          Wir haben {documentsLabel(update)} geändert
         </h2>
-        <p className="mb-1 text-xs text-muted-foreground">
+        <p className="mb-4 text-xs text-muted-foreground">
           {new Date(update.published_at).toLocaleDateString("de-DE")}
         </p>
-        <p className="mb-3 text-sm font-medium">Das ist neu:</p>
-        <p className="mb-4 whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">{update.summary}</p>
+        <p className="mb-2 text-sm font-medium">Was sich ändert:</p>
+        <p className="mb-4 whitespace-pre-wrap border-l-2 border-foreground/30 bg-muted/50 py-2 pl-3 pr-2 text-sm">{update.summary}</p>
         <p className="mb-4 text-sm">
           Die vollständige Fassung:{" "}
           {update.documents.includes("terms") && (
@@ -80,13 +90,16 @@ export default function LegalUpdateNotice() {
             <Link href="/datenschutz" className="underline">Datenschutzerklärung</Link>
           )}
         </p>
-        {update.requires_acceptance && (
+        {update.requires_acceptance ? (
           <p className="mb-4 text-xs text-muted-foreground">
             Um Klar weiter zu nutzen, stimme bitte den neuen Nutzungsbedingungen zu. Bist du nicht
             einverstanden, kannst du in den{" "}
             <Link href="/settings" className="underline">Einstellungen</Link> deine Daten exportieren und dein
             Konto löschen.
           </p>
+        ) : (
+          // As in the email: the summary itself never says it (legal_notices.py).
+          <p className="mb-4 text-xs text-muted-foreground">Du musst nichts tun.</p>
         )}
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <Button className="w-full" onClick={acknowledge} disabled={busy}>
