@@ -165,7 +165,7 @@ function ReviewPage() {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {review.flags.length === 0 && <span className="text-xs text-muted-foreground">No signals.</span>}
                 {review.flags.map((f) => (
-                  <span key={f} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+                  <span key={f} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">
                     {FLAG_LABELS[f]}
                   </span>
                 ))}

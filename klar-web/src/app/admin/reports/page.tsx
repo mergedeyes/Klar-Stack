@@ -18,7 +18,7 @@ function SeverityBadge({ severity }: { severity: ReportGroup["severity"] }) {
     return <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-xs font-semibold text-destructive">Critical</span>;
   }
   if (severity === "high") {
-    return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">High</span>;
+    return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">High</span>;
   }
   return <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Normal</span>;
 }
@@ -272,7 +272,7 @@ export default function AdminReportsPage() {
                           <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs">{SOURCE_LABELS[report.source]}</span>
                         )}
                         {report.recheck_requested_at && (
-                          <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-700">
+                          <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-800 dark:text-amber-400">
                             <RotateCcw size={11} /> Re-check requested
                           </span>
                         )}
@@ -306,7 +306,7 @@ export default function AdminReportsPage() {
                     below, removing replaces the restriction. */}
                 {group.objections.map((objection) => (
                   <div key={objection.decision_id} className="mb-2 rounded-md border border-amber-500/40 p-2 text-sm">
-                    <p className="text-xs font-medium text-amber-700">
+                    <p className="text-xs font-medium text-amber-800 dark:text-amber-400">
                       The author objected to the automatic {objection.restriction === "hidden" ? "hide" : "warning"}
                     </p>
                     {objection.objection && <p className="mt-1 italic">&ldquo;{objection.objection}&rdquo;</p>}
@@ -415,7 +415,7 @@ export default function AdminReportsPage() {
                     // or parts of the profile removed, with these reports.
                     <Link
                       href={`/admin/standing/${group.target_username}?reports=${accountReports.join(",")}`}
-                      className="inline-flex h-8 items-center rounded-md bg-destructive px-3 text-sm font-medium text-white"
+                      className="inline-flex h-8 items-center rounded-md bg-destructive px-3 text-sm font-medium text-white dark:bg-red-600"
                     >
                       <Gauge size={14} className="mr-1" /> Decide on the account
                     </Link>

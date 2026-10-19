@@ -220,7 +220,7 @@ export function StandingCard({
           </Link>
         </span>
         {s.suggestion && (
-          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-400">
             Suggested: {MEASURE_LABELS[s.suggestion]}
           </span>
         )}

@@ -245,7 +245,9 @@ return (
                   <h2 className={`font-semibold truncate ${conv.other_username ? "" : "italic text-muted-foreground"}`}>
                     {conv.other_username ?? DELETED_USER_LABEL}
                   </h2>
-                  <p className="text-sm text-muted-foreground truncate">
+                  {/* Darker on the selected row's tinted background, where
+                      the muted grey falls under WCAG's 4.5:1. */}
+                  <p className={`text-sm truncate ${activeChat?.id === conv.id ? "text-foreground/75" : "text-muted-foreground"}`}>
                     {previewText(conv, user?.id)}
                   </p>
                 </div>
