@@ -19,15 +19,16 @@ test("the account's language is kept and changed in Settings", async ({ page, re
   // An account from before languages existed gets the page's.
   await expect.poll(async () => (await apiGet(request, session, "/users/me")).locale).toBe("en");
 
+  await page.getByRole("link", { name: /Language and app icon/ }).click();
   await page.getByLabel("Language").selectOption("de");
-  await expect(page.getByText("Einstellungen", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sprache und App-Symbol" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "de");
   expect((await apiGet(request, session, "/users/me")).locale).toBe("de");
 
   // Still German after a reload, though the browser asks for English.
   await page.reload();
-  await expect(page.getByText("Einstellungen", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sprache und App-Symbol" })).toBeVisible();
 
   await page.getByLabel("Sprache").selectOption("en");
-  await expect(page.getByText("Settings", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Language and app icon" })).toBeVisible();
 });

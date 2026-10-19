@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// Klar can be added to the home screen as an app (app/manifest.ts): Chrome
+// Klar can be added to the home screen as an app (app-icons/): Chrome
 // itself finds nothing missing, and it opens on the feed.
 
 test.skip(({ isMobile }) => isMobile, "one browser is enough");
@@ -15,7 +15,8 @@ test("Chrome can install Klar as an app", async ({ page, request }) => {
   const { installabilityErrors } = await cdp.send("Page.getInstallabilityErrors");
   expect(installabilityErrors).toEqual([]);
 
-  const manifest = await (await request.get("/manifest.webmanifest")).json();
+  const { url } = await cdp.send("Page.getAppManifest");
+  const manifest = await (await request.get(url)).json();
   expect(manifest.start_url).toBe("/feed");
   expect(manifest.display).toBe("standalone");
 });
