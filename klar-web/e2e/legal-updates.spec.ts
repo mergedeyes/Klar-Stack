@@ -132,6 +132,8 @@ test("a privacy notice is only acknowledged", async ({ page, request }) => {
   await page.goto("/feed");
   const dialog = page.getByRole("dialog", { name: "Wir haben unsere Datenschutzerklärung geändert" });
   await expect(dialog).toBeVisible();
+  // Marked as a legal notice, so it doesn't read like What's New.
+  await expect(dialog.getByText("Rechtlicher Hinweis")).toBeVisible();
   // The dialog says there's nothing to do (the summary never does, legal_notices.py).
   await expect(dialog.getByText("Du musst nichts tun.")).toHaveCount(1);
   await dialog.getByRole("button", { name: "Verstanden" }).click();
