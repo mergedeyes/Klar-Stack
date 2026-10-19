@@ -171,7 +171,7 @@ export default function SearchPage() {
   return (
     <div className="flex-1 bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur">
+      <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
           <Button
             variant="ghost"

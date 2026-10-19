@@ -104,7 +104,7 @@ export default function PullToRefresh({ onRefresh }: { onRefresh: () => Promise<
     <div
       aria-hidden="true"
       data-testid="pull-to-refresh"
-      className="pointer-events-none fixed inset-x-0 top-14 z-20 flex justify-center"
+      className="pointer-events-none fixed inset-x-0 top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 flex justify-center"
       style={{ transform: `translateY(${pull - 40}px)` }}
     >
       <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background shadow-md">

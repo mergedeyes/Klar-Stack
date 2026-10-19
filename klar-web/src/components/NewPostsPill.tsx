@@ -11,7 +11,7 @@ export default function NewPostsPill({ newPosts, onShow }: { newPosts: NewPosts;
   if (newPosts.count === 0) return null;
   return (
     // No height of its own, so showing it doesn't push the posts down.
-    <div className="pointer-events-none sticky top-16 z-10 flex h-0 justify-center">
+    <div className="pointer-events-none sticky top-[calc(4rem+env(safe-area-inset-top,0px))] z-10 flex h-0 justify-center">
       <button
         type="button"
         onClick={() => {
