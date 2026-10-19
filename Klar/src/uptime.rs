@@ -57,10 +57,10 @@ async fn check(state: &AppState) -> Result<(), String> {
         .execute(&state.db)
         .await
         .map_err(|e| format!("database: {e}"))?;
-    let mut redis = state.redis.clone();
-    redis::cmd("PING")
-        .query_async::<String>(&mut redis)
-        .await
-        .map_err(|e| format!("redis: {e}"))?;
+    crate::redis_retry::retry_once(&state.redis, |mut conn| async move {
+        redis::cmd("PING").query_async::<String>(&mut conn).await
+    })
+    .await
+    .map_err(|e| format!("redis: {e}"))?;
     Ok(())
 }
