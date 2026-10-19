@@ -29,3 +29,19 @@ test("closed reports show the outcome, who closed them and the note", async ({ b
   await adminPage.getByLabel("Show closed").uncheck();
   await expect(adminPage.getByRole("region", { name: "Closed reports" })).toHaveCount(0);
 });
+
+test("the decision log points to dismissed reports", async ({ browser, request }) => {
+  const admin = await adminSession();
+  const [author, reporter] = [await signUp("logauthor"), await signUp("logreporter")];
+  const post = await upload(request, author, "Another harmless photo");
+  const reportId = await report(request, reporter, "post", post, "spam");
+  const note = `Dismissed for the log ${Date.now()}`;
+  await apiCall(request, admin, "POST", `/admin/reports/${reportId}/dismiss`, { note });
+
+  const adminPage = await pageFor(browser, admin);
+  await adminPage.goto("/admin/decisions");
+  await adminPage.getByRole("link", { name: "Reports → Show closed" }).click();
+  await expect(adminPage).toHaveURL(/\/admin\/reports\?closed=1$/);
+  await expect(adminPage.getByLabel("Show closed")).toBeChecked();
+  await expect(adminPage.getByTestId("closed-report").filter({ hasText: note })).toBeVisible();
+});

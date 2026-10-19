@@ -65,6 +65,18 @@ export default function DecisionLogPage() {
       <main className="mx-auto max-w-3xl px-4 py-4">
         {error && <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
+        {/* Dismissing a report restricts nothing, so there is no decision
+            (and no statement of reasons) to list here; the report itself
+            records who closed it, when and why. */}
+        <p className="mb-4 text-sm text-muted-foreground">
+          Only decisions that restrict content or an account are listed here. Dismissed reports leave no decision; they
+          are in{" "}
+          <Link href="/admin/reports?closed=1" className="underline underline-offset-4">
+            Reports → Show closed
+          </Link>
+          , with who dismissed them, when and the note.
+        </p>
+
         <div className="mb-4 flex flex-wrap gap-2">
           <select aria-label="Restriction" className={inputClass} onChange={(e) => set("restriction", e.target.value)}>
             <option value="">Any decision</option>
