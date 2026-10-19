@@ -10,7 +10,8 @@
   },
   "footer": {
     "feedback": "Feedback",
-    "guide": "Guide"
+    "guide": "Guide",
+    "whatsNew": "What's new"
   },
   "verifyBanner": {
     "text": "Please verify your email address. We sent a link to <strong>{email}</strong>. Until then you can't post, comment, send messages or report, and an account that stays unverified is deleted after 30 days.",
@@ -63,7 +64,8 @@
     "preparing": "Preparing your data…",
     "exportFailed": "Export failed",
     "logOutOrDelete": "Log out or delete account",
-    "appearance": "Language and app icon"
+    "appearance": "Language and app icon",
+    "language": "Language"
   },
   "feed": {
     "newPosts": "{count, plural, one {# new post} other {# new posts}}",
@@ -76,5 +78,13 @@
     "thisDevice": "Applies to this device: the browser tab, and Klar on your home screen.",
     "homeScreen": "Your home screen keeps the icon Klar had when you added it. Chrome on Android may offer to update it the next time you open Klar from there; otherwise, and on an iPhone, remove Klar from your home screen and add it again.",
     "default": "Default"
+  },
+  "whatsNew": {
+    "title": "What's new",
+    "gotIt": "Got it",
+    "allUpdates": "All updates",
+    "close": "Close",
+    "tryIt": "Try it",
+    "empty": "Nothing here yet."
   }
 }

@@ -27,6 +27,7 @@ import Footer from "@/components/Footer";
 import LegalUpdateNotice from "@/components/LegalUpdateNotice";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 import LocaleSync from "@/components/LocaleSync";
+import WhatsNew from "@/components/WhatsNew";
 import { GuideProvider } from "@/components/WelcomeGuide";
 
 const geist = Geist({ subsets: ["latin"] });
@@ -92,6 +93,8 @@ export default async function RootLayout({
             </GuideProvider>
             {/* Changed Terms / privacy policy, once per notice. */}
             <LegalUpdateNotice />
+            {/* Under the legal notice (z-50), which has to be answered first. */}
+            <WhatsNew />
           </AuthProvider>
         </NextIntlClientProvider>
       </body>

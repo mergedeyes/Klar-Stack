@@ -37,6 +37,12 @@ realistic data volumes for the paging checks.
 - [ ] Settings → "Language and app icon": the icons are grouped by category (Klar, Viewfinder/Sucher, ... Retro with 80s/90s/Y2K); picking one ticks it, changes the tab icon at once, and stays after a reload; picking the default again removes the `klar_app_icon` cookie; the language picker there works as before
 - [ ] After picking another icon, adding Klar to the home screen uses it (Android and iPhone); with Klar already installed on Android in Chrome, opening it from the home screen may offer to update the icon (allow a day)
 
+## What's new
+
+- [ ] An account that signed up before the newest release sees it once over the feed (in English or German, matching the page); "Got it", ✕ or Escape closes it, and it doesn't come back after a reload or on another device; "Try it" opens the page it names
+- [ ] A brand-new account doesn't see it, and neither does an account whose welcome guide is still open (it waits until the guide is closed)
+- [ ] "What's new" in the footer lists every release, newest first, with its date
+
 ## Paginated lists
 
 Applies to the home feed, discovery feed and profile grid, and to any list that

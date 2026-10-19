@@ -14,11 +14,13 @@ use crate::handlers::follows::{has_pending_follow_request, is_following};
 use crate::evidence;
 use crate::media;
 use crate::moderation;
-use crate::models::{LocaleRequest, RefreshResponse, UpdateProfileRequest, UserResponse, UserRow, UserPublicResponse};
+use crate::models::{
+    LocaleRequest, RefreshResponse, UpdateProfileRequest, UserPublicResponse, UserResponse, UserRow, WhatsNewSeenRequest,
+};
 use crate::standing;
 use crate::utils::{DbResultExt, ResolveMedia};
 use crate::validation::{
-    check_max_len, escape_like, page_limit, validate_locale, validate_password, validate_username, BIO_MAX,
+    check_max_len, escape_like, page_limit, validate_locale, validate_password, validate_release_id, validate_username, BIO_MAX,
     DISPLAY_NAME_MAX,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -205,6 +207,10 @@ pub async fn get_me(
             let personalization_enabled = user.personalization_consented_at.is_some();
             let guide_seen = user.guide_seen_at.is_some();
             let locale = user.locale.clone();
+            let whats_new_seen = user
+                .whats_new_seen
+                .clone()
+                .unwrap_or_else(|| user.created_at.format("%Y-%m-%d").to_string());
             let mut response = UserPublicResponse::from(user);
             response.viewer_relationship = Some("self".to_string());
             response.is_admin = is_admin;
@@ -213,6 +219,7 @@ pub async fn get_me(
             response.personalization_enabled = Some(personalization_enabled);
             response.guide_seen = Some(guide_seen);
             response.locale = locale;
+            response.whats_new_seen = Some(whats_new_seen);
             Ok(Json(response.resolve_media(&state.storage)))
         }
         None => Err(AppError::not_found("User not found")),
@@ -226,6 +233,23 @@ pub async fn mark_guide_seen(
     auth: AuthUser,
 ) -> Result<StatusCode, AppError> {
     sqlx::query("UPDATE users SET guide_seen_at = COALESCE(guide_seen_at, NOW()) WHERE id = $1")
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await
+        .db_err("Database error")?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /users/me/whats-new-seen -- a "What's new" release was closed.
+/// Never goes back to an older one, e.g. from a tab left open since.
+pub async fn mark_whats_new_seen(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(input): Json<WhatsNewSeenRequest>,
+) -> Result<StatusCode, AppError> {
+    let id = validate_release_id(&input.id)?;
+    sqlx::query("UPDATE users SET whats_new_seen = GREATEST(COALESCE(whats_new_seen, ''), $1) WHERE id = $2")
+        .bind(&id)
         .bind(auth.user_id)
         .execute(&state.db)
         .await
@@ -800,8 +824,8 @@ pub async fn export_my_data(
     // proof of when ToS/privacy consent was given is squarely personal
     // data about the account, even though it's never shown in the app UI.
     #[allow(clippy::type_complexity)]
-    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<String>)>(
-        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_consented_at, guide_seen_at, locale FROM users WHERE id = $1"
+    let profile = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<String>, Option<String>)>(
+        "SELECT username, email, display_name, bio, avatar_url, email_verified, created_at, terms_accepted_at, keep_after_test_at, personalization_consented_at, guide_seen_at, locale, whats_new_seen FROM users WHERE id = $1"
     )
     .bind(auth.user_id)
     .fetch_one(&state.db)
@@ -1118,6 +1142,7 @@ pub async fn export_my_data(
             "personalization_consented_at": profile.9,
             "guide_seen_at": profile.10,
             "locale": profile.11,
+            "whats_new_seen": profile.12,
         },
         "posts": posts_json,
         "comments": comments_json,
