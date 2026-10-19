@@ -52,7 +52,6 @@
     "editProfile": "Edit profile",
     "changePassword": "Change password",
     "activity": "Your activity",
-    "language": "Language",
     "privacy": "Privacy",
     "privateAccount": "Private account",
     "confirmPublic": "Make your account public? Anyone will be able to see your posts.",
@@ -63,10 +62,19 @@
     "download": "Download your data",
     "preparing": "Preparing your data…",
     "exportFailed": "Export failed",
-    "logOutOrDelete": "Log out or delete account"
+    "logOutOrDelete": "Log out or delete account",
+    "appearance": "Language and app icon"
   },
   "feed": {
     "newPosts": "{count, plural, one {# new post} other {# new posts}}",
     "newPostsMore": "{count}+ new posts"
+  },
+  "appearance": {
+    "title": "Language and app icon",
+    "language": "Language",
+    "appIcon": "App icon",
+    "thisDevice": "Applies to this device: the browser tab, and Klar on your home screen.",
+    "homeScreen": "Your home screen keeps the icon Klar had when you added it. Chrome on Android may offer to update it the next time you open Klar from there; otherwise, and on an iPhone, remove Klar from your home screen and add it again.",
+    "default": "Default"
   }
 }

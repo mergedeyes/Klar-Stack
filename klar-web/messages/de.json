@@ -52,7 +52,6 @@
     "editProfile": "Profil bearbeiten",
     "changePassword": "Passwort ändern",
     "activity": "Deine Aktivität",
-    "language": "Sprache",
     "privacy": "Privatsphäre",
     "privateAccount": "Privates Konto",
     "confirmPublic": "Dein Konto öffentlich machen? Dann kann jede Person deine Beiträge sehen.",
@@ -63,10 +62,19 @@
     "download": "Deine Daten herunterladen",
     "preparing": "Deine Daten werden vorbereitet …",
     "exportFailed": "Export fehlgeschlagen",
-    "logOutOrDelete": "Abmelden oder Konto löschen"
+    "logOutOrDelete": "Abmelden oder Konto löschen",
+    "appearance": "Sprache und App-Symbol"
   },
   "feed": {
     "newPosts": "{count, plural, one {# neuer Beitrag} other {# neue Beiträge}}",
     "newPostsMore": "{count}+ neue Beiträge"
+  },
+  "appearance": {
+    "title": "Sprache und App-Symbol",
+    "language": "Sprache",
+    "appIcon": "App-Symbol",
+    "thisDevice": "Gilt für dieses Gerät: für den Browser-Tab und für Klar auf deinem Startbildschirm.",
+    "homeScreen": "Dein Startbildschirm behält das Symbol, das Klar beim Hinzufügen hatte. Chrome auf Android bietet eventuell an, es beim nächsten Öffnen von dort zu aktualisieren; sonst, und auf dem iPhone, entferne Klar vom Startbildschirm und füge es neu hinzu.",
+    "default": "Standard"
   }
 }

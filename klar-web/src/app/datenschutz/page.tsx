@@ -270,6 +270,18 @@ export default function DatenschutzPage() {
             DSGVO; das Cookie ist für diese Funktion unbedingt erforderlich
             (§ 25 Abs. 2 Nr. 2 TDDDG).
           </p>
+          <p className="mt-2">
+            Wählst du unter „Sprache und App-Symbol“ ein anderes App-Symbol als
+            das Standard-Symbol, speichern wir deine Wahl nur in deinem
+            Browser, im Cookie
+            <code className="mx-1 rounded bg-muted px-1">klar_app_icon</code>
+            (ein Jahr gültig), damit Browser-Tab und Startbildschirm dieses
+            Symbol zeigen. Auf unseren Servern speichern wir sie nicht, und mit
+            deinem Konto ist sie nicht verbunden. Wählst du wieder das
+            Standard-Symbol, löschen wir das Cookie. Das Cookie ist für diese
+            von dir gewählte Funktion unbedingt erforderlich (§ 25 Abs. 2 Nr. 2
+            TDDDG).
+          </p>
         </section>
 
         <section className="mb-6">

@@ -30,10 +30,12 @@ realistic data volumes for the paging checks.
 
 ## Home screen app
 
-- [ ] Android (Chrome and Samsung Internet): "Add to home screen" / "Install" offers Klar as an app with the K icon (round or squircle, nothing cut off) and the name "Klar"; it opens full screen on the feed, whatever page was open when it was added
-- [ ] iPhone (Safari → Share → Add to Home Screen): the K icon and "Klar"; it opens full screen. It asks for the passcode and the login once (iOS keeps the app's storage apart from Safari's), and keeps both afterwards
+- [ ] Android (Chrome and Samsung Internet): "Add to home screen" / "Install" offers Klar as an app with the chosen app icon, Phaser Violett by default (round or squircle, nothing important cut off) and the name "Klar"; it opens full screen on the feed, whatever page was open when it was added
+- [ ] iPhone (Safari → Share → Add to Home Screen): the chosen app icon and "Klar"; it opens full screen. It asks for the passcode and the login once (iOS keeps the app's storage apart from Safari's), and keeps both afterwards
 - [ ] In the app: every page has a way back without the browser's back button; external links (e.g. in the legal pages) open in a browser view; the status bar matches light and dark mode
-- [ ] The browser tab shows the K favicon instead of the triangle
+- [ ] The browser tab shows the chosen app icon (Phaser Violett by default) instead of the triangle
+- [ ] Settings → "Language and app icon": the icons are grouped by category (Klar, Viewfinder/Sucher, ... Retro with 80s/90s/Y2K); picking one ticks it, changes the tab icon at once, and stays after a reload; picking the default again removes the `klar_app_icon` cookie; the language picker there works as before
+- [ ] After picking another icon, adding Klar to the home screen uses it (Android and iPhone); with Klar already installed on Android in Chrome, opening it from the home screen may offer to update the icon (allow a day)
 
 ## Paginated lists
 

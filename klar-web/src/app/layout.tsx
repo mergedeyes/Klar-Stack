@@ -18,6 +18,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
+import { cookies } from "next/headers";
+import { APP_ICON_COOKIE, appIcon, appIconFiles } from "@/app-icons";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { NotificationsProvider } from "@/hooks/use-notifications";
@@ -31,11 +33,19 @@ const geist = Geist({ subsets: ["latin"] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("meta");
+  // The app icon this device chose (app-icons/index.ts), for the tab, the
+  // home screen and the manifest.
+  const icon = appIconFiles(appIcon((await cookies()).get(APP_ICON_COOKIE)?.value).id);
   return {
     title: "Klar",
     description: t("description"),
+    manifest: icon.manifest,
+    icons: {
+      icon: [{ url: icon.png192, sizes: "192x192", type: "image/png" }],
+      apple: [{ url: icon.apple, sizes: "180x180", type: "image/png" }],
+    },
     // iOS: open from the home screen without Safari's bars, as the
-    // manifest (app/manifest.ts) asks of the other browsers.
+    // manifest asks of the other browsers.
     appleWebApp: { capable: true, title: "Klar", statusBarStyle: "default" },
   };
 }

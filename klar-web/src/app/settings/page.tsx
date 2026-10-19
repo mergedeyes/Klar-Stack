@@ -22,7 +22,7 @@ import { users } from "@/lib/api";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import { Switch } from "@/components/ui/switch";
 import KeepAccountRow from "@/components/settings/KeepAccountRow";
-import { LOCALES, LOCALE_NAMES, isLocale } from "@/i18n/config";
+import { LOCALE_NAMES, isLocale } from "@/i18n/config";
 
 // One short line per row and grouped under headings, so the page still fits
 // one screen (e2e/layout.spec.ts; the desktop one is 800px high, with little
@@ -66,7 +66,6 @@ export default function SettingsPage() {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
   const locale = useLocale();
-  const [savingLocale, setSavingLocale] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   // The switch follows the click at once and goes back if saving fails.
@@ -94,21 +93,6 @@ export default function SettingsPage() {
     } finally {
       setPendingPrivate(null);
       setSavingPrivacy(false);
-    }
-  };
-
-  // Saved to the account; LocaleSync then renders the page in it.
-  const handleLocale = async (next: string) => {
-    if (!isLocale(next)) return;
-    setSavingLocale(true);
-    setError(null);
-    try {
-      await users.setLocale(next);
-      await refreshUser();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : tc("couldntSave"));
-    } finally {
-      setSavingLocale(false);
     }
   };
 
@@ -144,22 +128,7 @@ export default function SettingsPage() {
           <LinkRow href="/settings/profile" icon={UserPen} label={t("editProfile")} />
           <LinkRow href="/settings/password" icon={KeyRound} label={t("changePassword")} />
           <LinkRow href="/settings/activity" icon={History} label={t("activity")} />
-          <label className="flex items-center gap-3 px-4 py-2">
-            <RowContent icon={Languages} label={t("language")} />
-            <select
-              value={locale}
-              onChange={(e) => handleLocale(e.target.value)}
-              disabled={savingLocale}
-              aria-label={t("language")}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm disabled:opacity-60"
-            >
-              {LOCALES.map((l) => (
-                <option key={l} value={l} lang={l}>
-                  {LOCALE_NAMES[l]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <LinkRow href="/settings/appearance" icon={Languages} label={t("appearance")} value={LOCALE_NAMES[isLocale(locale) ? locale : "en"]} />
         </Group>
 
         <Group title={t("privacy")}>

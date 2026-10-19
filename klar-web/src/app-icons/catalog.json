@@ -1,0 +1,418 @@
+{
+  "default": "phaser-violett",
+  "categories": [
+    {
+      "id": "klar",
+      "name": {
+        "de": "Klar",
+        "en": "Klar"
+      }
+    },
+    {
+      "id": "sucher",
+      "name": {
+        "de": "Sucher",
+        "en": "Viewfinder"
+      }
+    },
+    {
+      "id": "bausteine",
+      "name": {
+        "de": "Bausteine",
+        "en": "Blocks"
+      }
+    },
+    {
+      "id": "glas",
+      "name": {
+        "de": "Glas",
+        "en": "Glass"
+      }
+    },
+    {
+      "id": "kunst",
+      "name": {
+        "de": "Kunst",
+        "en": "Art"
+      }
+    },
+    {
+      "id": "retro",
+      "name": {
+        "de": "Retro",
+        "en": "Retro"
+      }
+    }
+  ],
+  "icons": [
+    {
+      "id": "phaser-violett",
+      "category": "klar",
+      "group": {
+        "de": "Phaser",
+        "en": "Phaser"
+      },
+      "name": {
+        "de": "Violett",
+        "en": "Violet"
+      }
+    },
+    {
+      "id": "phaser-blau",
+      "category": "klar",
+      "group": {
+        "de": "Phaser",
+        "en": "Phaser"
+      },
+      "name": {
+        "de": "Blau",
+        "en": "Blue"
+      }
+    },
+    {
+      "id": "phaser-hell",
+      "category": "klar",
+      "group": {
+        "de": "Phaser",
+        "en": "Phaser"
+      },
+      "name": {
+        "de": "Hell",
+        "en": "Light"
+      }
+    },
+    {
+      "id": "phaser-koralle",
+      "category": "klar",
+      "group": {
+        "de": "Phaser",
+        "en": "Phaser"
+      },
+      "name": {
+        "de": "Koralle",
+        "en": "Coral"
+      }
+    },
+    {
+      "id": "phaser-nacht",
+      "category": "klar",
+      "group": {
+        "de": "Phaser",
+        "en": "Phaser"
+      },
+      "name": {
+        "de": "Nacht",
+        "en": "Night"
+      }
+    },
+    {
+      "id": "phaser-mono",
+      "category": "klar",
+      "group": {
+        "de": "Phaser",
+        "en": "Phaser"
+      },
+      "name": {
+        "de": "Mono",
+        "en": "Mono"
+      }
+    },
+    {
+      "id": "sucher-blau",
+      "category": "sucher",
+      "group": null,
+      "name": {
+        "de": "Blau",
+        "en": "Blue"
+      }
+    },
+    {
+      "id": "sucher-hell",
+      "category": "sucher",
+      "group": null,
+      "name": {
+        "de": "Hell",
+        "en": "Light"
+      }
+    },
+    {
+      "id": "sucher-koralle",
+      "category": "sucher",
+      "group": null,
+      "name": {
+        "de": "Koralle",
+        "en": "Coral"
+      }
+    },
+    {
+      "id": "sucher-nacht",
+      "category": "sucher",
+      "group": null,
+      "name": {
+        "de": "Nacht",
+        "en": "Night"
+      }
+    },
+    {
+      "id": "sucher-violett",
+      "category": "sucher",
+      "group": null,
+      "name": {
+        "de": "Violett",
+        "en": "Violet"
+      }
+    },
+    {
+      "id": "sucher-mono",
+      "category": "sucher",
+      "group": null,
+      "name": {
+        "de": "Mono",
+        "en": "Mono"
+      }
+    },
+    {
+      "id": "bausteine-blau",
+      "category": "bausteine",
+      "group": null,
+      "name": {
+        "de": "Blau",
+        "en": "Blue"
+      }
+    },
+    {
+      "id": "bausteine-gruen",
+      "category": "bausteine",
+      "group": null,
+      "name": {
+        "de": "Grün",
+        "en": "Green"
+      }
+    },
+    {
+      "id": "bausteine-koralle",
+      "category": "bausteine",
+      "group": null,
+      "name": {
+        "de": "Koralle",
+        "en": "Coral"
+      }
+    },
+    {
+      "id": "bausteine-nacht",
+      "category": "bausteine",
+      "group": null,
+      "name": {
+        "de": "Nacht",
+        "en": "Night"
+      }
+    },
+    {
+      "id": "bausteine-violett",
+      "category": "bausteine",
+      "group": null,
+      "name": {
+        "de": "Violett",
+        "en": "Violet"
+      }
+    },
+    {
+      "id": "bausteine-mono",
+      "category": "bausteine",
+      "group": null,
+      "name": {
+        "de": "Mono",
+        "en": "Mono"
+      }
+    },
+    {
+      "id": "glas-klassik",
+      "category": "glas",
+      "group": null,
+      "name": {
+        "de": "Klassik",
+        "en": "Classic"
+      }
+    },
+    {
+      "id": "glas-kristall",
+      "category": "glas",
+      "group": null,
+      "name": {
+        "de": "Kristall",
+        "en": "Crystal"
+      }
+    },
+    {
+      "id": "glas-linse",
+      "category": "glas",
+      "group": null,
+      "name": {
+        "de": "Linse",
+        "en": "Lens"
+      }
+    },
+    {
+      "id": "glas-prisma",
+      "category": "glas",
+      "group": null,
+      "name": {
+        "de": "Prisma",
+        "en": "Prism"
+      }
+    },
+    {
+      "id": "kunst-mosaik",
+      "category": "kunst",
+      "group": null,
+      "name": {
+        "de": "Mosaik",
+        "en": "Mosaic"
+      }
+    },
+    {
+      "id": "kunst-original",
+      "category": "kunst",
+      "group": null,
+      "name": {
+        "de": "Original",
+        "en": "Original"
+      }
+    },
+    {
+      "id": "kunst-rauschen",
+      "category": "kunst",
+      "group": null,
+      "name": {
+        "de": "Rauschen",
+        "en": "Noise"
+      }
+    },
+    {
+      "id": "kunst-spiegelung",
+      "category": "kunst",
+      "group": null,
+      "name": {
+        "de": "Spiegelung",
+        "en": "Reflection"
+      }
+    },
+    {
+      "id": "kunst-sprechblase",
+      "category": "kunst",
+      "group": null,
+      "name": {
+        "de": "Sprechblase",
+        "en": "Speech bubble"
+      }
+    },
+    {
+      "id": "retro-80er-memphis",
+      "category": "retro",
+      "group": {
+        "de": "80er",
+        "en": "80s"
+      },
+      "name": {
+        "de": "Memphis",
+        "en": "Memphis"
+      }
+    },
+    {
+      "id": "retro-80er-neon",
+      "category": "retro",
+      "group": {
+        "de": "80er",
+        "en": "80s"
+      },
+      "name": {
+        "de": "Neon",
+        "en": "Neon"
+      }
+    },
+    {
+      "id": "retro-80er-synthwave",
+      "category": "retro",
+      "group": {
+        "de": "80er",
+        "en": "80s"
+      },
+      "name": {
+        "de": "Synthwave",
+        "en": "Synthwave"
+      }
+    },
+    {
+      "id": "retro-90er-arcade",
+      "category": "retro",
+      "group": {
+        "de": "90er",
+        "en": "90s"
+      },
+      "name": {
+        "de": "Arcade",
+        "en": "Arcade"
+      }
+    },
+    {
+      "id": "retro-90er-fresh",
+      "category": "retro",
+      "group": {
+        "de": "90er",
+        "en": "90s"
+      },
+      "name": {
+        "de": "Fresh",
+        "en": "Fresh"
+      }
+    },
+    {
+      "id": "retro-90er-wordart",
+      "category": "retro",
+      "group": {
+        "de": "90er",
+        "en": "90s"
+      },
+      "name": {
+        "de": "WordArt",
+        "en": "WordArt"
+      }
+    },
+    {
+      "id": "retro-y2k-aqua",
+      "category": "retro",
+      "group": {
+        "de": "Y2K",
+        "en": "Y2K"
+      },
+      "name": {
+        "de": "Aqua",
+        "en": "Aqua"
+      }
+    },
+    {
+      "id": "retro-y2k-chrom",
+      "category": "retro",
+      "group": {
+        "de": "Y2K",
+        "en": "Y2K"
+      },
+      "name": {
+        "de": "Chrom",
+        "en": "Chrome"
+      }
+    },
+    {
+      "id": "retro-y2k-holo",
+      "category": "retro",
+      "group": {
+        "de": "Y2K",
+        "en": "Y2K"
+      },
+      "name": {
+        "de": "Holo",
+        "en": "Holo"
+      }
+    }
+  ]
+}
