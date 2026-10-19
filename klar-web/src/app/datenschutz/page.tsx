@@ -214,14 +214,20 @@ export default function DatenschutzPage() {
               oder neuen Follower, damit diese sofort und über mehrere
               Server hinweg zugestellt werden können — siehe auch unsere{" "}
               <a href="/transparenz" className="underline">Transparenzseite</a>
-              {" "}für eine ausführlichere Erklärung). Dabei werden
-              ausschließlich die interne Nutzer-ID, der Benutzername, der
-              Anzeigename und die Profilbild-URL der jeweils auslösenden
-              Person übertragen, jedoch nicht dauerhaft bei Upstash
-              gespeichert. E-Mail-Adressen werden nicht übertragen. Upstash
-              ist ein US-amerikanisches Unternehmen; die Übermittlung erfolgt
-              auf Grundlage von EU-Standardvertragsklauseln (Art. 46 DSGVO)
-              bzw. des EU-U.S. Data Privacy Framework.
+              {" "}für eine ausführlichere Erklärung). Übertragen werden die
+              Nutzer-ID der empfangenden Person, die Art des Ereignisses
+              (z. B. Like, Kommentar, neue Direktnachricht – ohne deren
+              Inhalt), Nutzer-ID, Nutzername, Anzeigename und Profilbild-Link
+              der auslösenden Person, bei Beiträgen deren ID und ein zeitlich
+              begrenzt gültiger Link zum Vorschaubild sowie kurzlebige
+              Anmeldetickets für den Echtzeit-Kanal. Nichts davon wird
+              dauerhaft gespeichert. E-Mail-Adressen und Nachrichtentexte
+              werden nicht übertragen. Die Datenbank liegt in Frankfurt am
+              Main (Region eu-central-1). Upstash, Inc. hat ihren Sitz in den
+              USA; die Übermittlung stützt sich auf den
+              Angemessenheitsbeschluss zum EU-U.S. Data Privacy Framework
+              (Art. 45 DSGVO), hilfsweise auf EU-Standardvertragsklauseln
+              (Art. 46 DSGVO).
             </li>
           </ul>
           <p className="mt-2">
