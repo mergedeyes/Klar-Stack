@@ -314,6 +314,9 @@ pub fn create_router(state: AppState) -> Router {
     }
 
     router
+        // Outermost but for CORS and tracing, so every response, the rate
+        // limit's included, is in the request's language (i18n.rs).
+        .layer(middleware::from_fn(crate::i18n::negotiate))
         .layer(build_cors())
         .layer(build_trace_layer())
         .with_state(state)

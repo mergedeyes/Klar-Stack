@@ -198,7 +198,7 @@ pub async fn resend_link(
     if let Err(e) = state.email.send_account_locked(&user.email, &user.username, &token).await {
         tracing::error!("Lock email resend for user {} failed: {}", user.id, e.0);
     }
-    Ok(Json(serde_json::json!({ "message": "We sent you a new link." })))
+    Ok(Json(serde_json::json!({ "message": crate::i18n::tr("We sent you a new link.") })))
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

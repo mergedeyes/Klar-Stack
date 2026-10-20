@@ -37,8 +37,9 @@ impl IntoResponse for AppError {
             tracing::warn!(status = %self.status, "{}", self.message);
         }
 
+        // Logged in English, sent in the request's language (i18n.rs).
         let body = Json(ErrorResponse {
-            error: self.message,
+            error: crate::i18n::tr(&self.message),
         });
         (self.status, body).into_response()
     }
