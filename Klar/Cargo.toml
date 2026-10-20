@@ -53,11 +53,13 @@ hex = "0.4"
 # SHA-256 for refresh token hashing (fast lookup, not password-level security needed)
 sha2 = "0.10"
 base64 = "0.22"
-# Email sending (SMTP) — used for local/MailHog dev only now; production uses Resend
+# Email over SMTP: MailHog in local development (EMAIL_PROVIDER=local), or
+# an SMTP relay such as IONOS. Production sends through Scaleway TEM's HTTPS
+# API instead (email.rs, plain reqwest): Bunny Magic Containers blocks
+# outbound SMTP ports (25/465/587/2525), so SMTP relays time out there.
 lettre = { version = "0.11", features = ["tokio1-native-tls", "builder", "smtp-transport"] }
-# Resend — HTTPS-based transactional email API. Bunny Magic Containers blocks
-# outbound SMTP ports (25/465/587/2525) by default, so raw SMTP relays (like
-# IONOS) time out in production; Resend's API runs over plain HTTPS (443).
+# Resend's HTTPS API, the provider before Scaleway TEM; still selectable
+# with EMAIL_PROVIDER=resend, not used in production.
 resend-rs = "0.24"
 # Rate limiting
 governor = { version = "0.10", features = ["dashmap"] }

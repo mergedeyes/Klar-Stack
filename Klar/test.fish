@@ -3,17 +3,18 @@
 # Usage: fish test.fish [path-to-test-image]
 # Requires: Klar running on localhost:3000, and psql available locally (for reading email tokens directly from the DB)
 #
-# AUTH MODEL: the backend issues httpOnly cookies (klar_access_token,
-# klar_refresh_token) via Set-Cookie on register/login/refresh — it no
-# longer returns usable tokens in the JSON body (those fields are kept
-# as empty strings for backward compatibility only). So every
-# authenticated request here uses a per-user curl cookie jar (-b to
-# send, -c to save) instead of an Authorization: Bearer header.
+# An old manual smoke test from before the integration tests
+# (src/integration_tests/, run in CI), which are the real test suite now.
+#
+# AUTH MODEL: register/login/refresh set httpOnly cookies
+# (klar_access_token, klar_refresh_token) and also return the tokens in the
+# JSON body, which the web app sends as Authorization: Bearer. This script
+# uses the cookies: a per-user curl cookie jar (-b to send, -c to save).
 
 set BASE "http://localhost:3000"
 # DATABASE_URL is read from .env (same directory as this script) so we can
 # pull verification/reset tokens directly from the DB instead of relying on
-# catching the email -- this project sends real mail via IONOS, not MailHog.
+# catching the email, whichever provider EMAIL_PROVIDER picks.
 set SCRIPT_DIR (dirname (status -f))
 set DATABASE_URL (grep -E '^DATABASE_URL=' $SCRIPT_DIR/.env | cut -d= -f2- | tr -d '"')
 set PASSED 0

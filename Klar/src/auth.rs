@@ -103,8 +103,7 @@ impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError; // what gets returned to the client if extraction fails
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        // Hier rufen wir deinen Helper auf, der zuerst ins Cookie und dann in den Header schaut
-        // (Here we call the shared helper, which checks the cookie first, then the header.)
+        // The shared helper: the cookie first, then the Authorization header.
         if let Some(user_id) = extract_user_id(parts, &state.jwt_secret) {
             Ok(AuthUser { user_id })
         } else {
@@ -168,7 +167,10 @@ pub fn cookie_value<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Optio
 }
 
 /// Shared helper: pulls the token from the Cookie, falling back to the
-/// Authorization header.
+/// Authorization header. The web app sends the header (klar-web's api.ts):
+/// its sites (klarsocial.eu/.de) and the API are on different sites, where
+/// browsers increasingly drop cookies. The cookie still serves same-site
+/// clients, e.g. local development and Klar/test.fish.
 ///
 /// Access tokens are deliberately never accepted from the query string:
 /// URLs end up in proxy/CDN logs. The SSE stream, whose EventSource can't
@@ -179,10 +181,10 @@ fn extract_user_id(parts: &Parts, secret: &str) -> Option<Uuid> {
 }
 
 fn extract_claims(parts: &Parts, secret: &str) -> Option<Claims> {
-    // 1. Try to extract from httpOnly Cookie
+    // 1. The httpOnly cookie (same-site clients)
     let mut token_str = cookie_value(&parts.headers, "klar_access_token");
 
-    // 2. Fallback to Authorization Bearer header
+    // 2. The Authorization: Bearer header (the web app)
     if token_str.is_none() {
         if let Some(auth_header) = parts.headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
             // Expects a header of the form "Authorization: Bearer <token>"; strips the "Bearer " prefix.
