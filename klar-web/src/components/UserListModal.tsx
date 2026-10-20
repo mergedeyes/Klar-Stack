@@ -1,4 +1,7 @@
+"use client";
+
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import Image from "next/image";
 import Link from "next/link";
 import type { User } from "@/lib/api";
@@ -12,6 +15,7 @@ interface UserListModalProps {
 }
 
 export default function UserListModal({ title, users, onClose }: UserListModalProps) {
+  const tc = useTranslations("common");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-border bg-background shadow-lg">
@@ -22,6 +26,7 @@ export default function UserListModal({ title, users, onClose }: UserListModalPr
           <button
             onClick={onClose}
             className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={tc("close")}
           >
             <X size={20} />
           </button>
@@ -31,7 +36,7 @@ export default function UserListModal({ title, users, onClose }: UserListModalPr
         <div className="flex-1 overflow-y-auto p-2">
           {users.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              No users found.
+              {tc("noUsersFound")}
             </div>
           ) : (
             users.map((user) => (

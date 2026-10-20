@@ -163,7 +163,7 @@ export default function AdminPage() {
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
+          <SmartBackButton />
           <span className="font-semibold">Moderation tools</span>
         </div>
       </header>

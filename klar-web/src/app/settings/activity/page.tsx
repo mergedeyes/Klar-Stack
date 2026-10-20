@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Heart, MessageCircle, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -14,7 +15,7 @@ import {
   type PostCursor,
 } from "@/lib/api";
 import { getMediaUrl } from "@/lib/utils/media";
-import { timeAgo } from "@/lib/utils/time";
+import { useTimeAgo } from "@/lib/utils/time";
 import { Button } from "@/components/ui/button";
 import PostModal from "@/components/PostModal";
 import { SmartBackButton } from "@/components/SmartBackButton";
@@ -91,14 +92,14 @@ function Spinner() {
 }
 
 function ListEnd({
-  what,
+  retryLabel,
   failed,
   hasMore,
   loading,
   sentinelRef,
   retry,
 }: {
-  what: string;
+  retryLabel: string;
   failed: boolean;
   hasMore: boolean;
   loading: boolean;
@@ -109,7 +110,7 @@ function ListEnd({
     return (
       <div className="flex justify-center py-6">
         <Button variant="outline" size="sm" onClick={retry}>
-          Couldn&apos;t load {what} — retry
+          {retryLabel}
         </Button>
       </div>
     );
@@ -133,13 +134,15 @@ const commentCursor = (comment: ActivityComment): PostCursor => ({ time: comment
 function LikesTab() {
   const { items, setItems, ...paging } = usePagedList(activity.likes, likeCursor);
   const [open, setOpen] = useState<LikedPost | null>(null);
+  const t = useTranslations("activity");
+  const tp = useTranslations("post");
 
-  if (items === null) return paging.failed ? <ListEnd what="your likes" {...paging} /> : <Spinner />;
+  if (items === null) return paging.failed ? <ListEnd retryLabel={t("retryLikes")} {...paging} /> : <Spinner />;
 
   return (
     <>
       {items.length === 0 ? (
-        <Empty icon={Heart} text="Posts you like show up here." />
+        <Empty icon={Heart} text={t("likesEmpty")} />
       ) : (
         <div className="grid grid-cols-3 gap-1">
           {items.map((post) => {
@@ -148,11 +151,11 @@ function LikesTab() {
               <button
                 key={post.id}
                 onClick={() => setOpen(post)}
-                aria-label={`Post by ${post.username}`}
+                aria-label={t("postBy", { username: post.username })}
                 className="group relative aspect-square w-full overflow-hidden bg-muted focus:outline-none"
               >
                 {thumb ? (
-                  <Image src={thumb} alt={post.caption ?? "Post"} fill className="object-cover group-hover:opacity-80" unoptimized />
+                  <Image src={thumb} alt={post.caption ?? tp("pageTitle")} fill className="object-cover group-hover:opacity-80" unoptimized />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center p-2">
                     <span className="line-clamp-4 text-center text-xs text-muted-foreground">{post.caption ?? ""}</span>
@@ -163,7 +166,7 @@ function LikesTab() {
           })}
         </div>
       )}
-      <ListEnd what="more likes" {...paging} />
+      <ListEnd retryLabel={t("retryMoreLikes")} {...paging} />
       {open && (
         <PostModal
           post={open}
@@ -181,10 +184,12 @@ function LikesTab() {
 function CommentRow({ comment, onDeleted }: { comment: ActivityComment; onDeleted: () => void }) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(false);
+  const t = useTranslations("activity");
+  const timeAgo = useTimeAgo();
   const thumb = comment.post_thumb_url ? getMediaUrl(comment.post_thumb_url) : null;
 
   const handleDelete = async () => {
-    if (!window.confirm("Delete this comment?")) return;
+    if (!window.confirm(t("confirmDeleteComment"))) return;
     setDeleting(true);
     setError(false);
     try {
@@ -204,13 +209,16 @@ function CommentRow({ comment, onDeleted }: { comment: ActivityComment; onDelete
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-xs text-muted-foreground">
-            {comment.parent_comment_id ? "Reply on" : "On"} {comment.post_username}&apos;s post · {timeAgo(comment.created_at)}
+            {t(comment.parent_comment_id ? "replyOnPost" : "onPost", {
+              username: comment.post_username,
+              time: timeAgo(comment.created_at),
+            })}
           </span>
           <span className="line-clamp-3 block whitespace-pre-wrap break-words text-sm">{comment.body}</span>
           {comment.moderation_status === "hidden" && (
-            <span className="block text-xs text-destructive">Hidden — only you can see this comment</span>
+            <span className="block text-xs text-destructive">{t("hiddenComment")}</span>
           )}
-          {error && <span className="block text-xs text-destructive">Couldn&apos;t delete — try again</span>}
+          {error && <span className="block text-xs text-destructive">{t("deleteFailed")}</span>}
         </span>
       </Link>
       <Button
@@ -218,7 +226,7 @@ function CommentRow({ comment, onDeleted }: { comment: ActivityComment; onDelete
         size="icon"
         onClick={handleDelete}
         disabled={deleting}
-        aria-label="Delete comment"
+        aria-label={t("deleteComment")}
         className="shrink-0 text-muted-foreground hover:text-destructive"
       >
         <Trash2 size={16} />
@@ -229,13 +237,14 @@ function CommentRow({ comment, onDeleted }: { comment: ActivityComment; onDelete
 
 function CommentsTab() {
   const { items, setItems, ...paging } = usePagedList(activity.comments, commentCursor);
+  const t = useTranslations("activity");
 
-  if (items === null) return paging.failed ? <ListEnd what="your comments" {...paging} /> : <Spinner />;
+  if (items === null) return paging.failed ? <ListEnd retryLabel={t("retryComments")} {...paging} /> : <Spinner />;
 
   return (
     <>
       {items.length === 0 ? (
-        <Empty icon={MessageCircle} text="Comments you write show up here." />
+        <Empty icon={MessageCircle} text={t("commentsEmpty")} />
       ) : (
         <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
           {items.map((comment) => (
@@ -247,19 +256,21 @@ function CommentsTab() {
           ))}
         </div>
       )}
-      <ListEnd what="more comments" {...paging} />
+      <ListEnd retryLabel={t("retryMoreComments")} {...paging} />
     </>
   );
 }
 
 const TABS = [
-  { id: "likes", label: "Likes", icon: Heart },
-  { id: "comments", label: "Comments", icon: MessageCircle },
+  { id: "likes", icon: Heart },
+  { id: "comments", icon: MessageCircle },
 ] as const;
 
 export default function ActivityPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("activity");
+  const ts = useTranslations("settings");
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("likes");
 
   useEffect(() => {
@@ -272,14 +283,14 @@ export default function ActivityPage() {
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
-          <span className="font-semibold">Your activity</span>
+          <SmartBackButton />
+          <span className="font-semibold">{ts("activity")}</span>
         </div>
       </header>
 
       <main className="mx-auto max-w-lg px-4 py-3">
         <div role="tablist" className="mb-3 grid grid-cols-2 border-b border-border">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TABS.map(({ id, icon: Icon }) => (
             <button
               key={id}
               role="tab"
@@ -290,7 +301,7 @@ export default function ActivityPage() {
               }`}
             >
               <Icon size={16} />
-              {label}
+              {t(id)}
             </button>
           ))}
         </div>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 import type { Post } from "@/lib/api";
 import PostView from "@/components/PostView";
@@ -21,6 +22,7 @@ interface PostModalProps {
  */
 export default function PostModal({ post, onClose, onLikeChange, onDeleted }: PostModalProps) {
   const router = useRouter();
+  const tc = useTranslations("common");
 
   // The open post gets its own address: opening the modal from a feed or a
   // profile pushes /posts/:id, so the address bar shows a link that can be
@@ -94,7 +96,7 @@ export default function PostModal({ post, onClose, onLikeChange, onDeleted }: Po
       onClickCapture={leaveViaLink}
     >
       <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-background shadow-2xl md:flex-row">
-        <button onClick={dismiss} className="absolute right-3 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground" aria-label="Close">
+        <button onClick={dismiss} className="absolute right-3 top-3 z-10 rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground" aria-label={tc("close")}>
           <X size={18} />
         </button>
         <PostView

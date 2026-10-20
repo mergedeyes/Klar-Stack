@@ -1,4 +1,5 @@
 'use client';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { useSmartBack } from '@/hooks/use-smart-back';
 import { ArrowLeft } from 'lucide-react';
@@ -8,13 +9,15 @@ type SmartBackButtonProps = Omit<React.ComponentProps<typeof Button>, "onClick" 
 
 export function SmartBackButton({ className, ...props }: SmartBackButtonProps) {
   const goBack = useSmartBack();
+  const tc = useTranslations("common");
 
   return (
-    <Button 
-      variant="ghost" 
-      size="icon" 
-      onClick={goBack} 
-      className={className} 
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={goBack}
+      className={className}
+      aria-label={tc("back")}
       {...props}
     >
       <ArrowLeft size={20} />

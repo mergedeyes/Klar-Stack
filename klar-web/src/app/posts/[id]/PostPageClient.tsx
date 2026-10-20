@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ImageOff } from "lucide-react";
 import { posts as postsApi, type Post } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -21,6 +22,8 @@ export default function PostPageClient() {
   const router = useRouter();
   const goBack = useSmartBack();
   const { user } = useAuth();
+  const t = useTranslations("post");
+  const ta = useTranslations("auth.login");
   const [post, setPost] = useState<Post | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -31,8 +34,8 @@ export default function PostPageClient() {
   }, [params.id]);
 
   useEffect(() => {
-    if (post) document.title = `Post by @${post.username} · Klar`;
-  }, [post]);
+    if (post) document.title = t("documentTitle", { username: post.username });
+  }, [post, t]);
 
   // From tablet width up the page fits the screen exactly (the card takes
   // the height between header and footer, its comments scroll inside);
@@ -41,8 +44,8 @@ export default function PostPageClient() {
     <div data-fill-viewport-md className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="sticky top-safe z-20 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
-          <span className="font-semibold">Post</span>
+          <SmartBackButton />
+          <span className="font-semibold">{t("pageTitle")}</span>
         </div>
       </header>
 
@@ -52,12 +55,10 @@ export default function PostPageClient() {
           // follow: the API answers the same way, so the page does too.
           <div className="flex flex-col items-center px-4 py-24 text-center">
             <ImageOff size={36} className="mb-3 text-muted-foreground" />
-            <p className="font-semibold">This post isn&apos;t available</p>
-            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              It may have been deleted, or it&apos;s from a private account you don&apos;t follow.
-            </p>
+            <p className="font-semibold">{t("unavailableTitle")}</p>
+            <p className="mt-1 max-w-xs text-sm text-muted-foreground">{t("unavailableText")}</p>
             <Link href={user ? "/feed" : "/login"} className="mt-4 text-sm underline">
-              {user ? "Back to your feed" : "Sign in"}
+              {user ? t("backToFeed") : ta("signIn")}
             </Link>
           </div>
         ) : !post ? (

@@ -9,14 +9,13 @@ import { RELEASES, releaseDate } from "@/whats-new/releases";
 // dialog too fast, or joined later and is curious.
 export default function WhatsNewPage() {
   const t = useTranslations("whatsNew");
-  const tc = useTranslations("common");
   const locale = useLocale();
 
   return (
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
-          <SmartBackButton aria-label={tc("back")} />
+          <SmartBackButton />
           <h1 className="font-semibold">{t("title")}</h1>
         </div>
       </header>

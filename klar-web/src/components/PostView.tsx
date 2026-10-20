@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Heart, Send, Trash2, Flag, ShieldAlert } from "lucide-react";
 import ShareButton from "@/components/ShareButton";
 import { useAuth } from "@/lib/auth-context";
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import EditedBadge from "@/components/EditedBadge";
 import ReportModal from "@/components/ReportModal";
 import { getMediaUrl } from "@/lib/utils/media";
-import { timeAgo } from "@/lib/utils/time";
+import { useTimeAgo } from "@/lib/utils/time";
 
 
 // ── @mention renderer ─────────────────────────────────────────────────────────
@@ -93,6 +94,9 @@ function CommentRow({
   const [likeCount, setLikeCount] = useState(comment.like_count);
   const [liking, setLiking] = useState(false);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
+  const t = useTranslations("post");
+  const tc = useTranslations("common");
+  const timeAgo = useTimeAgo();
 
   const isAuthor = currentUsername === comment.username;
   const canDelete = isAuthor || currentUsername === postUsername;
@@ -159,7 +163,7 @@ function CommentRow({
     return (
       <div id={`comment-${comment.id}`} className={`scroll-mt-20 ${depth > 0 ? "ml-8 mt-2" : "mt-3"}`}>
         <p className="rounded-md bg-muted/60 px-2 py-1 text-xs italic text-muted-foreground">
-          Removed by moderation
+          {t("removedByModeration")}
         </p>
       </div>
     );
@@ -172,7 +176,7 @@ function CommentRow({
         <div className="flex-1 min-w-0">
           {isAuthor && (isFlagged || isHidden) && (
             <p className="mb-1 text-xs text-muted-foreground">
-              {isHidden ? "Hidden — pending review" : "Pending review — only visible to you and people who click through"}
+              {isHidden ? t("hiddenPending") : t("flaggedPending")}
             </p>
           )}
 
@@ -182,7 +186,7 @@ function CommentRow({
               className="flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
             >
               <ShieldAlert size={12} />
-              This comment may violate our guidelines — tap to view
+              {t("commentWarning")}
             </button>
           ) : editing ? (
             <div className="space-y-1.5">
@@ -200,8 +204,8 @@ function CommentRow({
                 disabled={saving}
               />
               <div className="flex gap-3">
-                <button onClick={handleSave} disabled={!editBody.trim() || saving} className="text-xs font-semibold hover:underline disabled:opacity-50">Save</button>
-                <button onClick={() => { setEditBody(comment.body); setEditing(false); }} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                <button onClick={handleSave} disabled={!editBody.trim() || saving} className="text-xs font-semibold hover:underline disabled:opacity-50">{tc("save")}</button>
+                <button onClick={() => { setEditBody(comment.body); setEditing(false); }} className="text-xs text-muted-foreground hover:underline">{tc("cancel")}</button>
               </div>
             </div>
           ) : (
@@ -216,33 +220,33 @@ function CommentRow({
                 <span className="text-xs text-muted-foreground">{timeAgo(comment.created_at)}</span>
                 {comment.edited_at && <EditedBadge editedAt={comment.edited_at} />}
                 {likeCount > 0 && (
-                  <span className="text-xs text-muted-foreground">{likeCount} like{likeCount !== 1 ? "s" : ""}</span>
+                  <span className="text-xs text-muted-foreground">{t("likeCount", { count: likeCount })}</span>
                 )}
                 {currentUsername && (
                   <button
                     onClick={() => onReply(comment.username, comment.id)}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
-                    Reply
+                    {t("reply")}
                   </button>
                 )}
                 {isAuthor && (
-                  <button onClick={() => setEditing(true)} className="text-xs text-muted-foreground hover:text-foreground">Edit</button>
+                  <button onClick={() => setEditing(true)} className="text-xs text-muted-foreground hover:text-foreground">{tc("edit")}</button>
                 )}
                 {canDelete && (
-                  <button onClick={() => onDelete(comment.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
+                  <button onClick={() => onDelete(comment.id)} className="text-xs text-muted-foreground hover:text-destructive">{tc("delete")}</button>
                 )}
                 {currentUsername && !isAuthor && (
-                  <button onClick={() => onReport(comment.id, comment.username)} className="text-xs text-muted-foreground hover:text-foreground" aria-label="Report comment">
-                    Report
+                  <button onClick={() => onReport(comment.id, comment.username)} className="text-xs text-muted-foreground hover:text-foreground" aria-label={t("reportComment")}>
+                    {t("report")}
                   </button>
                 )}
                 <button onClick={copyLink} className="text-xs text-muted-foreground hover:text-foreground">
-                  {copied ? "Copied" : "Link"}
+                  {copied ? t("copied") : t("link")}
                 </button>
                 {isAdmin && !isAuthor && (
                   <Link href={`/admin/cases/new?type=comment&id=${comment.id}`} className="text-xs text-muted-foreground hover:text-foreground">
-                    Moderate
+                    {t("moderate")}
                   </Link>
                 )}
               </div>
@@ -256,7 +260,7 @@ function CommentRow({
             onClick={handleLike}
             disabled={!currentUsername || liking}
             className="mt-0.5 shrink-0 self-start disabled:cursor-not-allowed"
-            aria-label={liked ? "Unlike comment" : "Like comment"}
+            aria-label={liked ? t("unlikeComment") : t("likeComment")}
           >
             <Heart
               size={14}
@@ -292,6 +296,8 @@ export interface PostViewProps {
  */
 export default function PostView({ post, layout, onBack, afterDelete, onLikeChange }: PostViewProps) {
   const { user } = useAuth();
+  const t = useTranslations("post");
+  const timeAgo = useTimeAgo();
   const [deleting, setDeleting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportingComment, setReportingComment] = useState<{ id: string; username: string } | null>(null);
@@ -391,7 +397,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
       setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     } catch (err) {
       // The text stays in the field, so nothing typed is lost.
-      setCommentError(err instanceof Error ? err.message : "Your comment couldn't be posted");
+      setCommentError(err instanceof Error ? err.message : t("commentFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -410,7 +416,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
     if (!user || deleting) return;
 
     // 2. Add a safety check so users don't accidentally delete their memories
-    if (!window.confirm("Are you sure you want to delete this post? This cannot be undone.")) {
+    if (!window.confirm(t("confirmDelete"))) {
       return;
     }
 
@@ -426,7 +432,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
 
     } catch (error) {
       console.error("Failed to delete post:", error);
-      alert("Failed to delete post. Please try again.");
+      alert(t("deleteFailed"));
       setDeleting(false); // Only reset if it fails, since success unmounts the view anyway
     }
   };
@@ -464,7 +470,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
           onClick={handleDeletePost}
           disabled={deleting}
           className="rounded-full p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-50"
-          aria-label="Delete post"
+          aria-label={t("deletePost")}
         >
           <Trash2 size={18} />
         </button>
@@ -473,7 +479,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
         <button
           onClick={() => setShowReportModal(true)}
           className="rounded-full p-1.5 text-muted-foreground hover:text-foreground"
-          aria-label="Report post"
+          aria-label={t("reportPost")}
         >
           <Flag size={18} />
         </button>
@@ -483,7 +489,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
         <Link
           href={`/admin/cases/new?type=post&id=${post.id}`}
           className="rounded-full p-1.5 text-muted-foreground hover:text-foreground"
-          aria-label="Moderate post"
+          aria-label={t("moderatePost")}
         >
           <ShieldAlert size={18} />
         </Link>
@@ -515,17 +521,15 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
   // what others see, and where the statement of reasons is.
   const pendingNote = isOwner && (isFlagged || post.moderation_status === "hidden") && (
     <div className="border-b border-border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
-      {isFlagged
-        ? "Pending review — only visible to you and people who click through"
-        : "Hidden — only you can see this post."}{" "}
-      <Link href="/moderation" className="underline">See Moderation</Link>
+      {isFlagged ? t("flaggedPending") : t("hiddenOwner")}{" "}
+      <Link href="/moderation" className="underline">{t("seeModeration")}</Link>
     </div>
   );
 
   const image = firstImage?.medium_url && (
     <Image
       src={getMediaUrl(firstImage.medium_url)}
-      alt={post.caption ?? "Post image"}
+      alt={post.caption ?? t("image")}
       width={firstImage.width ?? 1080}
       height={firstImage.height ?? 1080}
       className={
@@ -558,7 +562,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
         </div>
       )}
       {!loadingComments && allComments.length === 0 && (
-        <p className="py-4 text-center text-xs text-muted-foreground">No comments yet. Be the first!</p>
+        <p className="py-4 text-center text-xs text-muted-foreground">{t("noComments")}</p>
       )}
       {renderComments(topLevel)}
       <div ref={commentsEndRef} />
@@ -570,7 +574,7 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
       <button onClick={handleLike} disabled={!user || liking} className="flex items-center gap-2 text-sm disabled:cursor-not-allowed">
         <Heart size={20} className={liked ? "fill-red-500 stroke-red-500" : "text-muted-foreground"} />
         <span className={liked ? "font-semibold" : "text-muted-foreground"}>
-          {likeCount > 0 ? `${likeCount} like${likeCount === 1 ? "" : "s"}` : "Be the first to like this"}
+          {likeCount > 0 ? t("likeCount", { count: likeCount }) : t("beFirstToLike")}
         </span>
       </button>
       <ShareButton postId={post.id} username={post.username} size={20} />
@@ -582,7 +586,10 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
       {replyTo && (
         <div className="mb-2 flex items-center justify-between rounded bg-muted px-2 py-1">
           <span className="text-xs text-muted-foreground">
-            Replying to <span className="font-semibold text-foreground">@{replyTo.username}</span>
+            {t.rich("replyingTo", {
+              username: replyTo.username,
+              name: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
+            })}
           </span>
           <button onClick={clearReply} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
         </div>
@@ -595,13 +602,13 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(); }
           }}
-          placeholder={replyTo ? `Reply to @${replyTo.username}…` : "Add a comment…"}
+          placeholder={replyTo ? t("replyPlaceholder", { username: replyTo.username }) : t("commentPlaceholder")}
           maxLength={2000}
-          aria-label="Add a comment"
+          aria-label={t("addComment")}
           className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           disabled={submitting}
         />
-        <Button size="sm" variant="ghost" onClick={handleSubmitComment} disabled={!commentBody.trim() || submitting} aria-label="Post comment">
+        <Button size="sm" variant="ghost" onClick={handleSubmitComment} disabled={!commentBody.trim() || submitting} aria-label={t("postComment")}>
           <Send size={16} />
         </Button>
       </div>
@@ -617,14 +624,12 @@ export default function PostView({ post, layout, onBack, afterDelete, onLikeChan
     <div className="flex w-full flex-col items-center justify-center gap-4 px-8 py-16 text-center">
       <ShieldAlert size={40} className="text-muted-foreground" />
       <div>
-        <p className="font-semibold">This post may violate our guidelines</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          It&apos;s been reported and is pending review.
-        </p>
+        <p className="font-semibold">{t("warningTitle")}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{t("warningText")}</p>
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={onBack}>Go back</Button>
-        <Button variant="secondary" onClick={() => setViewAnyway(true)}>View anyway</Button>
+        <Button variant="outline" onClick={onBack}>{t("goBack")}</Button>
+        <Button variant="secondary" onClick={() => setViewAnyway(true)}>{t("viewAnyway")}</Button>
       </div>
     </div>
   );

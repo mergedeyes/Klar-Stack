@@ -205,7 +205,7 @@ export default function EditProfilePage() {
       {/* Header */}
       <header className="sticky top-safe z-10 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <SmartBackButton aria-label="Back" />
+          <SmartBackButton />
           <span className="font-semibold">Edit Profile</span>
         </div>
         <div>

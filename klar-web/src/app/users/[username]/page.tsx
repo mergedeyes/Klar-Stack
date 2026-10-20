@@ -336,7 +336,7 @@ export default function ProfilePage() {
       <div className="flex-1 bg-background">
         <header className="sticky top-safe z-20 border-b border-border bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
-            <SmartBackButton aria-label="Back" />
+            <SmartBackButton />
           </div>
         </header>
         <main className="mx-auto max-w-3xl px-4 py-16 text-center">
@@ -362,7 +362,7 @@ export default function ProfilePage() {
       ) : (
         <header className="sticky top-safe z-20 border-b border-border bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
-            <SmartBackButton aria-label="Back" />
+            <SmartBackButton />
             <span className="font-semibold flex-1">{profile.username}</span>
             {!isMe && me && (
               <button

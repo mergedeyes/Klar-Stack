@@ -113,7 +113,7 @@ function ReviewPage() {
   return (
     <div className="flex-1 bg-background pb-12">
       <header className="sticky top-safe z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
-        <SmartBackButton aria-label="Back" />
+        <SmartBackButton />
         <span className="min-w-0 flex-1 truncate font-semibold">Review @{username}</span>
       </header>
 

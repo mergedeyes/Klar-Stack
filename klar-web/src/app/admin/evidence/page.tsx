@@ -41,7 +41,7 @@ export default function AdminEvidencePage() {
   return (
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
-        <SmartBackButton aria-label="Back" />
+        <SmartBackButton />
         <span className="flex-1 font-semibold">Evidence</span>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input

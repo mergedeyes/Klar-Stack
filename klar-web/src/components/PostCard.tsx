@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { Heart, MessageCircle } from "lucide-react";
 import ShareButton from "@/components/ShareButton";
 import { posts as postsApi, type Post } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import EditedBadge from "@/components/EditedBadge";
 import { getMediaUrl } from "@/lib/utils/media";
-import { timeAgo } from "@/lib/utils/time";
+import { useTimeAgo } from "@/lib/utils/time";
 
 
 interface PostCardProps {
@@ -28,6 +29,8 @@ export default function PostCard({
   onLikeChange,
 }: PostCardProps) {
   const { user } = useAuth();
+  const t = useTranslations("post");
+  const timeAgo = useTimeAgo();
   const [liked, setLiked] = useState(likedProp ?? false);
   const [likeCount, setLikeCount] = useState(likeCountProp ?? 0);
   const [liking, setLiking] = useState(false);
@@ -119,7 +122,7 @@ export default function PostCard({
         >
           <Image
             src={getMediaUrl(post.full_url)}
-            alt={post.caption ?? "Post image"}
+            alt={post.caption ?? t("image")}
             width={640}
             height={640}
             className="w-full object-cover"
@@ -144,7 +147,7 @@ export default function PostCard({
           onClick={handleLike}
           disabled={!user || liking}
           className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed"
-          aria-label={liked ? "Unlike" : "Like"}
+          aria-label={liked ? t("unlike") : t("like")}
         >
           <Heart size={18} className={liked ? "fill-red-500 stroke-red-500" : ""} />
           {likeCount > 0 && <span>{likeCount}</span>}
@@ -153,7 +156,7 @@ export default function PostCard({
         <button
           onClick={() => onOpenModal(post)}
           className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="View comments"
+          aria-label={t("viewComments")}
         >
           <MessageCircle size={18} />
           {post.comment_count !== undefined && post.comment_count > 0 && (
