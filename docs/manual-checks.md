@@ -110,7 +110,7 @@ loads more as you scroll.
 - [ ] An account with a verified @klarsocial.eu address shows up under Settings → Official accounts (an unverified one doesn't); renaming it to a staff name like "Klar" needs a reason, works, appears in the rename log, and the profile opens at /users/klar; "me" or a taken name is refused
 - [ ] The verification email after sign-up has no Reply-To; other emails (password reset, moderation notice) reply to kontakt@klarsocial.eu
 - [ ] Emails show the styled layout with a blue button in the Gmail app on a phone, also for a non-Google address added to the app (IMAP, GMX, Ionos), and in Gmail on the web
-- [ ] The verification, account-locked and legal-update emails start with "Hallo <username>,"; the legal-update email's footer says it can't be unsubscribed from and why
+- [ ] The verification, account-locked and legal-update emails start with "Hallo <username>," ("Hi <username>," for the first two to an English account); the legal-update email's footer says it can't be unsubscribed from and why
 
 ## Posts and media
 
