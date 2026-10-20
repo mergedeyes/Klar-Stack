@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Grid3X3, Lock, Flag, ShieldAlert, UserX } from "lucide-react";
 import Image from "next/image";
 import {
@@ -36,6 +37,7 @@ function GridCell({
   post: Post;
   onClick: () => void;
 }) {
+  const tp = useTranslations("post");
   const thumb = post.medium_url ? getMediaUrl(post.medium_url) : null;
 
   return (
@@ -46,7 +48,7 @@ function GridCell({
       {thumb ? (
         <Image
           src={thumb}
-          alt={post.caption ?? "Post"}
+          alt={post.caption ?? tp("pageTitle")}
           fill
           className="object-cover transition-opacity group-hover:opacity-80"
           unoptimized
@@ -71,6 +73,9 @@ export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const { user: me, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("profile");
+  const tn = useTranslations("nav");
+  const ts = useTranslations("settings");
 
   const [profile, setProfile] = useState<User | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
@@ -341,11 +346,8 @@ export default function ProfilePage() {
         </header>
         <main className="mx-auto max-w-3xl px-4 py-16 text-center">
           <UserX size={36} className="mx-auto mb-3 text-muted-foreground" />
-          <p className="font-semibold">Profil nicht gefunden</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            There&rsquo;s no profile called @{username} — the name may be mistyped, or the account was deleted or is
-            suspended.
-          </p>
+          <p className="font-semibold">{t("notFoundTitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("notFoundText", { username })}</p>
         </main>
       </div>
     );
@@ -367,7 +369,7 @@ export default function ProfilePage() {
             {!isMe && me && (
               <button
                 onClick={() => setShowReportModal(true)}
-                aria-label="Report user"
+                aria-label={t("report")}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <Flag size={18} />
@@ -378,7 +380,7 @@ export default function ProfilePage() {
             {!isMe && me?.is_admin && (
               <Link
                 href={`/admin/standing/${profile.username}`}
-                aria-label="Moderate user"
+                aria-label={t("moderate")}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <ShieldAlert size={18} />
@@ -415,7 +417,7 @@ export default function ProfilePage() {
               <h1 className="flex items-center gap-2 text-2xl font-bold">
                 {profile.display_name || profile.username}
                 {profile.is_private && (
-                  <Lock size={16} className="text-muted-foreground" aria-label="Private account" />
+                  <Lock size={16} className="text-muted-foreground" aria-label={ts("privateAccount")} />
                 )}
               </h1>
               <p className="text-muted-foreground">@{profile.username}</p>
@@ -425,7 +427,7 @@ export default function ProfilePage() {
             <div className="flex gap-8 mb-4">
               <div className="flex flex-col items-center">
                 <span className="text-lg font-bold">{stats?.posts ?? 0}</span>
-                <span className="text-sm text-muted-foreground">Posts</span>
+                <span className="text-sm text-muted-foreground">{t("posts")}</span>
               </div>
               <button 
                 onClick={() => isMe && setModalType("followers")}
@@ -433,7 +435,7 @@ export default function ProfilePage() {
                 className={`flex flex-col items-center focus:outline-none ${isMe ? 'hover:opacity-70 transition-opacity' : 'cursor-default'}`}
               >
                 <span className="text-lg font-bold">{stats?.followers ?? 0}</span>
-                <span className="text-sm text-muted-foreground">Followers</span>
+                <span className="text-sm text-muted-foreground">{t("followers")}</span>
               </button>
               <button 
                 onClick={() => isMe && setModalType("following")}
@@ -441,7 +443,7 @@ export default function ProfilePage() {
                 className={`flex flex-col items-center focus:outline-none ${isMe ? 'hover:opacity-70 transition-opacity' : 'cursor-default'}`}
               >
                 <span className="text-lg font-bold">{stats?.following ?? 0}</span>
-                <span className="text-sm text-muted-foreground">Following</span>
+                <span className="text-sm text-muted-foreground">{t("following")}</span>
               </button>
             </div>
 
@@ -455,14 +457,17 @@ export default function ProfilePage() {
             {!isMe && profile.incoming_follow_request && (
               <div className="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
                 <span className="text-sm">
-                  <strong>{profile.username}</strong> wants to follow you
+                  {t.rich("wantsToFollow", {
+                    username: profile.username,
+                    name: (chunks) => <strong>{chunks}</strong>,
+                  })}
                 </span>
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => handleRequestResponse(true)} disabled={requestActionLoading}>
-                    Accept
+                    {tn("accept")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => handleRequestResponse(false)} disabled={requestActionLoading}>
-                    Decline
+                    {tn("decline")}
                   </Button>
                 </div>
               </div>
@@ -476,7 +481,7 @@ export default function ProfilePage() {
                   className="w-full sm:w-auto"
                   onClick={() => router.push("/settings/profile")}
                 >
-                  Edit profile
+                  {ts("editProfile")}
                 </Button>
                 {profile.is_private && (
                   <Button
@@ -484,7 +489,7 @@ export default function ProfilePage() {
                     className="w-full sm:w-auto"
                     onClick={() => router.push("/follow-requests")}
                   >
-                    Follow requests
+                    {t("followRequests")}
                   </Button>
                 )}
               </div>
@@ -496,7 +501,7 @@ export default function ProfilePage() {
                   onClick={handleFollowToggle}
                   disabled={followLoading || isBlocked}
                 >
-                  {isFollowing ? "Following" : isRequested ? "Requested" : "Follow"}
+                  {isFollowing ? t("following") : isRequested ? t("requested") : t("follow")}
                 </Button>
                 
                 <Button
@@ -504,7 +509,7 @@ export default function ProfilePage() {
                   className="flex-1 sm:flex-none min-w-[120px]"
                   onClick={() => router.push(`/chats?uid=${profile.id}&un=${encodeURIComponent(profile.username)}&av=${encodeURIComponent(profile.avatar_url || '')}`)}
                 >
-                  Message
+                  {t("message")}
                 </Button>
 
                 <Button
@@ -513,7 +518,7 @@ export default function ProfilePage() {
                   onClick={handleBlockToggle}
                   disabled={blockLoading}
                 >
-                  {isBlocked ? "Unblock" : "Block"}
+                  {isBlocked ? t("unblock") : t("block")}
                 </Button>
               </div>
             ) : null}
@@ -525,19 +530,17 @@ export default function ProfilePage() {
           {!canSeePosts ? (
             <div className="py-16 text-center">
               <Lock size={32} className="mx-auto mb-3 text-muted-foreground" />
-              <p className="text-sm font-semibold">This account is private</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Follow this account to see their posts.
-              </p>
+              <p className="text-sm font-semibold">{t("privateTitle")}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t("privateText")}</p>
             </div>
           ) : postsBlocked ? (
             <div className="py-16 text-center">
-              <p className="text-sm text-muted-foreground">Couldn&apos;t load posts</p>
+              <p className="text-sm text-muted-foreground">{t("postsFailed")}</p>
             </div>
           ) : visiblePosts.length === 0 ? (
             <div className="py-16 text-center">
               <Grid3X3 size={32} className="mx-auto mb-3 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">No posts yet</p>
+              <p className="text-sm text-muted-foreground">{t("noPosts")}</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-1">
@@ -558,7 +561,7 @@ export default function ProfilePage() {
                   size="sm"
                   onClick={() => { setLoadMoreFailed(false); loadMorePosts(); }}
                 >
-                  Couldn&apos;t load more posts — retry
+                  {t("retryMore")}
                 </Button>
               ) : loadingMorePosts && (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
@@ -578,7 +581,7 @@ export default function ProfilePage() {
       {/* Follow/Following Modal */}
       {modalType && (
         <UserListModal 
-          title={modalType === "followers" ? "Followers" : "Following"} 
+          title={modalType === "followers" ? t("followers") : t("following")} 
           users={modalType === "followers" ? followers : following} 
           onClose={() => setModalType(null)} 
         />

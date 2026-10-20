@@ -155,5 +155,5 @@ test("the data download is a ZIP, and deleting the account signs out and removes
   // For anyone else the profile is gone.
   const visitor = await pageFor(browser, await signUp("visitor"));
   await visitor.goto(`/users/${user.username}`);
-  await expect(visitor.getByText("Profil nicht gefunden")).toBeVisible();
+  await expect(visitor.getByText("Profile not found")).toBeVisible();
 });

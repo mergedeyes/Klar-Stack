@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { chatsApi, DELETED_USER_LABEL, ChatMessage } from "@/lib/api";
+import { useTranslations } from "next-intl";
+import { chatsApi, ChatMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNotifications } from "@/hooks/use-notifications";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥
  * center of the chat rather than always the same side, since "me"
  * bubbles sit on the right and "them" bubbles sit on the left. */
 function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (emoji: string) => void }) {
+  const t = useTranslations("chats");
   return (
     <div
       className={`absolute bottom-full z-20 mb-1 flex gap-0.5 rounded-full border border-border bg-background p-1 shadow-lg ${
@@ -48,7 +50,7 @@ function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (e
           type="button"
           onClick={() => onPick(emoji)}
           className="rounded-full p-1 text-base leading-none hover:bg-muted"
-          aria-label={`React with ${emoji}`}
+          aria-label={t("reactWith", { emoji })}
         >
           {emoji}
         </button>
@@ -58,8 +60,11 @@ function ReactionPicker({ align, onPick }: { align: "left" | "right"; onPick: (e
 }
 
 export default function ChatWindow({ conversationId, receiverId, receiverUsername, receiverAvatar, onMessageSent, onBack }: ChatWindowProps) {
+  const t = useTranslations("chats");
+  const tc = useTranslations("common");
+  const tp = useTranslations("post");
   const receiverDeleted = receiverId === null;
-  const displayName = receiverUsername ?? DELETED_USER_LABEL;
+  const displayName = receiverUsername ?? t("deletedUser");
   const { user } = useAuth();
   const { lastMessageEvent, refreshChatUnreadCount, resyncedAt } = useNotifications();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -158,7 +163,7 @@ export default function ChatWindow({ conversationId, receiverId, receiverUsernam
       }
       setInputText("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send message");
+      setError(err instanceof Error ? err.message : t("sendFailed"));
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 10);
@@ -228,7 +233,7 @@ return (
         return (
           <div className="h-20 flex-none border-b flex items-center bg-background/95 backdrop-blur">
             {onBack && (
-              <Button variant="ghost" size="icon" className="md:hidden ml-2 -mr-2" onClick={onBack} aria-label="Back to chats">
+              <Button variant="ghost" size="icon" className="md:hidden ml-2 -mr-2" onClick={onBack} aria-label={t("backToChats")}>
                 <ArrowLeft size={20} />
               </Button>
             )}
@@ -255,7 +260,7 @@ return (
               {/* Reply Snippet */}
               {repliedMsg && (
                 <div className="text-xs text-muted-foreground bg-muted p-2 rounded-t-lg mb-[-10px] pb-3 px-3 max-w-[70%] truncate border">
-                  Replying to: {repliedMsg.body}
+                  {t("replyingTo", { text: repliedMsg.body })}
                 </div>
               )}
 
@@ -264,12 +269,12 @@ return (
                     can't hover, so there they stay visible. */}
                 {isMe && (
                   <div className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-1">
-                    <button onClick={() => setEditingMessage(msg)} aria-label="Edit message" className="p-1 hover:bg-muted rounded text-muted-foreground"><Edit2 size={14} /></button>
-                    <button onClick={() => handleDelete(msg.id)} aria-label="Delete message" className="p-1 hover:bg-destructive/10 rounded text-destructive"><Trash2 size={14} /></button>
+                    <button onClick={() => setEditingMessage(msg)} aria-label={t("editMessage")} className="p-1 hover:bg-muted rounded text-muted-foreground"><Edit2 size={14} /></button>
+                    <button onClick={() => handleDelete(msg.id)} aria-label={t("deleteMessage")} className="p-1 hover:bg-destructive/10 rounded text-destructive"><Trash2 size={14} /></button>
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
-                        aria-label="React"
+                        aria-label={t("react")}
                         className="p-1 hover:bg-muted rounded text-muted-foreground"
                       >
                         <Smile size={14} />
@@ -286,17 +291,17 @@ return (
                   isMe ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted rounded-bl-sm"
                 }`}>
                   <p className="break-words">{msg.body}</p>
-                  {msg.edited_at && <span className="text-[10px] opacity-70 mt-1 block">(bearbeitet)</span>}
+                  {msg.edited_at && <span className="text-[10px] opacity-70 mt-1 block">{t("edited")}</span>}
                 </div>
 
                 {!isMe && (
                   <div className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-1">
-                    <button onClick={() => handleReply(msg)} aria-label="Reply" className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
-                    <button onClick={() => setReportingMessageId(msg.id)} aria-label="Report message" className="p-1 hover:bg-muted rounded text-muted-foreground"><Flag size={14} /></button>
+                    <button onClick={() => handleReply(msg)} aria-label={tp("reply")} className="p-1 hover:bg-muted rounded text-muted-foreground"><Reply size={14} /></button>
+                    <button onClick={() => setReportingMessageId(msg.id)} aria-label={t("reportMessage")} className="p-1 hover:bg-muted rounded text-muted-foreground"><Flag size={14} /></button>
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPickerForMessageId(pickerForMessageId === msg.id ? null : msg.id); }}
-                        aria-label="React"
+                        aria-label={t("react")}
                         className="p-1 hover:bg-muted rounded text-muted-foreground"
                       >
                         <Smile size={14} />
@@ -335,7 +340,7 @@ return (
         {receiverDeleted && (
           <div className="flex justify-center">
             <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-              This User Account was deleted.
+              {t("accountDeleted")}
             </span>
           </div>
         )}
@@ -345,7 +350,7 @@ return (
       {/* Input Area (replaced by a notice when the other account is gone) */}
       {receiverDeleted ? (
         <div className="flex-none p-4 border-t bg-muted/10 text-center text-sm text-muted-foreground">
-          You can&apos;t reply to a deleted account.
+          {t("cantReply")}
         </div>
       ) : (
       <div className="flex-none p-3 border-t bg-muted/10">
@@ -354,13 +359,13 @@ return (
         {/* Active Reply/Edit Banners */}
         {replyingTo && (
           <div className="flex justify-between items-center bg-muted p-2 rounded-t-md text-sm border-x border-t">
-            <span className="truncate text-muted-foreground">Replying to: {replyingTo.body}</span>
+            <span className="truncate text-muted-foreground">{t("replyingTo", { text: replyingTo.body })}</span>
             <button onClick={() => setReplyingTo(null)} className="text-muted-foreground hover:text-foreground"><X size={14}/></button>
           </div>
         )}
         {editingMessage && (
           <div className="flex justify-between items-center bg-primary/10 p-2 rounded-t-md text-sm border-x border-t">
-            <span className="truncate text-primary">Editing message...</span>
+            <span className="truncate text-primary">{t("editing")}</span>
             <button onClick={() => { setEditingMessage(null); setInputText(""); }} className="text-primary hover:text-primary/70"><X size={14}/></button>
           </div>
         )}
@@ -370,13 +375,13 @@ return (
             ref={inputRef}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={editingMessage ? "Edit message..." : `Message @${receiverUsername}...`}
+            placeholder={editingMessage ? t("editPlaceholder") : t("messagePlaceholder", { username: receiverUsername ?? "" })}
             disabled={loading}
             className={`flex-1 ${replyingTo || editingMessage ? 'rounded-tl-none rounded-tr-none' : ''}`}
             autoFocus
           />
           <Button type="submit" disabled={loading || !inputText.trim()}>
-            {editingMessage ? "Save" : "Send"}
+            {editingMessage ? tc("save") : t("send")}
           </Button>
         </form>
       </div>

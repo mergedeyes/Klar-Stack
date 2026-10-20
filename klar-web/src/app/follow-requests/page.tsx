@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -14,6 +15,9 @@ import { getMediaUrl } from "@/lib/utils/media";
 export default function FollowRequestsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("followRequests");
+  const tc = useTranslations("common");
+  const tn = useTranslations("nav");
 
   const [requests, setRequests] = useState<FollowRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,9 +32,9 @@ export default function FollowRequestsPage() {
     if (!user) return;
     followRequestsApi.list()
       .then(setRequests)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load requests"))
+      .catch((err) => setError(err instanceof Error ? err.message : t("loadFailed")))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, t]);
 
   const handleAccept = async (req: FollowRequest) => {
     setBusyUsername(req.requester_username);
@@ -38,7 +42,7 @@ export default function FollowRequestsPage() {
       await followRequestsApi.accept(req.requester_username);
       setRequests((prev) => prev.filter((r) => r.requester_username !== req.requester_username));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to accept request");
+      setError(err instanceof Error ? err.message : t("acceptFailed"));
     } finally {
       setBusyUsername(null);
     }
@@ -50,7 +54,7 @@ export default function FollowRequestsPage() {
       await followRequestsApi.reject(req.requester_username);
       setRequests((prev) => prev.filter((r) => r.requester_username !== req.requester_username));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reject request");
+      setError(err instanceof Error ? err.message : t("rejectFailed"));
     } finally {
       setBusyUsername(null);
     }
@@ -62,7 +66,7 @@ export default function FollowRequestsPage() {
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
         <SmartBackButton />
-        <span className="font-semibold">Follow Requests</span>
+        <span className="font-semibold">{t("title")}</span>
       </header>
 
       <main className="mx-auto max-w-lg px-4 py-4">
@@ -74,14 +78,14 @@ export default function FollowRequestsPage() {
 
         {loading && (
           <div className="py-16 text-center text-sm text-muted-foreground animate-pulse">
-            Loading…
+            {tc("loading")}
           </div>
         )}
 
         {!loading && requests.length === 0 && (
           <div className="py-16 text-center">
             <UserCheck size={32} className="mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No pending follow requests</p>
+            <p className="text-sm text-muted-foreground">{t("empty")}</p>
           </div>
         )}
 
@@ -115,7 +119,7 @@ export default function FollowRequestsPage() {
                   onClick={() => handleAccept(req)}
                   disabled={busyUsername === req.requester_username}
                 >
-                  Accept
+                  {tn("accept")}
                 </Button>
                 <Button
                   size="sm"
@@ -123,7 +127,7 @@ export default function FollowRequestsPage() {
                   onClick={() => handleReject(req)}
                   disabled={busyUsername === req.requester_username}
                 >
-                  Decline
+                  {tn("decline")}
                 </Button>
               </div>
             </div>

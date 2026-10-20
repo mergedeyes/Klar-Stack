@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { User, follows } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useTranslations } from "next-intl";
 import { X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,8 @@ interface NewChatModalProps {
 export default function NewChatModal({ onClose }: NewChatModalProps) {
   const { user } = useAuth();
   const router = useRouter();
+  const t = useTranslations("chats");
+  const tc = useTranslations("common");
   const [mutuals, setMutuals] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -63,8 +66,8 @@ export default function NewChatModal({ onClose }: NewChatModalProps) {
       <div className="w-full max-w-md bg-card border rounded-xl shadow-lg flex flex-col max-h-[80vh]">
         
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-bold">Neuer Chat</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <h2 className="text-lg font-bold">{t("newChat")}</h2>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={tc("close")}>
             <X size={20} />
           </Button>
         </div>
@@ -73,7 +76,7 @@ export default function NewChatModal({ onClose }: NewChatModalProps) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input 
-              placeholder="Suche nach Freunden..." 
+              placeholder={t("searchFriends")}
               className="pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -83,13 +86,13 @@ export default function NewChatModal({ onClose }: NewChatModalProps) {
 
         <div className="flex-1 overflow-y-auto p-2">
           {loading ? (
-            <div className="p-8 text-center text-muted-foreground">Lade Freunde...</div>
+            <div className="p-8 text-center text-muted-foreground">{t("loadingFriends")}</div>
           ) : mutuals.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              Du hast noch keine gegenseitigen Follower. <br/>Folge anderen, damit sie dir zurückfolgen können!
+              {t("noMutuals")} <br />{t("noMutualsHint")}
             </div>
           ) : filteredMutuals.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">Keine User gefunden.</div>
+            <div className="p-8 text-center text-muted-foreground">{tc("noUsersFound")}</div>
           ) : (
             filteredMutuals.map(m => (
               <button 

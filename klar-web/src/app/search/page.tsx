@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ArrowLeft, Clock, Search, UserCheck, UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi, follows, type User } from "@/lib/api";
@@ -27,6 +28,7 @@ function UserCard({
     user.viewer_relationship ?? "not_following"
   );
   const [loading, setLoading] = useState(false);
+  const t = useTranslations("profile");
   const following = relationship === "following";
   const requested = relationship === "requested";
 
@@ -94,17 +96,17 @@ function UserCard({
           {following ? (
             <>
               <UserCheck size={14} className="mr-1" />
-              Following
+              {t("following")}
             </>
           ) : requested ? (
             <>
               <Clock size={14} className="mr-1" />
-              Requested
+              {t("requested")}
             </>
           ) : (
             <>
               <UserPlus size={14} className="mr-1" />
-              Follow
+              {t("follow")}
             </>
           )}
         </Button>
@@ -118,6 +120,7 @@ function UserCard({
 export default function SearchPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("search");
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
@@ -177,7 +180,7 @@ export default function SearchPage() {
             variant="ghost"
             size="icon"
             onClick={() => router.push("/feed")}
-            aria-label="Back to feed"
+            aria-label={t("backToFeed")}
           >
             <ArrowLeft size={20} />
           </Button>
@@ -190,7 +193,7 @@ export default function SearchPage() {
               ref={inputRef}
               value={query}
               onChange={handleChange}
-              placeholder="Search people…"
+              placeholder={t("placeholder")}
               className="pl-9"
               autoComplete="off"
               autoCorrect="off"
@@ -210,13 +213,13 @@ export default function SearchPage() {
 
         {!searching && searched && results.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No users found for &ldquo;{query}&rdquo;
+            {t("noResults", { query })}
           </p>
         )}
 
         {!searching && !searched && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Search for people by username or name
+            {t("hint")}
           </p>
         )}
 
