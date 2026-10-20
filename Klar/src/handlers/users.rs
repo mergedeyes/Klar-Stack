@@ -375,11 +375,10 @@ pub async fn update_profile(
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("duplicate key") {
+        if crate::utils::is_unique_violation(&e) {
             AppError::conflict("Username is already taken")
         } else {
-            tracing::error!("Update failed: {}", msg);
+            tracing::error!("Update failed: {}", e);
             AppError::internal("Failed to update profile")
         }
     })?;
@@ -482,8 +481,13 @@ pub async fn upload_avatar(
 
     let processed = tokio::task::spawn_blocking(move || media::process_image(&raw_bytes))
         .await
-        .map_err(|e| AppError::internal(format!("Processing task failed: {:?}", e)))?
-        .map_err(|e| AppError::bad_request(format!("Image processing failed: {:?}", e)))?;
+        // A JoinError means the task panicked or was cancelled -- log the
+        // detail, but don't echo a panic message to the client.
+        .map_err(|e| {
+            tracing::error!("Avatar processing task failed: {}", e);
+            AppError::internal("Image processing failed")
+        })?
+        .map_err(|e| AppError::bad_request(format!("Image processing failed: {}", e)))?;
 
     let avatar_id = Uuid::new_v4();
     // process_image always re-encodes to WebP (same as post uploads); the
@@ -491,7 +495,10 @@ pub async fn upload_avatar(
     let avatar_key = format!("avatars/{}.webp", avatar_id);
 
     state.storage.save(&avatar_key, &processed.thumb).await
-        .map_err(|e| AppError::internal(format!("Failed to save avatar: {:?}", e)))?;
+        .map_err(|e| {
+            tracing::error!("Saving avatar {} failed: {}", avatar_key, e.message);
+            AppError::internal("Failed to save avatar")
+        })?;
 
     let mut tx = state.db.begin().await.db_err_ctx("Failed to start transaction", "Database error")?;
 

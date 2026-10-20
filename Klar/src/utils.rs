@@ -73,6 +73,14 @@ impl<T> DbResultExt<T> for Result<T, sqlx::Error> {
     }
 }
 
+/// Whether a database error is a unique-constraint violation (SQLSTATE
+/// 23505), e.g. a username that was taken a moment ago. Checked by code,
+/// not by the message: Postgres words its messages in the server's
+/// language (lc_messages).
+pub fn is_unique_violation(err: &sqlx::Error) -> bool {
+    err.as_database_error().is_some_and(|e| e.is_unique_violation())
+}
+
 /// Looks up a user's id by username, case insensitively (matches the
 /// LOWER(username) = LOWER($1) convention used throughout the codebase).
 /// Returns a 404 AppError with a friendly message if no such user exists,

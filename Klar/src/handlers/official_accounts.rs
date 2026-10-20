@@ -145,7 +145,7 @@ pub async fn rename(
         .await
         .map_err(|e| {
             // Two renames racing for the same name: the unique index decides.
-            if e.to_string().contains("duplicate key") {
+            if crate::utils::is_unique_violation(&e) {
                 AppError::conflict("Username is already taken")
             } else {
                 tracing::error!("Official account rename failed: {}", e);

@@ -180,11 +180,10 @@ pub async fn register(
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("duplicate key") {
+        if crate::utils::is_unique_violation(&e) {
             AppError::conflict("Username or email already taken")
         } else {
-            tracing::error!("Failed to register user: {}", msg);
+            tracing::error!("Failed to register user: {}", e);
             AppError::internal("Failed to register user")
         }
     })?;
@@ -354,12 +353,17 @@ pub async fn logout(
     // Ends this login: the token and the rotated ones it descends from.
     if let Some(raw_refresh_token) = cookie_token.or(body.refresh_token) {
         let token_hash = hash_refresh_token(&raw_refresh_token);
-        let _ = sqlx::query(
+        // The browser signs out either way; a failure here leaves the token
+        // valid until it expires, which the log has to show.
+        if let Err(e) = sqlx::query(
             "DELETE FROM refresh_tokens WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1)",
         )
         .bind(&token_hash)
         .execute(&state.db)
-        .await;
+        .await
+        {
+            tracing::error!("Logout: deleting the refresh token family failed: {}", e);
+        }
     }
 
     Ok((
@@ -745,7 +749,8 @@ pub async fn enforce_verified_email(
             let verified = sqlx::query_scalar::<_, bool>("SELECT email_verified FROM users WHERE id = $1")
                 .bind(user_id)
                 .fetch_optional(&state.db)
-                .await;
+                .await
+                .db_err_ctx("Verified-email check failed", "Database error");
             match verified {
                 Ok(Some(true)) => {}
                 Ok(Some(false)) => {
@@ -755,7 +760,7 @@ pub async fn enforce_verified_email(
                     .into_response()
                 }
                 Ok(None) => return AppError::unauthorized("Session ended").into_response(),
-                Err(e) => return AppError::internal(format!("Database error: {}", e)).into_response(),
+                Err(e) => return e.into_response(),
             }
         }
     }

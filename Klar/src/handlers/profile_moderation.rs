@@ -293,13 +293,18 @@ async fn keep_removed_avatar(state: &AppState, decision_id: Uuid, old: &str, kep
             if let Err(e) = state.cdn.purge(&state.storage.public_url(old)).await {
                 tracing::error!("Failed to purge avatar {} from CDN: {}", old, e.message);
             }
-            let _ = sqlx::query(
+            // Without this the decision doesn't know where the avatar is, so
+            // an accepted objection couldn't restore it.
+            if let Err(e) = sqlx::query(
                 "UPDATE moderation_decisions SET removed_fields = jsonb_set(removed_fields, '{avatar_key}', to_jsonb($2::text)) WHERE id = $1",
             )
             .bind(decision_id)
             .bind(old)
             .execute(&state.db)
-            .await;
+            .await
+            {
+                tracing::error!("Recording the kept avatar {} on decision {} failed: {}", old, decision_id, e);
+            }
         }
     }
 }

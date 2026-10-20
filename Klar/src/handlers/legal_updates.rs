@@ -329,12 +329,17 @@ pub(crate) async fn send_emails(state: &AppState) {
                     match left {
                         Ok(true) => continue,
                         Ok(false) => {
-                            let _ = sqlx::query(
+                            // Failing leaves the update open; the next sweep
+                            // finds no one left and tries again.
+                            if let Err(e) = sqlx::query(
                                 "UPDATE legal_updates SET emails_finished_at = NOW() WHERE id = $1 AND emails_finished_at IS NULL",
                             )
                             .bind(update_id)
                             .execute(&state.db)
-                            .await;
+                            .await
+                            {
+                                tracing::error!("Legal update {}: marking the emails finished failed: {}", update_id, e);
+                            }
                             tracing::info!("Legal update {}: all emails sent", update_id);
                             break;
                         }
