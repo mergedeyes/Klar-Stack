@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -30,19 +31,25 @@ import { Input } from "@/components/ui/input";
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
-const loginSchema = z.object({
-  // An email address or a username; the server tells them apart.
-  login: z.string().trim().min(1, "Enter your email or username"),
-  password: z.string().min(1, "Password is required"),
-});
+// Built per render language, so the validation messages are translated.
+function loginSchema(t: ReturnType<typeof useTranslations<"auth">>) {
+  return z.object({
+    // An email address or a username; the server tells them apart.
+    login: z.string().trim().min(1, t("login.enterLogin")),
+    password: z.string().min(1, t("login.passwordRequired")),
+  });
+}
 
-type LoginValues = z.infer<typeof loginSchema>;
+type LoginValues = z.infer<ReturnType<typeof loginSchema>>;
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const t = useTranslations("auth");
+  const tc = useTranslations("common");
+  const schema = useMemo(() => loginSchema(t), [t]);
   const [error, setError] = useState<string | null>(null);
   // Set when the account is locked after a suspected takeover (423): the
   // credentials, to request a new link, and the outcome of that request.
@@ -54,7 +61,7 @@ export default function LoginPage() {
   });
 
   const form = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(schema),
     defaultValues: { login: "", password: "" },
   });
 
@@ -69,7 +76,7 @@ export default function LoginPage() {
         setResend({ busy: false, message: null, error: false });
         return;
       }
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : t("login.failed"));
     }
   };
 
@@ -80,7 +87,7 @@ export default function LoginPage() {
       const res = await auth.resendLockLink(locked.login, locked.password);
       setResend({ busy: false, message: res.message, error: false });
     } catch (err) {
-      setResend({ busy: false, message: err instanceof Error ? err.message : "Couldn't send the link", error: true });
+      setResend({ busy: false, message: err instanceof Error ? err.message : t("login.couldntSendLink"), error: true });
     }
   };
 
@@ -89,18 +96,12 @@ export default function LoginPage() {
       <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Your account is locked</CardTitle>
-            <CardDescription>For your protection</CardDescription>
+            <CardTitle className="text-2xl">{t("login.lockedTitle")}</CardTitle>
+            <CardDescription>{t("login.lockedSubtitle")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p>
-              We noticed activity on your account that suggests someone else has been using it, so we signed it out
-              everywhere and locked it.
-            </p>
-            <p>
-              We sent a link to your email address. Set a new password with it to unlock your account, and use one
-              you don&apos;t use anywhere else.
-            </p>
+            <p>{t("login.lockedWhy")}</p>
+            <p>{t("login.lockedWhat")}</p>
             {resend.message && (
               <div
                 className={`rounded-md px-3 py-2 ${resend.error ? "bg-destructive/10 text-destructive" : "bg-muted"}`}
@@ -110,19 +111,21 @@ export default function LoginPage() {
               </div>
             )}
             <Button className="w-full" variant="outline" onClick={resendLink} disabled={resend.busy}>
-              {resend.busy ? "Sending…" : "Send the link again"}
+              {resend.busy ? tc("sending") : t("login.sendAgain")}
             </Button>
             <p className="text-muted-foreground">
-              No email? Check your spam folder, or write to{" "}
-              <a href="mailto:kontakt@klarsocial.eu" className="underline">
-                kontakt@klarsocial.eu
-              </a>
-              .
+              {t.rich("login.noEmail", {
+                mail: (chunks) => (
+                  <a href="mailto:kontakt@klarsocial.eu" className="underline">
+                    {chunks}
+                  </a>
+                ),
+              })}
             </p>
           </CardContent>
           <CardFooter className="justify-center">
             <Button variant="ghost" size="sm" onClick={() => setLocked(null)}>
-              Back to sign in
+              {t("backToSignIn")}
             </Button>
           </CardFooter>
         </Card>
@@ -135,7 +138,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Klar</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
+          <CardDescription>{t("login.subtitle")}</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -152,7 +155,7 @@ export default function LoginPage() {
                 name="login"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email or username</FormLabel>
+                    <FormLabel>{t("login.emailOrUsername")}</FormLabel>
                     <FormControl>
                       <Input
                         type="text"
@@ -174,7 +177,7 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>{t("password")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -193,7 +196,7 @@ export default function LoginPage() {
                 className="w-full"
                 disabled={form.formState.isSubmitting}
               >
-                {form.formState.isSubmitting ? "Signing in…" : "Sign in"}
+                {form.formState.isSubmitting ? t("login.signingIn") : t("login.signIn")}
               </Button>
             </form>
           </Form>
@@ -203,19 +206,22 @@ export default function LoginPage() {
               href="/forgot-password"
               className="text-muted-foreground underline-offset-4 hover:underline"
             >
-              Forgot password?
+              {t("login.forgotPassword")}
             </Link>
           </div>
         </CardContent>
 
-        <CardFooter className="justify-center text-sm text-muted-foreground">
-          No account?&nbsp;
-          <Link
-            href="/register"
-            className="font-medium text-foreground underline-offset-4 hover:underline"
-          >
-            Create one
-          </Link>
+        <CardFooter className="justify-center gap-1 text-sm text-muted-foreground">
+          {t.rich("login.noAccount", {
+            link: (chunks) => (
+              <Link
+                href="/register"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </CardFooter>
       </Card>
     </main>

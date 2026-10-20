@@ -6,7 +6,10 @@
     "back": "Zurück",
     "on": "An",
     "off": "Aus",
-    "couldntSave": "Konnte nicht gespeichert werden"
+    "couldntSave": "Konnte nicht gespeichert werden",
+    "sending": "Wird gesendet …",
+    "loading": "Wird geladen …",
+    "somethingWentWrong": "Etwas ist schiefgelaufen"
   },
   "footer": {
     "feedback": "Feedback",
@@ -86,5 +89,93 @@
     "close": "Schließen",
     "tryIt": "Ausprobieren",
     "empty": "Noch nichts hier."
+  },
+  "auth": {
+    "email": "E-Mail",
+    "password": "Passwort",
+    "username": "Nutzername",
+    "invalidEmail": "Ungültige E-Mail-Adresse",
+    "passwordMin": "Das Passwort muss mindestens 8 Zeichen lang sein",
+    "passwordTooLong": "Das Passwort ist zu lang",
+    "passwordsDontMatch": "Die Passwörter stimmen nicht überein",
+    "backToSignIn": "Zurück zur Anmeldung",
+    "checkEmail": "Schau in dein Postfach",
+    "login": {
+      "enterLogin": "Gib deine E-Mail-Adresse oder deinen Nutzernamen ein",
+      "passwordRequired": "Gib dein Passwort ein",
+      "failed": "Anmeldung fehlgeschlagen",
+      "couldntSendLink": "Der Link konnte nicht gesendet werden",
+      "lockedTitle": "Dein Konto ist gesperrt",
+      "lockedSubtitle": "Zu deinem Schutz",
+      "lockedWhy": "Wir haben auf deinem Konto Aktivitäten bemerkt, die darauf hindeuten, dass jemand anderes es benutzt hat. Deshalb haben wir es überall abgemeldet und gesperrt.",
+      "lockedWhat": "Wir haben dir einen Link an deine E-Mail-Adresse geschickt. Setze damit ein neues Passwort, um dein Konto zu entsperren, und nimm eines, das du nirgendwo sonst verwendest.",
+      "sendAgain": "Link erneut senden",
+      "noEmail": "Keine E-Mail? Schau in deinen Spam-Ordner oder schreib an <mail>kontakt@klarsocial.eu</mail>.",
+      "subtitle": "Melde dich bei deinem Konto an",
+      "emailOrUsername": "E-Mail oder Nutzername",
+      "signingIn": "Anmeldung läuft …",
+      "signIn": "Anmelden",
+      "forgotPassword": "Passwort vergessen?",
+      "noAccount": "Noch kein Konto? <link>Jetzt erstellen</link>"
+    },
+    "register": {
+      "usernameMin": "Der Nutzername muss mindestens 3 Zeichen lang sein",
+      "usernameMax": "Der Nutzername darf höchstens 30 Zeichen lang sein",
+      "usernameChars": "Der Nutzername darf nur Buchstaben, Ziffern und Unterstriche enthalten",
+      "acceptTerms": "Bitte stimme den Nutzungsbedingungen und der Datenschutzerklärung zu, um fortzufahren",
+      "failed": "Registrierung fehlgeschlagen",
+      "sentLink": "Wir haben einen Bestätigungslink an <addr>{email}</addr> geschickt",
+      "untilVerified": "Klicke auf den Link in der E-Mail, um dein Konto zu bestätigen. Bis dahin kannst du dich auf Klar umsehen, aber nichts posten, kommentieren, keine Nachrichten schreiben und nichts melden. Ein Konto, das unbestätigt bleibt, wird nach 30 Tagen gelöscht.",
+      "continue": "Weiter zu Klar",
+      "title": "Erstelle dein Konto",
+      "subtitle": "Willkommen bei Klar – Fotos teilen, ohne deine Daten herzugeben",
+      "confirmPassword": "Passwort bestätigen",
+      "terms": "Ich stimme den <terms>Nutzungsbedingungen</terms> und der <privacy>Datenschutzerklärung</privacy> zu",
+      "creating": "Konto wird erstellt …",
+      "create": "Konto erstellen",
+      "haveAccount": "Schon ein Konto? <link>Anmelden</link>"
+    },
+    "forgot": {
+      "submitted": "Falls es ein Konto mit dieser E-Mail-Adresse gibt, bekommst du gleich einen Link zum Zurücksetzen deines Passworts.",
+      "intro": "Gib deine E-Mail-Adresse ein, dann schicken wir dir einen Link zum Zurücksetzen.",
+      "send": "Link zum Zurücksetzen senden"
+    },
+    "reset": {
+      "invalidLink": "Der Link zum Zurücksetzen ist ungültig oder fehlt. Bitte fordere einen neuen an.",
+      "failed": "Das Passwort konnte nicht zurückgesetzt werden",
+      "doneTitle": "Passwort zurückgesetzt!",
+      "doneText": "Dein Passwort wurde geändert. Du wirst zur Anmeldung weitergeleitet …",
+      "title": "Passwort zurücksetzen",
+      "intro": "Wähle ein neues Passwort für dein Konto.",
+      "newPassword": "Neues Passwort",
+      "confirmNewPassword": "Neues Passwort bestätigen",
+      "resetting": "Wird zurückgesetzt …",
+      "submit": "Passwort zurücksetzen"
+    },
+    "verify": {
+      "verifying": "Deine E-Mail-Adresse wird bestätigt …",
+      "doneTitle": "E-Mail-Adresse bestätigt!",
+      "doneText": "Deine E-Mail-Adresse ist bestätigt. Du bist startklar.",
+      "goToKlar": "Zu Klar",
+      "expiredTitle": "Link abgelaufen",
+      "expiredText": "Dieser Bestätigungslink ist abgelaufen oder wurde schon benutzt. Fordere unten einen neuen an.",
+      "resend": "Bestätigungs-E-Mail erneut senden",
+      "invalidTitle": "Ungültiger Link",
+      "invalidText": "Dieser Bestätigungslink ist ungültig. Schau in deiner E-Mail nach dem richtigen Link oder fordere einen neuen an."
+    },
+    "resend": {
+      "submitted": "Falls es ein Konto mit dieser E-Mail-Adresse gibt, haben wir einen neuen Bestätigungslink geschickt.",
+      "title": "Bestätigung erneut senden",
+      "intro": "Gib deine E-Mail-Adresse ein, dann schicken wir dir einen neuen Bestätigungslink.",
+      "send": "Bestätigungs-E-Mail senden"
+    }
+  },
+  "welcome": {
+    "intro": "Hier entsteht Klar — eine private, werbefreie Social-Media-App ohne Algorithmus: Du siehst Beiträge chronologisch, ganz ohne Sortierung nach Interaktionen, und behältst die Kontrolle darüber, wer deine Inhalte sehen kann. Wir sind aktuell im Aufbau und öffnen bald für alle.",
+    "passcode": "Zugangscode",
+    "wrongPasscode": "Falscher Zugangscode",
+    "tooManyAttempts": "Zu viele Versuche. Bitte versuche es später noch einmal.",
+    "checking": "Prüfe…",
+    "continue": "Weiter"
   }
 }

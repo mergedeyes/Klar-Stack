@@ -6,7 +6,10 @@
     "back": "Back",
     "on": "On",
     "off": "Off",
-    "couldntSave": "Couldn't save"
+    "couldntSave": "Couldn't save",
+    "sending": "Sending…",
+    "loading": "Loading...",
+    "somethingWentWrong": "Something went wrong"
   },
   "footer": {
     "feedback": "Feedback",
@@ -86,5 +89,93 @@
     "close": "Close",
     "tryIt": "Try it",
     "empty": "Nothing here yet."
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "username": "Username",
+    "invalidEmail": "Invalid email address",
+    "passwordMin": "Password must be at least 8 characters",
+    "passwordTooLong": "Password too long",
+    "passwordsDontMatch": "Passwords don't match",
+    "backToSignIn": "Back to sign in",
+    "checkEmail": "Check your email",
+    "login": {
+      "enterLogin": "Enter your email or username",
+      "passwordRequired": "Password is required",
+      "failed": "Login failed",
+      "couldntSendLink": "Couldn't send the link",
+      "lockedTitle": "Your account is locked",
+      "lockedSubtitle": "For your protection",
+      "lockedWhy": "We noticed activity on your account that suggests someone else has been using it, so we signed it out everywhere and locked it.",
+      "lockedWhat": "We sent a link to your email address. Set a new password with it to unlock your account, and use one you don't use anywhere else.",
+      "sendAgain": "Send the link again",
+      "noEmail": "No email? Check your spam folder, or write to <mail>kontakt@klarsocial.eu</mail>.",
+      "subtitle": "Sign in to your account",
+      "emailOrUsername": "Email or username",
+      "signingIn": "Signing in…",
+      "signIn": "Sign in",
+      "forgotPassword": "Forgot password?",
+      "noAccount": "No account? <link>Create one</link>"
+    },
+    "register": {
+      "usernameMin": "Username must be at least 3 characters",
+      "usernameMax": "Username must be 30 characters or less",
+      "usernameChars": "Username can only contain letters, numbers, and underscores",
+      "acceptTerms": "You must accept the Terms and Privacy Policy to continue",
+      "failed": "Registration failed",
+      "sentLink": "We sent a verification link to <addr>{email}</addr>",
+      "untilVerified": "Click the link in the email to verify your account. Until then you can browse Klar, but not post, comment, send messages or report; an account that stays unverified is deleted after 30 days.",
+      "continue": "Continue to Klar",
+      "title": "Create your account",
+      "subtitle": "Join Klar — privacy-first photo sharing",
+      "confirmPassword": "Confirm password",
+      "terms": "I agree to the <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",
+      "creating": "Creating account…",
+      "create": "Create account",
+      "haveAccount": "Already have an account? <link>Sign in</link>"
+    },
+    "forgot": {
+      "submitted": "If an account exists for that email address, you'll receive a password reset link shortly.",
+      "intro": "Enter your email and we'll send you a reset link.",
+      "send": "Send reset link"
+    },
+    "reset": {
+      "invalidLink": "Invalid or missing reset link. Please request a new one.",
+      "failed": "Failed to reset password",
+      "doneTitle": "Password reset!",
+      "doneText": "Your password has been updated. Redirecting you to sign in…",
+      "title": "Reset your password",
+      "intro": "Choose a new password for your account.",
+      "newPassword": "New password",
+      "confirmNewPassword": "Confirm new password",
+      "resetting": "Resetting…",
+      "submit": "Reset password"
+    },
+    "verify": {
+      "verifying": "Verifying your email…",
+      "doneTitle": "Email verified!",
+      "doneText": "Your email address has been confirmed. You're all set.",
+      "goToKlar": "Go to Klar",
+      "expiredTitle": "Link expired",
+      "expiredText": "This verification link has expired or already been used. Request a new one below.",
+      "resend": "Resend verification email",
+      "invalidTitle": "Invalid link",
+      "invalidText": "This verification link is invalid. Please check your email for the correct link or request a new one."
+    },
+    "resend": {
+      "submitted": "If an account exists for that email, a new verification link has been sent.",
+      "title": "Resend verification",
+      "intro": "Enter your email and we'll send you a new verification link.",
+      "send": "Send verification email"
+    }
+  },
+  "welcome": {
+    "intro": "Klar is being built here: a private, ad-free social media app without an algorithm. You see posts in chronological order, never sorted by engagement, and you stay in control of who can see what you share. We're still building and will open to everyone soon.",
+    "passcode": "Access code",
+    "wrongPasscode": "Incorrect access code",
+    "tooManyAttempts": "Too many attempts. Please try again later.",
+    "checking": "Checking…",
+    "continue": "Continue"
   }
 }

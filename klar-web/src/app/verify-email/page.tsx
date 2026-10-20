@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { auth } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -11,10 +12,25 @@ import { Button } from "@/components/ui/button";
 
 type State = "loading" | "success" | "expired" | "invalid";
 
+function Verifying() {
+  const t = useTranslations("auth.verify");
+  return (
+    <main className="flex flex-1 items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm text-center">
+        <CardContent className="pt-8 pb-6">
+          <Loader2 size={40} className="mx-auto mb-4 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">{t("verifying")}</p>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+
 // 1. Die eigentliche Logik wandert in diese innere Komponente
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
+  const t = useTranslations("auth");
   const [requestState, setRequestState] = useState<State>("loading");
   // Without a token there is nothing to verify; derived instead of set
   // from the effect.
@@ -48,16 +64,7 @@ function VerifyEmailContent() {
   }, [token, refreshUser]);
 
   if (state === "loading") {
-    return (
-      <main className="flex flex-1 items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardContent className="pt-8 pb-6">
-            <Loader2 size={40} className="mx-auto mb-4 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Verifying your email…</p>
-          </CardContent>
-        </Card>
-      </main>
-    );
+    return <Verifying />;
   }
 
   if (state === "success") {
@@ -66,14 +73,12 @@ function VerifyEmailContent() {
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CheckCircle size={40} className="mx-auto mb-2 text-green-500" />
-            <CardTitle className="text-2xl">Email verified!</CardTitle>
-            <CardDescription>
-              Your email address has been confirmed. You&apos;re all set.
-            </CardDescription>
+            <CardTitle className="text-2xl">{t("verify.doneTitle")}</CardTitle>
+            <CardDescription>{t("verify.doneText")}</CardDescription>
           </CardHeader>
           <CardFooter className="justify-center">
             <Button asChild>
-              <Link href="/feed">Go to Klar</Link>
+              <Link href="/feed">{t("verify.goToKlar")}</Link>
             </Button>
           </CardFooter>
         </Card>
@@ -81,49 +86,22 @@ function VerifyEmailContent() {
     );
   }
 
-  if (state === "expired") {
-    return (
-      <main className="flex flex-1 items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm text-center">
-          <CardHeader>
-            <XCircle size={40} className="mx-auto mb-2 text-destructive" />
-            <CardTitle className="text-2xl">Link expired</CardTitle>
-            <CardDescription>
-              This verification link has expired or already been used.
-              Request a new one below.
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="flex-col gap-2">
-            <Button asChild className="w-full">
-              <Link href="/resend-verification">Resend verification email</Link>
-            </Button>
-            <Button asChild variant="ghost" className="w-full">
-              <Link href="/login">Back to sign in</Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      </main>
-    );
-  }
-
-  // invalid / no token
+  const expired = state === "expired";
+  // expired, or invalid / no token
   return (
     <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm text-center">
         <CardHeader>
           <XCircle size={40} className="mx-auto mb-2 text-destructive" />
-          <CardTitle className="text-2xl">Invalid link</CardTitle>
-          <CardDescription>
-            This verification link is invalid. Please check your email for the
-            correct link or request a new one.
-          </CardDescription>
+          <CardTitle className="text-2xl">{expired ? t("verify.expiredTitle") : t("verify.invalidTitle")}</CardTitle>
+          <CardDescription>{expired ? t("verify.expiredText") : t("verify.invalidText")}</CardDescription>
         </CardHeader>
         <CardFooter className="flex-col gap-2">
           <Button asChild className="w-full">
-            <Link href="/resend-verification">Resend verification email</Link>
+            <Link href="/resend-verification">{t("verify.resend")}</Link>
           </Button>
           <Button asChild variant="ghost" className="w-full">
-            <Link href="/login">Back to sign in</Link>
+            <Link href="/login">{t("backToSignIn")}</Link>
           </Button>
         </CardFooter>
       </Card>
@@ -135,18 +113,7 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     // Als Fallback nutzen wir genau das gleiche Loading-UI wie oben!
-    <Suspense 
-      fallback={
-        <main className="flex flex-1 items-center justify-center bg-background p-4">
-          <Card className="w-full max-w-sm text-center">
-            <CardContent className="pt-8 pb-6">
-              <Loader2 size={40} className="mx-auto mb-4 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Verifying your email…</p>
-            </CardContent>
-          </Card>
-        </main>
-      }
-    >
+    <Suspense fallback={<Verifying />}>
       <VerifyEmailContent />
     </Suspense>
   );

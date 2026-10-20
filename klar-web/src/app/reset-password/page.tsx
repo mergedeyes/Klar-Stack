@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,20 +13,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
-const schema = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters").max(100),
-  confirmPassword: z.string(),
-}).refine((d) => d.password === d.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
-type Values = z.infer<typeof schema>;
+function passwordSchema(t: ReturnType<typeof useTranslations<"auth">>) {
+  return z.object({
+    password: z.string().min(8, t("passwordMin")).max(100),
+    confirmPassword: z.string(),
+  }).refine((d) => d.password === d.confirmPassword, {
+    message: t("passwordsDontMatch"),
+    path: ["confirmPassword"],
+  });
+}
+type Values = z.infer<ReturnType<typeof passwordSchema>>;
 
 // 1. Deine eigentliche Logik wandert in diese innere Komponente
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
+  const t = useTranslations("auth");
+  const schema = useMemo(() => passwordSchema(t), [t]);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -37,7 +42,7 @@ function ResetPasswordForm() {
 
   // Derived rather than set from an effect: the link is unusable for as
   // long as it has no token.
-  const shownError = error ?? (token ? null : "Invalid or missing reset link. Please request a new one.");
+  const shownError = error ?? (token ? null : t("reset.invalidLink"));
 
   const onSubmit = async (values: Values) => {
     if (!token) return;
@@ -47,7 +52,7 @@ function ResetPasswordForm() {
       setSuccess(true);
       setTimeout(() => router.push("/login"), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset password");
+      setError(err instanceof Error ? err.message : t("reset.failed"));
     }
   };
 
@@ -56,10 +61,8 @@ function ResetPasswordForm() {
       <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
-            <CardTitle className="text-2xl">Password reset!</CardTitle>
-            <CardDescription>
-              Your password has been updated. Redirecting you to sign in…
-            </CardDescription>
+            <CardTitle className="text-2xl">{t("reset.doneTitle")}</CardTitle>
+            <CardDescription>{t("reset.doneText")}</CardDescription>
           </CardHeader>
         </Card>
       </main>
@@ -70,8 +73,8 @@ function ResetPasswordForm() {
     <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Reset your password</CardTitle>
-          <CardDescription>Choose a new password for your account.</CardDescription>
+          <CardTitle className="text-2xl">{t("reset.title")}</CardTitle>
+          <CardDescription>{t("reset.intro")}</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -88,7 +91,7 @@ function ResetPasswordForm() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>New password</FormLabel>
+                    <FormLabel>{t("reset.newPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -108,7 +111,7 @@ function ResetPasswordForm() {
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm new password</FormLabel>
+                    <FormLabel>{t("reset.confirmNewPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -128,7 +131,7 @@ function ResetPasswordForm() {
                 className="w-full"
                 disabled={!token || form.formState.isSubmitting}
               >
-                {form.formState.isSubmitting ? "Resetting…" : "Reset password"}
+                {form.formState.isSubmitting ? t("reset.resetting") : t("reset.submit")}
               </Button>
             </form>
           </Form>
@@ -136,10 +139,19 @@ function ResetPasswordForm() {
 
         <CardFooter className="justify-center text-sm text-muted-foreground">
           <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
-            Back to sign in
+            {t("backToSignIn")}
           </Link>
         </CardFooter>
       </Card>
+    </main>
+  );
+}
+
+function Loading() {
+  const tc = useTranslations("common");
+  return (
+    <main className="flex flex-1 items-center justify-center bg-background p-4">
+      <div className="text-muted-foreground">{tc("loading")}</div>
     </main>
   );
 }
@@ -148,13 +160,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     // Der Fallback hält das Layout stabil, während die URL ausgelesen wird
-    <Suspense 
-      fallback={
-        <main className="flex flex-1 items-center justify-center bg-background p-4">
-          <div className="text-muted-foreground">Loading...</div>
-        </main>
-      }
-    >
+    <Suspense fallback={<Loading />}>
       <ResetPasswordForm />
     </Suspense>
   );
