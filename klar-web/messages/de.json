@@ -15,7 +15,8 @@
     "cancel": "Abbrechen",
     "edit": "Bearbeiten",
     "delete": "Löschen",
-    "noUsersFound": "Keine Konten gefunden."
+    "noUsersFound": "Keine Konten gefunden.",
+    "saving": "Wird gespeichert …"
   },
   "footer": {
     "feedback": "Feedback",
@@ -349,5 +350,61 @@
     "loadingFriends": "Freunde werden geladen …",
     "noMutuals": "Du hast noch keine gegenseitigen Follower.",
     "noMutualsHint": "Folge anderen, damit sie dir zurückfolgen können!"
+  },
+  "account": {
+    "title": "Konto",
+    "deleteFailed": "Das Konto konnte nicht gelöscht werden",
+    "logOutHint": "Von deinem Konto abmelden",
+    "delete": "Konto löschen",
+    "deleteHint": "Dein Konto und alle Daten endgültig löschen",
+    "confirmTitle": "Dein Konto löschen?",
+    "confirmText": "Damit werden alle deine Beiträge, Kommentare und Daten endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "typeToConfirm": "Gib <name>{username}</name> ein, um zu bestätigen",
+    "yourUsername": "Dein Nutzername",
+    "yourPassword": "Dein Passwort",
+    "deleting": "Wird gelöscht …"
+  },
+  "blocked": {
+    "saveFailed": "Speichern fehlgeschlagen – versuch es noch einmal",
+    "loadFailed": "Blockierte Konten konnten nicht geladen werden",
+    "explanation": "Du und die Konten, die du blockierst, könnt euch nicht gegenseitig folgen und nicht mit den Beiträgen der anderen Seite interagieren, und ihr erscheint nicht in der Suche oder bei „Entdecken“ der anderen Seite. Sie erfahren nicht, dass du sie blockiert hast.",
+    "empty": "Du hast niemanden blockiert."
+  },
+  "password": {
+    "currentRequired": "Gib dein aktuelles Passwort ein",
+    "mustDiffer": "Das neue Passwort muss sich vom aktuellen unterscheiden",
+    "failed": "Das Passwort konnte nicht geändert werden",
+    "changed": "Passwort geändert! Du wirst weitergeleitet …",
+    "current": "Aktuelles Passwort"
+  },
+  "personalization": {
+    "confirmOff": "Personalisiertes Entdecken ausschalten? Die dafür gespeicherten Likes und Kommentare werden gelöscht.",
+    "explanation": "Aus, solange du es nicht einschaltest. Wenn du es einschaltest, speichert Klar, welche Beiträge und Kommentare du likest, nicht mehr likest oder kommentierst, damit „Entdecken“ dir später passende Beiträge zeigen kann. Was du dir nur ansiehst, wird nicht gespeichert, und dein Home-Feed bleibt chronologisch. Einträge werden gelöscht, sobald sie 12 Monate alt sind (jeweils ein Monat auf einmal), und alle, sobald du es wieder ausschaltest. <link>Datenschutzerklärung</link>"
+  },
+  "keepAccount": {
+    "loadFailed": "Diese Einstellung konnte nicht geladen werden",
+    "title": "Mein Konto nach dem Test behalten",
+    "since": "Beantragt am {date}. Deine Beiträge und Kommentare bleiben, ebenso Follows und Chats mit anderen, die ihr Konto behalten.",
+    "info": "Testkonten werden vor dem Start gelöscht. Wenn du deins behältst, bleiben deine Beiträge und Kommentare, ebenso Follows und Chats mit anderen, die ihr Konto behalten."
+  },
+  "editProfile": {
+    "confirmRemove": "Dein Profilbild entfernen?",
+    "removeFailed": "Das Bild konnte nicht entfernt werden",
+    "avatarTooLarge": "Das Profilbild muss kleiner als 5 MB sein",
+    "usernameLength": "Der Nutzername muss zwischen 3 und 30 Zeichen lang sein",
+    "saveFailed": "Das Profil konnte nicht gespeichert werden",
+    "title": "Profil bearbeiten",
+    "saved": "Gespeichert!",
+    "changeAvatar": "Profilbild ändern",
+    "avatar": "Profilbild",
+    "changePhoto": "Foto ändern",
+    "removePhoto": "Foto entfernen",
+    "usernamePlaceholder": "nutzername",
+    "cooldown": "Du hast deinen Nutzernamen kürzlich geändert. Du kannst ihn am {date} wieder ändern.",
+    "cooldownHint": "Du kannst deinen Nutzernamen alle 14 Tage einmal ändern.",
+    "displayName": "Anzeigename",
+    "displayNamePlaceholder": "Dein Name",
+    "bio": "Bio",
+    "bioPlaceholder": "Erzähl ein bisschen über dich …"
   }
 }

@@ -15,7 +15,8 @@
     "cancel": "Cancel",
     "edit": "Edit",
     "delete": "Delete",
-    "noUsersFound": "No users found."
+    "noUsersFound": "No users found.",
+    "saving": "Saving…"
   },
   "footer": {
     "feedback": "Feedback",
@@ -349,5 +350,61 @@
     "loadingFriends": "Loading friends...",
     "noMutuals": "You don't have any mutual followers yet.",
     "noMutualsHint": "Follow others so they can follow you back!"
+  },
+  "account": {
+    "title": "Account",
+    "deleteFailed": "Failed to delete account",
+    "logOutHint": "Sign out of your account",
+    "delete": "Delete account",
+    "deleteHint": "Permanently delete your account and all data",
+    "confirmTitle": "Delete your account?",
+    "confirmText": "This will permanently delete all your posts, comments, and data. This cannot be undone.",
+    "typeToConfirm": "Type <name>{username}</name> to confirm",
+    "yourUsername": "Your username",
+    "yourPassword": "Your password",
+    "deleting": "Deleting…"
+  },
+  "blocked": {
+    "saveFailed": "Couldn't save — try again",
+    "loadFailed": "Couldn't load blocked accounts",
+    "explanation": "You and the accounts you block can't follow each other or interact with each other's posts, and you don't appear in each other's search or Discovery. They aren't told that you blocked them.",
+    "empty": "You haven't blocked anyone."
+  },
+  "password": {
+    "currentRequired": "Current password is required",
+    "mustDiffer": "New password must be different from current password",
+    "failed": "Failed to change password",
+    "changed": "Password changed! Redirecting…",
+    "current": "Current password"
+  },
+  "personalization": {
+    "confirmOff": "Switch off personalised Discovery? The likes and comments stored for it are deleted.",
+    "explanation": "Off unless you switch it on. If you do, Klar stores which posts and comments you like, unlike or comment on, so Discovery can later show you posts that fit. Nothing you only look at is stored, and your home feed stays chronological. Entries are deleted once they are 12 months old (a month at a time), and all of them as soon as you switch this off again. <link>Privacy policy</link>"
+  },
+  "keepAccount": {
+    "loadFailed": "Couldn't load this setting",
+    "title": "Keep my account after the test",
+    "since": "Requested on {date}. Your posts and comments stay, and so do follows and chats with others who keep theirs.",
+    "info": "Test accounts are deleted before launch. If you keep yours, your posts and comments stay, and so do follows and chats with others who keep theirs."
+  },
+  "editProfile": {
+    "confirmRemove": "Remove your profile picture?",
+    "removeFailed": "Failed to remove the picture",
+    "avatarTooLarge": "Avatar must be under 5MB",
+    "usernameLength": "Username must be between 3 and 30 characters",
+    "saveFailed": "Failed to save profile",
+    "title": "Edit Profile",
+    "saved": "Saved!",
+    "changeAvatar": "Change avatar",
+    "avatar": "Avatar",
+    "changePhoto": "Change photo",
+    "removePhoto": "Remove photo",
+    "usernamePlaceholder": "username",
+    "cooldown": "You recently changed your username. You can change it again on {date}.",
+    "cooldownHint": "You can change your username once every 14 days.",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "Your name",
+    "bio": "Bio",
+    "bioPlaceholder": "Tell people a little about yourself…"
   }
 }

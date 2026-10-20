@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFormatter, useTranslations } from "next-intl";
 import { Archive } from "lucide-react";
 import { users } from "@/lib/api";
 
@@ -8,6 +9,9 @@ import { users } from "@/lib/api";
 // asks to keep their account. Remove with handlers/test_phase.rs once
 // Klar has launched.
 export default function KeepAccountRow() {
+  const t = useTranslations("keepAccount");
+  const tc = useTranslations("common");
+  const format = useFormatter();
   const [keep, setKeep] = useState<boolean | null>(null);
   const [since, setSince] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -16,8 +20,8 @@ export default function KeepAccountRow() {
   useEffect(() => {
     users.keepAccount()
       .then((res) => { setKeep(res.keep); setSince(res.since); })
-      .catch(() => setError("Couldn't load this setting"));
-  }, []);
+      .catch(() => setError(t("loadFailed")));
+  }, [t]);
 
   // The box follows the click at once and goes back if saving fails.
   const toggle = async (next: boolean) => {
@@ -30,7 +34,7 @@ export default function KeepAccountRow() {
       setSince(res.since);
     } catch (err) {
       setKeep(!next);
-      setError(err instanceof Error ? err.message : "Couldn't save");
+      setError(err instanceof Error ? err.message : tc("couldntSave"));
     } finally {
       setSaving(false);
     }
@@ -43,12 +47,11 @@ export default function KeepAccountRow() {
           <Archive size={16} />
         </span>
         <span className="flex-1">
-          <span className="block text-sm font-medium">Keep my account after the test</span>
+          <span className="block text-sm font-medium">{t("title")}</span>
           <span className="block text-xs text-muted-foreground">
             {keep && since
-              ? `Requested on ${new Date(since).toLocaleDateString()}. Your`
-              : "Test accounts are deleted before launch. If you keep yours, your"}{" "}
-            posts and comments stay, and so do follows and chats with others who keep theirs.
+              ? t("since", { date: format.dateTime(new Date(since), { dateStyle: "medium" }) })
+              : t("info")}
           </span>
         </span>
         <input

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/lib/auth-context";
 import { users } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +12,9 @@ import { Switch } from "@/components/ui/switch";
 // feed stays chronological either way.
 export default function PersonalizationCard() {
   const { user, refreshUser } = useAuth();
+  const t = useTranslations("personalization");
+  const ts = useTranslations("settings");
+  const tc = useTranslations("common");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The switch follows the click at once and goes back if saving fails.
@@ -19,7 +23,7 @@ export default function PersonalizationCard() {
 
   const toggle = async () => {
     const next = !enabled;
-    if (!next && !window.confirm("Switch off personalised Discovery? The likes and comments stored for it are deleted.")) {
+    if (!next && !window.confirm(t("confirmOff"))) {
       return;
     }
     setPending(next);
@@ -29,7 +33,7 @@ export default function PersonalizationCard() {
       await users.setPersonalization(next);
       await refreshUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save");
+      setError(err instanceof Error ? err.message : tc("couldntSave"));
     } finally {
       setPending(null);
       setSaving(false);
@@ -40,13 +44,11 @@ export default function PersonalizationCard() {
     <div className="mt-4 rounded-xl border border-border px-4 py-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium" id="personalization-label">Personalised Discovery</p>
+          <p className="text-sm font-medium" id="personalization-label">{ts("discovery")}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Off unless you switch it on. If you do, Klar stores which posts and comments you like, unlike or
-            comment on, so Discovery can later show you posts that fit. Nothing you only look at is stored, and
-            your home feed stays chronological. Entries are deleted once they are 12 months old (a month at a
-            time), and all of them as soon as you switch this off again.{" "}
-            <Link href="/datenschutz#discovery" className="underline">Privacy policy</Link>
+            {t.rich("explanation", {
+              link: (chunks) => <Link href="/datenschutz#discovery" className="underline">{chunks}</Link>,
+            })}
           </p>
         </div>
         <Switch
