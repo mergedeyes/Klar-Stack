@@ -27,6 +27,8 @@ realistic data volumes for the paging checks.
 - [ ] After logging out, the page follows the browser's language again (the `klar_locale` cookie is gone)
 - [ ] The notification dropdown reads naturally in German ("alice gefällt dein Beitrag"), with the name in bold
 - [ ] The legal pages stay German in both languages; the footer links keep their German names
+- [ ] With the page in German, an error from the server is German too (e.g. sign in with a wrong password: "E-Mail-Adresse, Nutzername oder Passwort ist falsch"); in English, English
+- [ ] An account set to English gets the verification, reminder, password-reset and account-locked emails in English (MailHog), with umlauts intact in the German ones; an account with no language yet gets the reset link in the page's language
 
 ## Home screen app
 
@@ -108,7 +110,7 @@ loads more as you scroll.
 - [ ] An account with a verified @klarsocial.eu address shows up under Settings → Official accounts (an unverified one doesn't); renaming it to a staff name like "Klar" needs a reason, works, appears in the rename log, and the profile opens at /users/klar; "me" or a taken name is refused
 - [ ] The verification email after sign-up has no Reply-To; other emails (password reset, moderation notice) reply to kontakt@klarsocial.eu
 - [ ] Emails show the styled layout with a blue button in the Gmail app on a phone, also for a non-Google address added to the app (IMAP, GMX, Ionos), and in Gmail on the web
-- [ ] The verification, account-locked and legal-update emails start with "Hallo <username>,"; the legal-update email's footer says it can't be unsubscribed from and why
+- [ ] The verification, account-locked and legal-update emails start with "Hallo <username>," ("Hi <username>," for the first two to an English account); the legal-update email's footer says it can't be unsubscribed from and why
 
 ## Posts and media
 

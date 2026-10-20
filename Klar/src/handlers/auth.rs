@@ -201,8 +201,10 @@ pub async fn register(
         let to_email = user.email.clone();
         let username = user.username.clone();
         let token = email_token.clone();
+        // Before the spawn: the request's language doesn't reach the task.
+        let lang = crate::i18n::for_account(user.locale.as_deref(), crate::i18n::current());
         tokio::spawn(async move {
-            if let Err(e) = email_service.send_verification(&to_email, &username, &token).await {
+            if let Err(e) = email_service.send_verification(lang, &to_email, &username, &token).await {
                 tracing::error!("Failed to send verification email: {}", e);
             }
         });
@@ -434,8 +436,10 @@ pub async fn forgot_password(
     Json(input): Json<ForgotPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let email = normalize_email(&input.email);
+    // Before the spawn: the request's language doesn't reach the task.
+    let page_lang = crate::i18n::current();
     tokio::spawn(async move {
-        if let Err(e) = send_reset_link(&state, &email).await {
+        if let Err(e) = send_reset_link(&state, &email, page_lang).await {
             tracing::error!("Password reset request failed: {}", e.message);
         }
     });
@@ -445,11 +449,11 @@ pub async fn forgot_password(
     })))
 }
 
-async fn send_reset_link(state: &AppState, email: &str) -> Result<(), AppError> {
+async fn send_reset_link(state: &AppState, email: &str, page_lang: crate::i18n::Lang) -> Result<(), AppError> {
     let mut tx = state.db.begin().await.db_err("Database error")?;
     // Locked, so two requests at once can't both pass the interval check.
-    let Some((user_id, to_email)) = sqlx::query_as::<_, (uuid::Uuid, String)>(
-        "SELECT id, email FROM users WHERE LOWER(email) = $1 FOR UPDATE",
+    let Some((user_id, to_email, locale)) = sqlx::query_as::<_, (uuid::Uuid, String, Option<String>)>(
+        "SELECT id, email, locale FROM users WHERE LOWER(email) = $1 FOR UPDATE",
     )
     .bind(email)
     .fetch_optional(&mut *tx)
@@ -485,7 +489,8 @@ async fn send_reset_link(state: &AppState, email: &str) -> Result<(), AppError> 
     let token = create_reset_token(&mut tx, user_id, 1).await?;
     tx.commit().await.db_err("Database error")?;
 
-    if let Err(e) = state.email.send_password_reset(&to_email, &token).await {
+    let lang = crate::i18n::for_account(locale.as_deref(), page_lang);
+    if let Err(e) = state.email.send_password_reset(lang, &to_email, &token).await {
         tracing::error!("Failed to send reset email: {}", e);
     }
     Ok(())
@@ -635,15 +640,15 @@ pub async fn resend_verification(
         "message": "If an unverified account exists for that email, a new verification link has been sent"
     }));
 
-    let user = sqlx::query_as::<_, (uuid::Uuid, String, String, bool)>(
-        "SELECT id, email, username, email_verified FROM users WHERE LOWER(email) = $1"
+    let user = sqlx::query_as::<_, (uuid::Uuid, String, String, bool, Option<String>)>(
+        "SELECT id, email, username, email_verified, locale FROM users WHERE LOWER(email) = $1"
     )
     .bind(normalize_email(&input.email))
     .fetch_optional(&state.db)
     .await
     .db_err("Database error")?;
 
-    let Some((user_id, to_email, username, email_verified)) = user else {
+    let Some((user_id, to_email, username, email_verified, locale)) = user else {
         return Ok(generic);
     };
     if email_verified {
@@ -673,8 +678,9 @@ pub async fn resend_verification(
     tx.commit().await.db_err_ctx("Failed to commit transaction", "Database error")?;
 
     let email_service = state.email.clone();
+    let lang = crate::i18n::for_account(locale.as_deref(), crate::i18n::current());
     tokio::spawn(async move {
-        if let Err(e) = email_service.send_verification(&to_email, &username, &token).await {
+        if let Err(e) = email_service.send_verification(lang, &to_email, &username, &token).await {
             tracing::error!("Failed to send verification email: {}", e);
         }
     });

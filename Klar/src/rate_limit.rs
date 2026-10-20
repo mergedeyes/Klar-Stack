@@ -135,7 +135,7 @@ pub async fn rate_limit_middleware(
             StatusCode::TOO_MANY_REQUESTS,
             [("retry-after", retry_after.to_string())],
             Json(json!({
-                "error": format!("Rate limit exceeded. Try again in {} seconds.", retry_after)
+                "error": crate::i18n::tr(&format!("Rate limit exceeded. Try again in {} seconds.", retry_after))
             })),
         )
             .into_response(),

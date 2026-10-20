@@ -23,6 +23,7 @@ mod errors;
 mod evidence;
 mod evidence_crypto;
 mod handlers;
+mod i18n;
 mod media;
 mod moderation;
 mod models;

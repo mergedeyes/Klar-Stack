@@ -156,7 +156,7 @@ pub(crate) async fn delete_expired_records(state: &AppState) {
 /// link a week before, then the deletion. Each reminder is claimed before
 /// it is sent, so replicas don't send two.
 pub(crate) async fn sweep_unverified(state: &AppState) {
-    let due = sqlx::query_as::<_, (Uuid, String, String, DateTime<Utc>)>(
+    let due = sqlx::query_as::<_, (Uuid, String, String, DateTime<Utc>, Option<String>)>(
         r#"
         UPDATE users SET verification_reminder_at = NOW()
         WHERE id IN (
@@ -167,7 +167,7 @@ pub(crate) async fn sweep_unverified(state: &AppState) {
             LIMIT 100
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, email, username, created_at
+        RETURNING id, email, username, created_at, locale
         "#,
     )
     .bind(UNVERIFIED_DELETION_DAYS - UNVERIFIED_REMINDER_DAYS)
@@ -175,8 +175,9 @@ pub(crate) async fn sweep_unverified(state: &AppState) {
     .await;
     match due {
         Ok(due) => {
-            for (user_id, email, username, created_at) in due {
-                if let Err(e) = remind_unverified(state, user_id, &email, &username, created_at).await {
+            for (user_id, email, username, created_at, locale) in due {
+                let lang = crate::i18n::for_account(locale.as_deref(), crate::i18n::Lang::De);
+                if let Err(e) = remind_unverified(state, user_id, lang, &email, &username, created_at).await {
                     tracing::error!("Retention: verification reminder for user {} failed: {}", user_id, e.message);
                 }
             }
@@ -214,6 +215,7 @@ pub(crate) async fn sweep_unverified(state: &AppState) {
 async fn remind_unverified(
     state: &AppState,
     user_id: Uuid,
+    lang: crate::i18n::Lang,
     email: &str,
     username: &str,
     created_at: DateTime<Utc>,
@@ -222,10 +224,10 @@ async fn remind_unverified(
     let token = create_verification_token(&mut conn, user_id, UNVERIFIED_REMINDER_DAYS * 24).await?;
     let planned = created_at + chrono::Duration::days(UNVERIFIED_DELETION_DAYS as i64);
     let earliest = Utc::now() + chrono::Duration::days(UNVERIFIED_REMINDER_DAYS as i64);
-    let on = planned.max(earliest).format("%d.%m.%Y").to_string();
+    let on = planned.max(earliest);
     state
         .email
-        .send_verification_reminder(email, username, &token, &on)
+        .send_verification_reminder(lang, email, username, &token, on)
         .await
         .map_err(|e| AppError::internal(e.0))
 }
