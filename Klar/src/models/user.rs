@@ -108,13 +108,10 @@ pub struct UserPublicResponse {
     pub whats_new_seen: Option<String>,
 }
 
-/// Public API response
-///
-/// Deserialize is needed alongside Serialize because NotificationEvent
-/// (which embeds this) now round-trips through JSON over Redis pub/sub —
-/// one replica serializes it to PUBLISH, every replica (including itself)
-/// deserializes it back after SUBSCRIBE.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// The account owner's own profile, email included: only ever sent to the
+/// owner (sign-up, login, refresh, profile and avatar updates). Every other
+/// user is serialized as UserPublicResponse.
+#[derive(Debug, Serialize, Clone)]
 pub struct UserResponse {
     pub id: Uuid,
     pub username: String,
