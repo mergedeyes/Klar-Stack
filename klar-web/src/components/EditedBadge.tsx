@@ -1,15 +1,11 @@
 "use client";
 
 import { useState } from "react";
-
-function formatFull(dateStr: string): string {
-  return new Date(dateStr).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
+import { useFormatter, useTranslations } from "next-intl";
 
 export default function EditedBadge({ editedAt }: { editedAt: string }) {
+  const t = useTranslations("post");
+  const format = useFormatter();
   const [visible, setVisible] = useState(false);
   return (
     <span
@@ -18,11 +14,11 @@ export default function EditedBadge({ editedAt }: { editedAt: string }) {
       onMouseLeave={() => setVisible(false)}
     >
       <span className="cursor-default text-xs text-muted-foreground underline decoration-dotted">
-        edited
+        {t("edited")}
       </span>
       {visible && (
         <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background shadow-md">
-          {formatFull(editedAt)}
+          {format.dateTime(new Date(editedAt), { dateStyle: "medium", timeStyle: "short" })}
         </span>
       )}
     </span>

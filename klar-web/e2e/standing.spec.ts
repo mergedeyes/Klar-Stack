@@ -90,7 +90,7 @@ test("a suspended account is read-only and hidden, until the suspension is lifte
   // Hidden from others: the profile doesn't exist for them.
   const otherPage = await pageFor(browser, other);
   await otherPage.goto(`/users/${author.username}`);
-  await expect(otherPage.getByText("Profil nicht gefunden")).toBeVisible();
+  await expect(otherPage.getByText("Profile not found")).toBeVisible();
 
   // Lifted early: visible again, and commenting works.
   const adminPage = await pageFor(browser, admin);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/lib/auth-context";
 import { posts as postsApi, type Post, type PostCursor } from "@/lib/api";
 import PostCard from "@/components/PostCard";
@@ -28,6 +29,8 @@ function PostSkeleton() {
 export default function DiscoveryPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("discovery");
+  const tf = useTranslations("feed");
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,12 +56,12 @@ export default function DiscoveryPage() {
         setHasMore(res.next_cursor !== null);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load discovery feed");
+        setError(err instanceof Error ? err.message : t("loadFailed"));
       })
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [t]);
 
   const refreshDiscovery = useCallback(() => {
     cursorRef.current = undefined;
@@ -84,9 +87,9 @@ export default function DiscoveryPage() {
       cursorRef.current = res.next_cursor ?? undefined;
       setHasMore(res.next_cursor !== null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load more");
+      setError(err instanceof Error ? err.message : tf("loadMoreFailed"));
     }
-  }, []);
+  }, [tf]);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -132,10 +135,8 @@ export default function DiscoveryPage() {
         />
 
         <div className="py-6">
-          <h1 className="text-2xl font-bold tracking-tight">Discovery</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Posts from across Klar, beyond who you follow.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("intro")}</p>
         </div>
 
         {showSkeletons && (
@@ -152,10 +153,8 @@ export default function DiscoveryPage() {
 
         {!showSkeletons && !error && posts.length === 0 && (
           <div className="py-16 text-center">
-            <p className="text-lg font-semibold">Nothing to discover yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Check back once more people are posting on Klar.
-            </p>
+            <p className="text-lg font-semibold">{t("emptyTitle")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("emptyText")}</p>
           </div>
         )}
 
@@ -181,7 +180,7 @@ export default function DiscoveryPage() {
           )}
           {!hasMore && posts.length > 0 && (
             <p className="text-center text-xs text-muted-foreground">
-              You&apos;ve reached the end 🏁
+              {t("end")}
             </p>
           )}
         </div>

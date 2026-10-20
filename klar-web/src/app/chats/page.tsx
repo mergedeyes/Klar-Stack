@@ -4,7 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { chatsApi, DELETED_USER_LABEL, type Conversation, type ChatMessage } from "@/lib/api";
+import { useTranslations } from "next-intl";
+import { chatsApi, type Conversation, type ChatMessage } from "@/lib/api";
 import { MessageSquarePlus, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMediaUrl } from "@/lib/utils/media";
@@ -28,28 +29,30 @@ function sortByRecency(convos: Conversation[]): Conversation[] {
  * <text>" for the most recent activity being a reaction -- whichever of
  * the two actually happened more recently (last_activity_kind already
  * reflects that; see get_conversations). */
-function previewText(conv: Conversation, currentUserId: string | undefined): string {
+function previewText(
+  conv: Conversation,
+  currentUserId: string | undefined,
+  t: ReturnType<typeof useTranslations<"chats">>,
+): string {
   // A deleted partner's messages are erased with their account, so their
   // side can leave the conversation empty.
-  if (!conv.last_activity_kind) return conv.other_user_id ? "Neuer Chat" : "This User Account was deleted.";
+  if (!conv.last_activity_kind) return conv.other_user_id ? t("newChat") : t("accountDeleted");
 
   const actorIsMe = conv.last_activity_actor_id === currentUserId;
-  const otherName = conv.other_username ?? DELETED_USER_LABEL;
-  const actorLabel = actorIsMe ? "Me" : otherName;
+  const other = conv.other_username ?? t("deletedUser");
   const text = conv.last_activity_text ?? "";
 
   if (conv.last_activity_kind === "reaction") {
-    const messageIsMine = conv.last_activity_message_sender_id === currentUserId;
-    const possessive = messageIsMine ? "your" : `${otherName}'s`;
+    const mine = conv.last_activity_message_sender_id === currentUserId;
     const emoji = conv.last_activity_emoji ? `${conv.last_activity_emoji} ` : "";
-    return `${actorLabel} reacted ${emoji}to ${possessive} message: ${text}`;
+    return t("previewReaction", { actorIsMe: String(actorIsMe), mine: String(mine), name: other, emoji, text });
   }
 
   if (conv.last_activity_kind === "reply") {
-    return actorIsMe ? `Me: replied: ${text}` : `${otherName} replied: ${text}`;
+    return actorIsMe ? t("previewMyReply", { text }) : t("previewTheirReply", { name: other, text });
   }
 
-  return actorIsMe ? `Me: ${text}` : text;
+  return actorIsMe ? t("previewMine", { text }) : text;
 }
 
 /** Mark a conversation read, then refresh the shared unread-count badge --
@@ -66,6 +69,8 @@ function UnifiedChatsPageContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { lastMessageEvent, refreshChatUnreadCount, resyncedAt } = useNotifications();
+  const t = useTranslations("chats");
+  const tn = useTranslations("nav");
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,19 +196,19 @@ return (
         {/* Linke Sidebar: Chat-Liste */}
         <div className={`${activeChat ? "hidden md:flex" : "flex"} w-full md:w-1/3 md:border-r border-border flex-col bg-muted/10 min-h-0`}>
           <div className="h-20 p-4 border-b border-border flex items-center justify-between bg-background">
-            <h1 className="text-xl font-bold">Chats</h1>
-            <Button variant="ghost" size="icon" onClick={() => setShowNewChat(true)}>
+            <h1 className="text-xl font-bold">{tn("chats")}</h1>
+            <Button variant="ghost" size="icon" onClick={() => setShowNewChat(true)} aria-label={t("newChat")}>
               <MessageSquarePlus size={20} />
             </Button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
-            {loading && <div className="p-4 text-center text-muted-foreground animate-pulse">Lade Chats...</div>}
+            {loading && <div className="p-4 text-center text-muted-foreground animate-pulse">{t("loading")}</div>}
             {error && <div className="p-4 text-center text-destructive">{error}</div>}
             
             {!loading && conversations.length === 0 && (
               <div className="p-8 text-center text-muted-foreground text-sm">
-                Keine aktiven Chats.
+                {t("none")}
               </div>
             )}
 
@@ -243,12 +248,12 @@ return (
                 )}
                 <div className="flex-1 min-w-0">
                   <h2 className={`font-semibold truncate ${conv.other_username ? "" : "italic text-muted-foreground"}`}>
-                    {conv.other_username ?? DELETED_USER_LABEL}
+                    {conv.other_username ?? t("deletedUser")}
                   </h2>
                   {/* Darker on the selected row's tinted background, where
                       the muted grey falls under WCAG's 4.5:1. */}
                   <p className={`text-sm truncate ${activeChat?.id === conv.id ? "text-foreground/75" : "text-muted-foreground"}`}>
-                    {previewText(conv, user?.id)}
+                    {previewText(conv, user?.id, t)}
                   </p>
                 </div>
               </div>
@@ -272,7 +277,7 @@ return (
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
               <MessageCircle size={48} className="mb-4 opacity-20" />
-              <p>Wähle einen Chat aus der Liste oder starte einen neuen.</p>
+              <p>{t("pick")}</p>
             </div>
           )}
         </div>
@@ -288,15 +293,18 @@ return (
   );
 }
 
+function LoadingChats() {
+  const t = useTranslations("chats");
+  return (
+    <div data-fill-viewport className="flex min-h-0 flex-1 w-full items-center justify-center bg-background text-muted-foreground">
+      {t("loading")}
+    </div>
+  );
+}
+
 export default function UnifiedChatsPage() {
   return (
-    <Suspense
-      fallback={
-        <div data-fill-viewport className="flex min-h-0 flex-1 w-full items-center justify-center bg-background text-muted-foreground">
-          Loading chats…
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingChats />}>
       <UnifiedChatsPageContent />
     </Suspense>
   );

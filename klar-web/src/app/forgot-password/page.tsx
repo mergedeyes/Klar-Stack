@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,12 +12,17 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
-const schema = z.object({
-  email: z.string().email("Invalid email address"),
-});
-type Values = z.infer<typeof schema>;
+function emailSchema(t: ReturnType<typeof useTranslations<"auth">>) {
+  return z.object({
+    email: z.string().email(t("invalidEmail")),
+  });
+}
+type Values = z.infer<ReturnType<typeof emailSchema>>;
 
 export default function ForgotPasswordPage() {
+  const t = useTranslations("auth");
+  const tc = useTranslations("common");
+  const schema = useMemo(() => emailSchema(t), [t]);
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<Values>({
@@ -39,15 +45,12 @@ export default function ForgotPasswordPage() {
       <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
-            <CardTitle className="text-2xl">Check your email</CardTitle>
-            <CardDescription>
-              If an account exists for that email address, you&apos;ll receive a
-              password reset link shortly.
-            </CardDescription>
+            <CardTitle className="text-2xl">{t("checkEmail")}</CardTitle>
+            <CardDescription>{t("forgot.submitted")}</CardDescription>
           </CardHeader>
           <CardFooter className="justify-center text-sm text-muted-foreground">
             <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
-              Back to sign in
+              {t("backToSignIn")}
             </Link>
           </CardFooter>
         </Card>
@@ -59,10 +62,8 @@ export default function ForgotPasswordPage() {
     <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Forgot password?</CardTitle>
-          <CardDescription>
-            Enter your email and we&apos;ll send you a reset link.
-          </CardDescription>
+          <CardTitle className="text-2xl">{t("login.forgotPassword")}</CardTitle>
+          <CardDescription>{t("forgot.intro")}</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -73,7 +74,7 @@ export default function ForgotPasswordPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>{t("email")}</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
@@ -87,7 +88,7 @@ export default function ForgotPasswordPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Sending…" : "Send reset link"}
+                {form.formState.isSubmitting ? tc("sending") : t("forgot.send")}
               </Button>
             </form>
           </Form>
@@ -95,7 +96,7 @@ export default function ForgotPasswordPage() {
 
         <CardFooter className="justify-center text-sm text-muted-foreground">
           <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
-            Back to sign in
+            {t("backToSignIn")}
           </Link>
         </CardFooter>
       </Card>

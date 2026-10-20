@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { ENV } from "@/env";
 import PostPageClient from "./PostPageClient";
 
@@ -54,10 +55,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = UUID.test(id) ? await fetchJson<PublicPost>(`/posts/${id}`) : null;
   if (!post) return { title: "Klar", robots };
 
+  // In the language the request asks for; crawlers mostly ask for none,
+  // which gets English (i18n/config.ts).
+  const t = await getTranslations("post");
   const url = `${ENV.SITE_URL}/posts/${id}`;
-  const title = `@${post.username} on Klar`;
+  const title = t("previewTitle", { username: post.username });
   const warned = post.moderation_status !== "visible";
-  const description = (!warned && excerpt(post.caption)) || "A post on Klar";
+  const description = (!warned && excerpt(post.caption)) || t("previewDescription");
 
   const media = warned ? null : await fetchJson<PublicMedia[]>(`/posts/${id}/media`);
   const first = media?.[0];
@@ -66,12 +70,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         url: `${ENV.API_URL}/posts/${id}/preview-image`,
         width: PREVIEW_WIDTH,
         height: Math.round((PREVIEW_WIDTH * first.height) / Math.max(first.width, 1)),
-        alt: `Photo by @${post.username}`,
+        alt: t("previewImageAlt", { username: post.username }),
       }]
     : undefined;
 
   return {
-    title: `Post by @${post.username} · Klar`,
+    title: t("documentTitle", { username: post.username }),
     description,
     robots,
     alternates: { canonical: url },

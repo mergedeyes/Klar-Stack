@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/lib/auth-context";
 import { posts as postsApi, cursorAfter, type Post, type PostCursor } from "@/lib/api";
 import PostCard from "@/components/PostCard";
@@ -29,6 +30,7 @@ function PostSkeleton() {
 export default function FeedPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("feed");
 
   const [feedPosts, setFeedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,12 +56,12 @@ export default function FeedPage() {
         cursorRef.current = page.length < 20 ? undefined : cursorAfter(page);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load feed");
+        setError(err instanceof Error ? err.message : t("loadFailed"));
       })
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [t]);
 
   const refreshFeed = useCallback(() => {
     cursorRef.current = undefined;
@@ -88,9 +90,9 @@ export default function FeedPage() {
         cursorRef.current = cursorAfter(page);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load more");
+      setError(err instanceof Error ? err.message : t("loadMoreFailed"));
     }
-  }, []);
+  }, [t]);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -149,12 +151,10 @@ export default function FeedPage() {
 
         {!showSkeletons && !error && feedPosts.length === 0 && (
           <div className="py-16 text-center">
-            <p className="text-lg font-semibold">Your feed is empty</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Follow some people to see their posts here.
-            </p>
+            <p className="text-lg font-semibold">{t("emptyTitle")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("emptyText")}</p>
             <Button className="mt-4" variant="outline" onClick={() => router.push("/search")}>
-              Find people to follow
+              {t("findPeople")}
             </Button>
           </div>
         )}
@@ -181,7 +181,7 @@ export default function FeedPage() {
           )}
           {!hasMore && feedPosts.length > 0 && (
             <p className="text-center text-xs text-muted-foreground">
-              You&apos;re all caught up
+              {t("caughtUp")}
             </p>
           )}
         </div>

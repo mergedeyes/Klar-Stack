@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Bell,
   Compass,
@@ -39,113 +40,83 @@ function Icon({ icon: I, label }: { icon: LucideIcon; label: string }) {
   );
 }
 
-function steps(emailVerified: boolean): Step[] {
+function steps(emailVerified: boolean, t: ReturnType<typeof useTranslations<"guide">>, tn: ReturnType<typeof useTranslations<"nav">>, tp: ReturnType<typeof useTranslations<"post">>): Step[] {
+  // The top-bar icons and the bold button names inside the sentences.
+  const tags = {
+    b: (chunks: ReactNode) => <strong>{chunks}</strong>,
+    search: () => <Icon icon={Search} label={tn("search")} />,
+    discovery: () => <Icon icon={Compass} label={tn("discovery")} />,
+    newPost: () => <Icon icon={Plus} label={tn("newPost")} />,
+    bell: () => <Icon icon={Bell} label={tn("notifications")} />,
+    chats: () => <Icon icon={MessageCircle} label={tn("chats")} />,
+    flag: () => <Icon icon={Flag} label={tp("report")} />,
+    settings: () => <Icon icon={Settings} label={tn("settings")} />,
+  };
   return [
     {
       icon: Home,
-      title: "Welcome to Klar",
+      title: t("welcomeTitle"),
       body: (
         <>
-          <p>
-            Your home feed shows posts from the people you follow, newest first. Nothing is sorted by likes, and
-            there are no ads.
-          </p>
-          <p>Here&apos;s a quick look around. It takes a minute.</p>
+          <p>{t("welcome1")}</p>
+          <p>{t("welcome2")}</p>
         </>
       ),
     },
     {
       icon: Search,
-      title: "Find people",
+      title: t("findTitle"),
       body: (
         <>
-          <p>
-            Tap <Icon icon={Search} label="Search" /> at the top to look people up by username or name, then
-            press <strong>Follow</strong> on their profile.
-          </p>
-          <p>
-            Private accounts approve each follower first. Until they do, the button says{" "}
-            <strong>Requested</strong>.
-          </p>
-          <p>
-            <Icon icon={Compass} label="Discovery" /> opens Discovery, the newest public posts from everyone. It&apos;s
-            a good place to find people to follow.
-          </p>
+          <p>{t.rich("find1", tags)}</p>
+          <p>{t.rich("find2", tags)}</p>
+          <p>{t.rich("find3", tags)}</p>
         </>
       ),
     },
     {
       icon: Plus,
-      title: "Share and react",
+      title: t("shareTitle"),
       body: (
         <>
-          <p>
-            Tap <Icon icon={Plus} label="New post" /> to share photos with a caption. Anyone can see the posts of a
-            public account; only followers see those of a private one.
-          </p>
-          <p>
-            Open a post to like and comment. <Icon icon={Bell} label="Notifications" /> shows who followed you,
-            liked or commented, and lets you accept or decline follow requests.
-          </p>
-          {!emailVerified && (
-            <p className="text-muted-foreground">
-              Posting, commenting and messaging start once you&apos;ve clicked the link in the email we sent you.
-            </p>
-          )}
+          <p>{t.rich("share1", tags)}</p>
+          <p>{t.rich("share2", tags)}</p>
+          {!emailVerified && <p className="text-muted-foreground">{t("shareUnverified")}</p>}
         </>
       ),
     },
     {
       icon: MessageCircle,
-      title: "Chats",
+      title: t("chatsTitle"),
       body: (
         <>
-          <p>
-            You can chat with people who follow you back. Open <Icon icon={MessageCircle} label="Chats" /> and
-            start a new chat with one of them.
-          </p>
-          <p>Reply to a message, react to it with an emoji, or edit and delete your own.</p>
-          <p className="text-muted-foreground">
-            Chats aren&apos;t end-to-end encrypted, so don&apos;t share anything there that must stay strictly
-            secret.
-          </p>
+          <p>{t.rich("chats1", tags)}</p>
+          <p>{t("chats2")}</p>
+          <p className="text-muted-foreground">{t("chats3")}</p>
         </>
       ),
     },
     {
       icon: Flag,
-      title: "Staying safe",
+      title: t("safeTitle"),
       body: (
         <>
-          <p>
-            Report a post or profile with <Icon icon={Flag} label="Report" />, and a comment with the{" "}
-            <strong>Report</strong> link under it. We review every report and let you know the outcome.
-          </p>
-          <p>
-            Press <strong>Block</strong> on a profile, and neither of you can follow, message, like or comment on
-            the other any more. You can undo it in Settings → Blocked accounts.
-          </p>
+          <p>{t.rich("safe1", tags)}</p>
+          <p>{t.rich("safe2", tags)}</p>
         </>
       ),
     },
     {
       icon: Settings,
-      title: "Your choices",
+      title: t("choicesTitle"),
       body: (
         <>
-          <p>Klar is still in a test phase, so one choice comes first:</p>
+          <p>{t("choices1")}</p>
           <div className="-mx-1 overflow-hidden rounded-xl border border-border">
             <KeepAccountRow />
           </div>
-          <p>
-            You can change it later in <Icon icon={Settings} label="Settings" />, where you can also make your
-            account private, download your data, and turn on personalised Discovery, which stays off unless you
-            choose it.
-          </p>
-          <p>
-            Found a bug or have an idea? Use <strong>Feedback</strong> at the bottom of the page. This guide is
-            there too.
-          </p>
+          <p>{t.rich("choices2", tags)}</p>
+          <p>{t.rich("choices3", tags)}</p>
         </>
       ),
     },
@@ -193,7 +164,11 @@ export function GuideProvider({ children }: { children: ReactNode }) {
 
 function GuideDialog({ emailVerified, onClose }: { emailVerified: boolean; onClose: () => void }) {
   const [index, setIndex] = useState(0);
-  const all = steps(emailVerified);
+  const t = useTranslations("guide");
+  const tn = useTranslations("nav");
+  const tp = useTranslations("post");
+  const tc = useTranslations("common");
+  const all = steps(emailVerified, t, tn, tp);
   const step = all[index];
   const last = index === all.length - 1;
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -221,7 +196,7 @@ function GuideDialog({ emailVerified, onClose }: { emailVerified: boolean; onClo
         <button
           onClick={onClose}
           className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Close the guide"
+          aria-label={t("close")}
         >
           <X size={18} />
         </button>
@@ -230,7 +205,7 @@ function GuideDialog({ emailVerified, onClose }: { emailVerified: boolean; onClo
           <step.icon size={20} />
         </span>
         <p className="mb-1 text-xs text-muted-foreground">
-          Step {index + 1} of {all.length}
+          {t("step", { n: index + 1, total: all.length })}
         </p>
         <h2 id="guide-title" className="mb-3 text-lg font-semibold">
           {step.title}
@@ -246,15 +221,15 @@ function GuideDialog({ emailVerified, onClose }: { emailVerified: boolean; onClo
         <div className="flex items-center gap-2">
           {index > 0 ? (
             <Button variant="outline" onClick={() => setIndex(index - 1)}>
-              Back
+              {tc("back")}
             </Button>
           ) : (
             <Button variant="ghost" onClick={onClose}>
-              Skip
+              {t("skip")}
             </Button>
           )}
           <Button ref={nextRef} className="flex-1" onClick={() => (last ? onClose() : setIndex(index + 1))}>
-            {last ? "Let's go" : "Next"}
+            {last ? t("letsGo") : t("next")}
           </Button>
         </div>
       </div>

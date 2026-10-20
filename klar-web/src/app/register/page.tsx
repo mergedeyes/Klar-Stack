@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,43 +30,45 @@ import { Input } from "@/components/ui/input";
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
-const registerSchema = z
-  .object({
-    username: z
-      .string()
-      .min(3, "Username must be at least 3 characters")
-      .max(30, "Username must be 30 characters or less")
-      .regex(
-        /^[a-zA-Z0-9_]+$/,
-        "Username can only contain letters, numbers, and underscores"
-      ),
-    email: z.string().email("Invalid email address"),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(100, "Password too long"),
-    confirmPassword: z.string(),
-    acceptTerms: z.boolean().refine((val) => val === true, {
-      message: "You must accept the Terms and Privacy Policy to continue",
-    }),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
+// Built per render language, so the validation messages are translated.
+function registerSchema(t: ReturnType<typeof useTranslations<"auth">>) {
+  return z
+    .object({
+      username: z
+        .string()
+        .min(3, t("register.usernameMin"))
+        .max(30, t("register.usernameMax"))
+        .regex(/^[a-zA-Z0-9_]+$/, t("register.usernameChars")),
+      email: z.string().email(t("invalidEmail")),
+      password: z
+        .string()
+        .min(8, t("passwordMin"))
+        .max(100, t("passwordTooLong")),
+      confirmPassword: z.string(),
+      acceptTerms: z.boolean().refine((val) => val === true, {
+        message: t("register.acceptTerms"),
+      }),
+    })
+    .refine((data) => data.password === data.confirmPassword, {
+      message: t("passwordsDontMatch"),
+      path: ["confirmPassword"],
+    });
+}
 
-type RegisterValues = z.infer<typeof registerSchema>;
+type RegisterValues = z.infer<ReturnType<typeof registerSchema>>;
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
+  const t = useTranslations("auth");
+  const schema = useMemo(() => registerSchema(t), [t]);
   const [error, setError] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
 
   const form = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       username: "",
       email: "",
@@ -84,7 +87,7 @@ export default function RegisterPage() {
       await register(values.username, values.email, values.password, values.acceptTerms);
       setRegistered(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(err instanceof Error ? err.message : t("register.failed"));
     }
   };
 
@@ -94,22 +97,20 @@ export default function RegisterPage() {
       <main className="flex flex-1 items-center justify-center bg-background p-4">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
-            <CardTitle className="text-2xl">Check your email</CardTitle>
+            <CardTitle className="text-2xl">{t("checkEmail")}</CardTitle>
             <CardDescription>
-              We sent a verification link to{" "}
-              <span className="font-medium text-foreground">
-                {form.getValues("email")}
-              </span>
+              {t.rich("register.sentLink", {
+                email: form.getValues("email"),
+                addr: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Click the link in the email to verify your account. Until then you
-            can browse Klar, but not post, comment, send messages or report; an
-            account that stays unverified is deleted after 30 days.
+            {t("register.untilVerified")}
           </CardContent>
           <CardFooter className="justify-center">
             <Button onClick={() => router.push("/feed")}>
-              Continue to Klar
+              {t("register.continue")}
             </Button>
           </CardFooter>
         </Card>
@@ -121,10 +122,8 @@ export default function RegisterPage() {
     <main className="flex flex-1 items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create your account</CardTitle>
-          <CardDescription>
-            Join Klar — privacy-first photo sharing
-          </CardDescription>
+          <CardTitle className="text-2xl">{t("register.title")}</CardTitle>
+          <CardDescription>{t("register.subtitle")}</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -141,10 +140,10 @@ export default function RegisterPage() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel>{t("username")}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Username"
+                        placeholder={t("username")}
                         autoComplete="username"
                         autoCapitalize="none"
                         {...field}
@@ -160,7 +159,7 @@ export default function RegisterPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>{t("email")}</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
@@ -179,7 +178,7 @@ export default function RegisterPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>{t("password")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -198,7 +197,7 @@ export default function RegisterPage() {
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm password</FormLabel>
+                    <FormLabel>{t("register.confirmPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -227,14 +226,18 @@ export default function RegisterPage() {
                         />
                       </FormControl>
                       <label className="text-sm text-muted-foreground leading-snug">
-                        I agree to the{" "}
-                        <Link href="/nutzungsbedingungen" className="underline" target="_blank">
-                          Terms of Service
-                        </Link>{" "}
-                        and{" "}
-                        <Link href="/datenschutz" className="underline" target="_blank">
-                          Privacy Policy
-                        </Link>
+                        {t.rich("register.terms", {
+                          terms: (chunks) => (
+                            <Link href="/nutzungsbedingungen" className="underline" target="_blank">
+                              {chunks}
+                            </Link>
+                          ),
+                          privacy: (chunks) => (
+                            <Link href="/datenschutz" className="underline" target="_blank">
+                              {chunks}
+                            </Link>
+                          ),
+                        })}
                       </label>
                     </div>
                     <FormMessage />
@@ -247,20 +250,23 @@ export default function RegisterPage() {
                 className="w-full"
                 disabled={form.formState.isSubmitting}
               >
-                {form.formState.isSubmitting ? "Creating account…" : "Create account"}
+                {form.formState.isSubmitting ? t("register.creating") : t("register.create")}
               </Button>
             </form>
           </Form>
         </CardContent>
 
-        <CardFooter className="justify-center text-sm text-muted-foreground">
-          Already have an account?&nbsp;
-          <Link
-            href="/login"
-            className="font-medium text-foreground underline-offset-4 hover:underline"
-          >
-            Sign in
-          </Link>
+        <CardFooter className="justify-center gap-1 text-sm text-muted-foreground">
+          {t.rich("register.haveAccount", {
+            link: (chunks) => (
+              <Link
+                href="/login"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </CardFooter>
       </Card>
     </main>

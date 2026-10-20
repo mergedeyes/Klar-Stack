@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useFormatter, useTranslations } from "next-intl";
 import { Camera } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/lib/auth-context";
@@ -45,6 +46,11 @@ function clearDraft() {
 export default function EditProfilePage() {
   const { user, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
+  const t = useTranslations("editProfile");
+  const tc = useTranslations("common");
+  const ta = useTranslations("auth");
+  const tcp = useTranslations("createPost");
+  const format = useFormatter();
 
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -114,14 +120,12 @@ export default function EditProfilePage() {
     
     if (new Date() < unlockDate) {
       isOnCooldown = true;
-      unlockDateStr = unlockDate.toLocaleDateString(undefined, {
-        year: 'numeric', month: 'long', day: 'numeric'
-      });
+      unlockDateStr = format.dateTime(unlockDate, { year: "numeric", month: "long", day: "numeric" });
     }
   }
 
   const handleRemoveAvatar = async () => {
-    if (!window.confirm("Remove your profile picture?")) return;
+    if (!window.confirm(t("confirmRemove"))) return;
     setError(null);
     try {
       await usersApi.deleteAvatar();
@@ -129,7 +133,7 @@ export default function EditProfilePage() {
       setAvatarPreview(null);
       await refreshUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove the picture");
+      setError(err instanceof Error ? err.message : t("removeFailed"));
     }
   };
 
@@ -137,7 +141,7 @@ export default function EditProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      setError("Avatar must be under 5MB");
+      setError(t("avatarTooLarge"));
       return;
     }
     setAvatarFile(file);
@@ -153,7 +157,7 @@ export default function EditProfilePage() {
 
     // Basic frontend validation
     if (newUsername.length < 3 || newUsername.length > 30) {
-      setError("Username must be between 3 and 30 characters");
+      setError(t("usernameLength"));
       return;
     }
 
@@ -191,7 +195,7 @@ export default function EditProfilePage() {
       }, 800);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save profile");
+      setError(err instanceof Error ? err.message : t("saveFailed"));
       setUploadingAvatar(false);
     } finally {
       setSaving(false);
@@ -205,8 +209,8 @@ export default function EditProfilePage() {
       {/* Header */}
       <header className="sticky top-safe z-10 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <SmartBackButton aria-label="Back" />
-          <span className="font-semibold">Edit Profile</span>
+          <SmartBackButton />
+          <span className="font-semibold">{t("title")}</span>
         </div>
         <div>
           <Button
@@ -216,11 +220,11 @@ export default function EditProfilePage() {
           >
             {saving
               ? uploadingAvatar
-                ? "Uploading…"
-                : "Saving…"
+                ? tcp("uploading")
+                : tc("saving")
               : success
-              ? "Saved!"
-              : "Save"}
+              ? t("saved")
+              : tc("save")}
           </Button>
         </div>
       </header>
@@ -237,12 +241,12 @@ export default function EditProfilePage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             className="group relative h-24 w-24 overflow-hidden rounded-full bg-muted focus:outline-none"
-            aria-label="Change avatar"
+            aria-label={t("changeAvatar")}
           >
             {avatarPreview ? (
               <Image
                 src={avatarPreview}
-                alt="Avatar"
+                alt={t("avatar")}
                 fill
                 className="object-cover"
                 unoptimized
@@ -250,7 +254,7 @@ export default function EditProfilePage() {
             ) : user.avatar_url ? (
               <Image
                 src={getMediaUrl(user.avatar_url)}
-                alt="Avatar"
+                alt={t("avatar")}
                 fill
                 className="object-cover"
                 unoptimized
@@ -270,14 +274,14 @@ export default function EditProfilePage() {
               onClick={() => fileInputRef.current?.click()}
               className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Change photo
+              {t("changePhoto")}
             </button>
             {user.avatar_url && !avatarFile && (
               <button
                 onClick={handleRemoveAvatar}
                 className="text-sm text-muted-foreground underline-offset-4 hover:text-destructive hover:underline"
               >
-                Remove photo
+                {t("removePhoto")}
               </button>
             )}
           </div>
@@ -292,35 +296,35 @@ export default function EditProfilePage() {
 
         {/* Username */}
         <div className="space-y-2">
-          <Label htmlFor="username">Username</Label>
+          <Label htmlFor="username">{ta("username")}</Label>
           <Input
             id="username"
             value={username}
             onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} // Same rule as registration and the backend's validate_username
-            placeholder="username"
+            placeholder={t("usernamePlaceholder")}
             maxLength={30}
             disabled={isOnCooldown || saving}
             className={isOnCooldown ? "opacity-60 bg-muted cursor-not-allowed" : ""}
           />
           {isOnCooldown ? (
             <p className="text-xs font-medium text-amber-800 dark:text-amber-400">
-              You recently changed your username. You can change it again on {unlockDateStr}.
+              {t("cooldown", { date: unlockDateStr })}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              You can change your username once every 14 days.
+              {t("cooldownHint")}
             </p>
           )}
         </div>
 
         {/* Display name */}
         <div className="space-y-2">
-          <Label htmlFor="display-name">Display name</Label>
+          <Label htmlFor="display-name">{t("displayName")}</Label>
           <Input
             id="display-name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your name"
+            placeholder={t("displayNamePlaceholder")}
             maxLength={50}
             disabled={saving}
           />
@@ -331,12 +335,12 @@ export default function EditProfilePage() {
 
         {/* Bio */}
         <div className="space-y-2">
-          <Label htmlFor="bio">Bio</Label>
+          <Label htmlFor="bio">{t("bio")}</Label>
           <textarea
             id="bio"
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            placeholder="Tell people a little about yourself…"
+            placeholder={t("bioPlaceholder")}
             maxLength={500}
             rows={4}
             disabled={saving}

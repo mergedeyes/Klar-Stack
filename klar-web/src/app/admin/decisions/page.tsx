@@ -59,7 +59,7 @@ export default function DecisionLogPage() {
   return (
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
-        <SmartBackButton aria-label="Back" />
+        <SmartBackButton />
         <span className="font-semibold">Decision log</span>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-4">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Check, Share2 } from "lucide-react";
 
 /**
@@ -21,6 +22,8 @@ export default function ShareButton({
   /** For placing the button (e.g. "ml-auto"); applied to its wrapper. */
   className?: string;
 }) {
+  const t = useTranslations("post");
+  const tc = useTranslations("common");
   const [copied, setCopied] = useState(false);
   // Shown when the clipboard is unavailable (e.g. an insecure context), so
   // the link can still be copied by hand.
@@ -39,7 +42,7 @@ export default function ShareButton({
     const touch = window.matchMedia("(pointer: coarse)").matches;
     if (touch && typeof navigator.share === "function") {
       try {
-        await navigator.share({ title: username ? `Post by @${username} on Klar` : "Post on Klar", url });
+        await navigator.share({ title: username ? t("shareTitle", { username }) : t("shareTitleAnonymous"), url });
         return;
       } catch (err) {
         // Dismissing the sheet is not an error; anything else falls back to copying.
@@ -63,14 +66,14 @@ export default function ShareButton({
         type="button"
         onClick={share}
         className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        aria-label="Share post"
-        title="Share post"
+        aria-label={t("share")}
+        title={t("share")}
       >
         {copied ? <Check size={size} /> : <Share2 size={size} />}
-        {copied && <span>Link copied</span>}
+        {copied && <span>{t("linkCopied")}</span>}
       </button>
       {/* Announces the copy to screen readers. */}
-      <span className="sr-only" aria-live="polite">{copied ? "Link copied" : ""}</span>
+      <span className="sr-only" aria-live="polite">{copied ? t("linkCopied") : ""}</span>
 
       {manualUrl && (
         <span
@@ -82,11 +85,11 @@ export default function ShareButton({
             value={manualUrl}
             autoFocus
             onFocus={(e) => e.target.select()}
-            aria-label="Link to this post"
+            aria-label={t("linkToPost")}
             className="min-w-0 flex-1 bg-transparent text-xs outline-none"
           />
           <button type="button" onClick={() => setManualUrl(null)} className="text-xs text-muted-foreground hover:text-foreground">
-            Close
+            {tc("close")}
           </button>
         </span>
       )}

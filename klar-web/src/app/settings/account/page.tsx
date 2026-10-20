@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { LogOut, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { users as usersApi } from "@/lib/api";
@@ -11,6 +12,9 @@ import { SmartBackButton } from '@/components/SmartBackButton';
 export default function AccountSettingsPage() {
   const { user, loading: authLoading, logout } = useAuth();
   const router = useRouter();
+  const t = useTranslations("account");
+  const tc = useTranslations("common");
+  const tn = useTranslations("nav");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
   // Asked for by the backend: a signed-in session alone can't delete an
@@ -37,7 +41,7 @@ export default function AccountSettingsPage() {
       await logout();
       router.push("/login");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete account");
+      setError(err instanceof Error ? err.message : t("deleteFailed"));
       setDeleting(false);
     }
   };
@@ -48,8 +52,8 @@ export default function AccountSettingsPage() {
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
-          <span className="font-semibold">Account</span>
+          <SmartBackButton />
+          <span className="font-semibold">{t("title")}</span>
         </div>
       </header>
 
@@ -70,8 +74,8 @@ export default function AccountSettingsPage() {
               <LogOut size={18} />
             </div>
             <div>
-              <p className="text-sm font-medium">Log out</p>
-              <p className="text-xs text-muted-foreground">Sign out of your account</p>
+              <p className="text-sm font-medium">{tn("logOut")}</p>
+              <p className="text-xs text-muted-foreground">{t("logOutHint")}</p>
             </div>
           </button>
         </div>
@@ -87,34 +91,32 @@ export default function AccountSettingsPage() {
                 <Trash2 size={18} />
               </div>
               <div>
-                <p className="text-sm font-medium text-destructive">Delete account</p>
-                <p className="text-xs text-muted-foreground">
-                  Permanently delete your account and all data
-                </p>
+                <p className="text-sm font-medium text-destructive">{t("delete")}</p>
+                <p className="text-xs text-muted-foreground">{t("deleteHint")}</p>
               </div>
             </button>
           ) : (
             <div className="space-y-4 p-4">
               <div>
-                <p className="text-sm font-semibold text-destructive">Delete your account?</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  This will permanently delete all your posts, comments, and data.
-                  This cannot be undone.
-                </p>
+                <p className="text-sm font-semibold text-destructive">{t("confirmTitle")}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{t("confirmText")}</p>
               </div>
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Type <span className="font-mono font-semibold text-foreground">{user.username}</span> to confirm
+                  {t.rich("typeToConfirm", {
+                    username: user.username,
+                    name: (chunks) => <span className="font-mono font-semibold text-foreground">{chunks}</span>,
+                  })}
                 </p>
                 <input
                   value={deleteInput}
                   onChange={(e) => setDeleteInput(e.target.value)}
                   placeholder={user.username}
-                  aria-label="Your username"
+                  aria-label={t("yourUsername")}
                   className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-destructive"
                 />
                 <label className="block space-y-1">
-                  <span className="text-xs text-muted-foreground">Your password</span>
+                  <span className="text-xs text-muted-foreground">{t("yourPassword")}</span>
                   <input
                     type="password"
                     value={password}
@@ -131,14 +133,14 @@ export default function AccountSettingsPage() {
                   onClick={handleDelete}
                   disabled={deleteInput !== user.username || !password || deleting}
                 >
-                  {deleting ? "Deleting…" : "Delete account"}
+                  {deleting ? t("deleting") : t("delete")}
                 </Button>
                 <Button
                   variant="outline"
                   className="flex-1"
                   onClick={() => { setShowDeleteConfirm(false); setDeleteInput(""); setPassword(""); }}
                 >
-                  Cancel
+                  {tc("cancel")}
                 </Button>
               </div>
             </div>

@@ -24,6 +24,7 @@ realistic data volumes for the paging checks.
 - [ ] Signed out, with the browser set to German, the page is German (`<html lang="de">`); set to French or anything else, English
 - [ ] Settings → Language switches the page at once, stays after a reload and on another device or browser after signing in there, even when that browser asks for the other language
 - [ ] An account created before this change gets its browser's language the first time it opens Klar (Settings shows it)
+- [ ] In German, every page reads German: sign-in and sign-up (form errors too), feed, Discovery, a post with comments, a profile, search, follow requests, chats, all settings pages, Moderation, the report dialog, feedback and the welcome guide; relative times read "5 Min." and dates are German. The admin pages, the statement of reasons and the public notice and rights forms stay as they were (English / German)
 - [ ] After logging out, the page follows the browser's language again (the `klar_locale` cookie is gone)
 - [ ] The notification dropdown reads naturally in German ("alice gefällt dein Beitrag"), with the name in bold
 - [ ] The legal pages stay German in both languages; the footer links keep their German names
@@ -97,7 +98,7 @@ loads more as you scroll.
 - [ ] Asking for a reset link twice within five minutes sends one email
 - [ ] Data export downloads a ZIP whose `data.json` and images match the account
 - [ ] Account deletion asks for the password (a wrong one is refused) and removes the profile, posts and media; the chat partner sees the "account deleted" notice; the like, comment and follower counts on other people's posts and profiles drop accordingly
-- [ ] A deleted or mistyped profile shows "Profil nicht gefunden" instead of jumping to the feed
+- [ ] A deleted or mistyped profile shows "Profile not found" ("Profil nicht gefunden" in German) instead of jumping to the feed
 - [ ] Clearing the bio or display name in Edit profile and saving empties it; "Remove photo" removes the picture
 - [ ] On an iPhone in Chrome, typing in Edit profile and then pulling down at the top (which reloads the page) keeps what was typed; going back and opening Edit profile again shows the saved profile instead
 - [ ] Locking an account or changing its password closes an open notification stream on its other devices within half a minute (the bell stops updating there)

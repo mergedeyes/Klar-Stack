@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/lib/auth-context";
 import { SmartBackButton } from "@/components/SmartBackButton";
 import PersonalizationCard from "@/components/settings/PersonalizationCard";
@@ -11,6 +12,7 @@ import PersonalizationCard from "@/components/settings/PersonalizationCard";
 export default function DiscoverySettingsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const t = useTranslations("discovery");
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
@@ -22,8 +24,8 @@ export default function DiscoverySettingsPage() {
     <div className="flex-1 bg-background">
       <header className="sticky top-safe z-10 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
-          <SmartBackButton aria-label="Back" />
-          <span className="font-semibold">Discovery</span>
+          <SmartBackButton />
+          <span className="font-semibold">{t("title")}</span>
         </div>
       </header>
 

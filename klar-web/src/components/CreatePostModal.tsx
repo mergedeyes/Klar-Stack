@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { posts } from "@/lib/api";
@@ -14,6 +15,9 @@ interface CreatePostModalProps {
 
 export default function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
   const { user } = useAuth();
+  const t = useTranslations("createPost");
+  const tc = useTranslations("common");
+  const tn = useTranslations("nav");
 
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -31,7 +35,7 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 10 * 1024 * 1024) {
-      setError("Image must be under 10MB");
+      setError(t("tooLarge"));
       return;
     }
     setFile(f);
@@ -43,8 +47,8 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
     e.preventDefault();
     const f = e.dataTransfer.files[0];
     if (!f) return;
-    if (!f.type.startsWith("image/")) { setError("Only image files are supported"); return; }
-    if (f.size > 10 * 1024 * 1024) { setError("Image must be under 10MB"); return; }
+    if (!f.type.startsWith("image/")) { setError(t("onlyImages")); return; }
+    if (f.size > 10 * 1024 * 1024) { setError(t("tooLarge")); return; }
     setFile(f);
     setPreview(URL.createObjectURL(f));
     setError(null);
@@ -61,7 +65,7 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
       onCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : t("uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -76,8 +80,8 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
       <div className="relative w-full max-w-lg overflow-hidden rounded-xl bg-background shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <span className="font-semibold">New post</span>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
+          <span className="font-semibold">{tn("newPost")}</span>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label={tc("close")}>
             <X size={20} />
           </button>
         </div>
@@ -92,16 +96,16 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
           >
             <ImagePlus size={48} className="text-muted-foreground" />
             <div className="text-center">
-              <p className="font-medium">Drop a photo here</p>
-              <p className="text-sm text-muted-foreground">or click to browse</p>
+              <p className="font-medium">{t("drop")}</p>
+              <p className="text-sm text-muted-foreground">{t("orBrowse")}</p>
             </div>
-            <Button variant="outline" size="sm" type="button">Select from device</Button>
+            <Button variant="outline" size="sm" type="button">{t("select")}</Button>
           </div>
         ) : (
           <div className="relative">
             <Image
               src={preview}
-              alt="Preview"
+              alt={t("preview")}
               width={640}
               height={640}
               className="max-h-96 w-full object-contain bg-muted"
@@ -110,7 +114,7 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
             <button
               onClick={() => { setPreview(null); setFile(null); }}
               className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
-              aria-label="Remove image"
+              aria-label={t("removeImage")}
             >
               <X size={16} />
             </button>
@@ -140,7 +144,7 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
             <textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder="Write a caption…"
+              placeholder={t("captionPlaceholder")}
               maxLength={2000}
               rows={3}
               className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -155,9 +159,9 @@ export default function CreatePostModal({ onClose, onCreated }: CreatePostModalP
               size="sm"
             >
               {uploading ? (
-                <><Loader2 size={14} className="mr-2 animate-spin" />Uploading…</>
+                <><Loader2 size={14} className="mr-2 animate-spin" />{t("uploading")}</>
               ) : (
-                "Share"
+                t("share")
               )}
             </Button>
           </div>
