@@ -66,6 +66,15 @@ tokio::task_local! {
     static LANG: Lang;
 }
 
+/// The language of an email to an account: the account's own, or
+/// `fallback` while it has none (accounts from before languages existed,
+/// until the app sets it). Emails the person asked for just now fall back
+/// to the page's language (`current()`), the others to German, which all
+/// emails were before.
+pub fn for_account(locale: Option<&str>, fallback: Lang) -> Lang {
+    Lang::from_locale(locale).unwrap_or(fallback)
+}
+
 /// The language of the request being handled; English outside one (the
 /// background tasks).
 pub fn current() -> Lang {
@@ -349,6 +358,14 @@ mod tests {
         assert_eq!(Lang::negotiate(Some("de;q=0,en")), Lang::En);
         assert_eq!(Lang::negotiate(Some("fr")), Lang::En);
         assert_eq!(Lang::negotiate(Some("DE")), Lang::De);
+    }
+
+    #[test]
+    fn an_email_follows_the_account_then_the_fallback() {
+        assert_eq!(for_account(Some("en"), Lang::De), Lang::En);
+        assert_eq!(for_account(Some("de"), Lang::En), Lang::De);
+        assert_eq!(for_account(None, Lang::De), Lang::De);
+        assert_eq!(for_account(Some("fr"), Lang::En), Lang::En);
     }
 
     #[test]

@@ -13,6 +13,7 @@ use lettre::{
     transport::smtp::authentication::Credentials, // username/password pair for SMTP auth
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, // async SMTP client, its send trait, the email type, and the tokio executor it runs on
 };
+use crate::i18n::Lang;
 use resend_rs::{types::CreateEmailBaseOptions, Resend}; // client for the Resend HTTPS email API
 
 // The service is provider-agnostic from the caller's point of view: callers
@@ -87,6 +88,7 @@ fn escape_html(s: &str) -> String {
 /// The footer line of most emails. Mails that must not look like something
 /// the user could opt out of bring their own (see `send_legal_update`).
 const DEFAULT_FOOTER: &str = "Diese E-Mail wurde automatisch von Klar versendet.";
+const DEFAULT_FOOTER_EN: &str = "This email was sent automatically by Klar.";
 
 /// Wraps email content in the shared HTML template (adapted from the
 /// well-known htmlemail.io transactional template). Keeps a single place
@@ -99,7 +101,28 @@ fn render_html_email(preheader: &str, intro: &str, button_label: &str, button_ur
     render_html_email_with_footer(preheader, intro, button_label, button_url, note, DEFAULT_FOOTER)
 }
 
+/// render_html_email for the emails that follow the account's language.
+fn render_html_email_in(lang: Lang, preheader: &str, intro: &str, button_label: &str, button_url: &str, note: &str) -> String {
+    let footer = match lang {
+        Lang::En => DEFAULT_FOOTER_EN,
+        Lang::De => DEFAULT_FOOTER,
+    };
+    render_html_email_full(lang, preheader, intro, button_label, button_url, note, footer)
+}
+
 fn render_html_email_with_footer(
+    preheader: &str,
+    intro: &str,
+    button_label: &str,
+    button_url: &str,
+    note: &str,
+    footer: &str,
+) -> String {
+    render_html_email_full(Lang::De, preheader, intro, button_label, button_url, note, footer)
+}
+
+fn render_html_email_full(
+    lang: Lang,
     preheader: &str,
     intro: &str,
     button_label: &str,
@@ -110,7 +133,7 @@ fn render_html_email_with_footer(
     const FONT: &str = "font-family: Helvetica, Arial, sans-serif;";
     format!(
         r##"<!doctype html>
-<html lang="de">
+<html lang="{html_lang}">
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -157,6 +180,10 @@ fn render_html_email_with_footer(
   </body>
 </html>"##,
         font = FONT,
+        html_lang = match lang {
+            Lang::En => "en",
+            Lang::De => "de",
+        },
         preheader = preheader,
         intro = intro,
         button_url = button_url,
@@ -255,36 +282,49 @@ impl EmailService {
         self
     }
 
-    /// Send email verification link
-    pub async fn send_verification(&self, to_email: &str, username: &str, token: &str) -> Result<(), EmailError> {
+    /// Send email verification link, in the account's language.
+    pub async fn send_verification(&self, lang: Lang, to_email: &str, username: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to verify their address.
         let verify_url = format!("{}/verify-email?token={}", self.base_url, token);
+        let name = escape_html(username);
 
-        // Plain-text fallback body, for mail clients that don't render HTML.
-        let text = format!(
-            "Hallo {},\n\n\
-             willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse:\n\n\
-             {}\n\n\
-             Der Link ist 24 Stunden gueltig.\n\n\
-             Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
-            username, verify_url
-        );
-
-        // HTML body, built from the shared template above.
-        let html = render_html_email(
-            "Bestaetige deine E-Mail-Adresse bei Klar",
-            &format!(
-                "Hallo {},<br><br>willkommen bei Klar! Bitte bestaetige deine E-Mail-Adresse, um loszulegen.",
-                escape_html(username)
+        // Plain-text fallback body (for mail clients that don't render
+        // HTML), then the HTML body's parts.
+        let (subject, text, preheader, intro, button, note) = match lang {
+            Lang::En => (
+                "Confirm your email for Klar",
+                format!(
+                    "Hi {username},\n\n\
+                     welcome to Klar! Please confirm your email address:\n\n\
+                     {verify_url}\n\n\
+                     The link is valid for 24 hours.\n\n\
+                     If you didn't sign up for Klar, ignore this email."
+                ),
+                "Confirm your email address for Klar",
+                format!("Hi {name},<br><br>welcome to Klar! Please confirm your email address to get started."),
+                "Confirm email",
+                "The link is valid for 24 hours. If you didn't sign up for Klar, ignore this email.",
             ),
-            "E-Mail bestaetigen",
-            &verify_url,
-            "Der Link ist 24 Stunden gueltig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
-        );
+            Lang::De => (
+                "Bestätige deine E-Mail bei Klar",
+                format!(
+                    "Hallo {username},\n\n\
+                     willkommen bei Klar! Bitte bestätige deine E-Mail-Adresse:\n\n\
+                     {verify_url}\n\n\
+                     Der Link ist 24 Stunden gültig.\n\n\
+                     Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail."
+                ),
+                "Bestätige deine E-Mail-Adresse bei Klar",
+                format!("Hallo {name},<br><br>willkommen bei Klar! Bitte bestätige deine E-Mail-Adresse, um loszulegen."),
+                "E-Mail bestätigen",
+                "Der Link ist 24 Stunden gültig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
+            ),
+        };
+        let html = render_html_email_in(lang, preheader, &intro, button, &verify_url, note);
 
         // No Reply-To: replies to a verification email only ever mean
         // "here's my code" or bounce noise, and noreply@ has no inbox.
-        self.send_with(to_email, "Bestaetige deine E-Mail bei Klar", &text, &html, None).await
+        self.send_with(to_email, subject, &text, &html, None).await
     }
 
     /// Tell a user that a moderation decision affects their content (DSA
@@ -376,28 +416,57 @@ impl EmailService {
 
     /// A week before an account that never verified its email address is
     /// deleted: a fresh verification link, and the date.
-    pub async fn send_verification_reminder(&self, to_email: &str, username: &str, token: &str, deletion_on: &str) -> Result<(), EmailError> {
+    pub async fn send_verification_reminder(
+        &self,
+        lang: Lang,
+        to_email: &str,
+        username: &str,
+        token: &str,
+        deletion_on: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), EmailError> {
         let verify_url = format!("{}/verify-email?token={}", self.base_url, token);
-        let text = format!(
-            "Hallo {},\n\n\
-             deine E-Mail-Adresse bei Klar ist noch nicht bestaetigt. Konten ohne bestaetigte Adresse loeschen wir \
-             nach 30 Tagen; deines am {}. Bestaetige sie hier, dann bleibt es bestehen:\n\n{}\n\n\
-             Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
-            username, deletion_on, verify_url
-        );
-        let html = render_html_email(
-            "Bestätige deine E-Mail-Adresse bei Klar",
-            &format!(
-                "Hallo {},<br><br>deine E-Mail-Adresse bei Klar ist noch nicht bestätigt. Konten ohne bestätigte Adresse löschen wir nach 30 Tagen; deines am {}. Bestätige sie, dann bleibt es bestehen.",
-                escape_html(username),
-                deletion_on
-            ),
-            "E-Mail bestätigen",
-            &verify_url,
-            "Der Link ist 7 Tage gültig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
-        );
+        let name = escape_html(username);
+        let (subject, text, preheader, intro, button, note) = match lang {
+            Lang::En => {
+                let on = deletion_on.format("%-d %B %Y");
+                (
+                    "Your Klar account will be deleted unless you confirm your email",
+                    format!(
+                        "Hi {username},\n\n\
+                         your email address on Klar isn't confirmed yet. We delete accounts without a confirmed \
+                         address after 30 days; yours on {on}. Confirm it here and it stays:\n\n{verify_url}\n\n\
+                         If you didn't sign up for Klar, ignore this email."
+                    ),
+                    "Confirm your email address for Klar",
+                    format!(
+                        "Hi {name},<br><br>your email address on Klar isn't confirmed yet. We delete accounts without a confirmed address after 30 days; yours on {on}. Confirm it and it stays."
+                    ),
+                    "Confirm email",
+                    "The link is valid for 7 days. If you didn't sign up for Klar, ignore this email.",
+                )
+            }
+            Lang::De => {
+                let on = deletion_on.format("%d.%m.%Y");
+                (
+                    "Dein Klar-Konto wird ohne Bestätigung gelöscht",
+                    format!(
+                        "Hallo {username},\n\n\
+                         deine E-Mail-Adresse bei Klar ist noch nicht bestätigt. Konten ohne bestätigte Adresse löschen wir \
+                         nach 30 Tagen; deines am {on}. Bestätige sie hier, dann bleibt es bestehen:\n\n{verify_url}\n\n\
+                         Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail."
+                    ),
+                    "Bestätige deine E-Mail-Adresse bei Klar",
+                    format!(
+                        "Hallo {name},<br><br>deine E-Mail-Adresse bei Klar ist noch nicht bestätigt. Konten ohne bestätigte Adresse löschen wir nach 30 Tagen; deines am {on}. Bestätige sie, dann bleibt es bestehen."
+                    ),
+                    "E-Mail bestätigen",
+                    "Der Link ist 7 Tage gültig. Wenn du dich nicht bei Klar registriert hast, ignoriere diese E-Mail.",
+                )
+            }
+        };
+        let html = render_html_email_in(lang, preheader, &intro, button, &verify_url, note);
         // Like the verification email: no Reply-To.
-        self.send_with(to_email, "Dein Klar-Konto wird ohne Bestaetigung geloescht", &text, &html, None).await
+        self.send_with(to_email, subject, &text, &html, None).await
     }
 
     /// Two weeks before a permanently suspended account is deleted: when,
@@ -490,38 +559,60 @@ impl EmailService {
     /// the reset link that unlocks it. Replies go to the contact address,
     /// for owners who can't use the link (e.g. their inbox was taken over
     /// too).
-    pub async fn send_account_locked(&self, to_email: &str, username: &str, token: &str) -> Result<(), EmailError> {
+    pub async fn send_account_locked(&self, lang: Lang, to_email: &str, username: &str, token: &str) -> Result<(), EmailError> {
         let reset_url = format!("{}/reset-password?token={}", self.base_url, token);
         let contact = self.reply_to.as_deref().unwrap_or("kontakt@klarsocial.eu");
+        let name = escape_html(username);
 
-        let text = format!(
-            "Hallo {},\n\n\
-             wir haben dein Klar-Konto vorsorglich gesperrt.\n\n\
-             Auf deinem Konto gab es Aktivitaet, die darauf hindeutet, dass jemand anderes es benutzt. \
-             Wir haben dich deshalb auf allen Geraeten abgemeldet und das Konto gesperrt.\n\n\
-             Mit einem neuen Passwort entsperrst du es wieder:\n\n\
-             {}\n\n\
-             Der Link ist 24 Stunden gueltig; danach kannst du beim Anmelden einen neuen anfordern. \
-             Nimm ein Passwort, das du nirgends sonst verwendest.\n\n\
-             Kommst du nicht weiter oder hast du Fragen, antworte auf diese E-Mail oder schreib an {}.",
-            username, reset_url, contact
-        );
-
-        let html = render_html_email(
-            "Wir haben dein Klar-Konto vorsorglich gesperrt",
-            &format!(
-                "Hallo {},<br><br>auf deinem Konto gab es Aktivität, die darauf hindeutet, dass jemand anderes es benutzt. Wir haben dich deshalb auf allen Geräten abgemeldet und das Konto gesperrt. Mit einem neuen Passwort entsperrst du es wieder.",
-                escape_html(username)
+        let (subject, text, preheader, intro, button, note) = match lang {
+            Lang::En => (
+                "Your Klar account has been locked as a precaution",
+                format!(
+                    "Hi {username},\n\n\
+                     we've locked your Klar account as a precaution.\n\n\
+                     There was activity on your account that suggests someone else is using it, so we signed you \
+                     out on all devices and locked the account.\n\n\
+                     A new password unlocks it:\n\n\
+                     {reset_url}\n\n\
+                     The link is valid for 24 hours; after that you can ask for a new one when you sign in. \
+                     Choose a password you don't use anywhere else.\n\n\
+                     If you're stuck or have questions, reply to this email or write to {contact}."
+                ),
+                "We've locked your Klar account as a precaution",
+                format!(
+                    "Hi {name},<br><br>there was activity on your account that suggests someone else is using it, so we signed you out on all devices and locked the account. A new password unlocks it."
+                ),
+                "Set a new password",
+                format!(
+                    "The link is valid for 24 hours; after that you can ask for a new one when you sign in. Choose a password you don't use anywhere else. If you're stuck, reply to this email or write to {contact}."
+                ),
             ),
-            "Neues Passwort festlegen",
-            &reset_url,
-            &format!(
-                "Der Link ist 24 Stunden gültig; danach kannst du beim Anmelden einen neuen anfordern. Nimm ein Passwort, das du nirgends sonst verwendest. Kommst du nicht weiter, antworte auf diese E-Mail oder schreib an {}.",
-                contact
+            Lang::De => (
+                "Dein Klar-Konto wurde vorsorglich gesperrt",
+                format!(
+                    "Hallo {username},\n\n\
+                     wir haben dein Klar-Konto vorsorglich gesperrt.\n\n\
+                     Auf deinem Konto gab es Aktivität, die darauf hindeutet, dass jemand anderes es benutzt. \
+                     Wir haben dich deshalb auf allen Geräten abgemeldet und das Konto gesperrt.\n\n\
+                     Mit einem neuen Passwort entsperrst du es wieder:\n\n\
+                     {reset_url}\n\n\
+                     Der Link ist 24 Stunden gültig; danach kannst du beim Anmelden einen neuen anfordern. \
+                     Nimm ein Passwort, das du nirgends sonst verwendest.\n\n\
+                     Kommst du nicht weiter oder hast du Fragen, antworte auf diese E-Mail oder schreib an {contact}."
+                ),
+                "Wir haben dein Klar-Konto vorsorglich gesperrt",
+                format!(
+                    "Hallo {name},<br><br>auf deinem Konto gab es Aktivität, die darauf hindeutet, dass jemand anderes es benutzt. Wir haben dich deshalb auf allen Geräten abgemeldet und das Konto gesperrt. Mit einem neuen Passwort entsperrst du es wieder."
+                ),
+                "Neues Passwort festlegen",
+                format!(
+                    "Der Link ist 24 Stunden gültig; danach kannst du beim Anmelden einen neuen anfordern. Nimm ein Passwort, das du nirgends sonst verwendest. Kommst du nicht weiter, antworte auf diese E-Mail oder schreib an {contact}."
+                ),
             ),
-        );
+        };
+        let html = render_html_email_in(lang, preheader, &intro, button, &reset_url, &note);
 
-        self.send(to_email, "Dein Klar-Konto wurde vorsorglich gesperrt", &text, &html).await
+        self.send(to_email, subject, &text, &html).await
     }
 
     /// Tell a user that the Terms of Service and/or the privacy policy
@@ -595,31 +686,44 @@ impl EmailService {
         self.send(to_email, subject, &text, &html).await
     }
 
-    /// Send password reset link
-    pub async fn send_password_reset(&self, to_email: &str, token: &str) -> Result<(), EmailError> {
+    /// Send password reset link, in the account's language.
+    pub async fn send_password_reset(&self, lang: Lang, to_email: &str, token: &str) -> Result<(), EmailError> {
         // Build the link the user clicks to reset their password.
         let reset_url = format!("{}/reset-password?token={}", self.base_url, token);
 
-        // Plain-text fallback body, for mail clients that don't render HTML.
-        let text = format!(
-            "Passwort zuruecksetzen\n\n\
-             Klicke auf den folgenden Link, um dein Passwort zurueckzusetzen:\n\n\
-             {}\n\n\
-             Der Link ist 1 Stunde gueltig.\n\n\
-             Wenn du diese Anfrage nicht gestellt hast, ignoriere diese E-Mail.",
-            reset_url
-        );
+        let (subject, text, preheader, intro, button, note) = match lang {
+            Lang::En => (
+                "Reset your Klar password",
+                format!(
+                    "Reset your password\n\n\
+                     Click the link below to reset your password:\n\n\
+                     {reset_url}\n\n\
+                     The link is valid for 1 hour.\n\n\
+                     If you didn't ask for this, ignore this email."
+                ),
+                "Reset your password for Klar",
+                "You asked to reset your password for Klar.",
+                "Reset password",
+                "The link is valid for 1 hour. If you didn't ask for this, ignore this email.",
+            ),
+            Lang::De => (
+                "Passwort zurücksetzen bei Klar",
+                format!(
+                    "Passwort zurücksetzen\n\n\
+                     Klicke auf den folgenden Link, um dein Passwort zurückzusetzen:\n\n\
+                     {reset_url}\n\n\
+                     Der Link ist 1 Stunde gültig.\n\n\
+                     Wenn du diese Anfrage nicht gestellt hast, ignoriere diese E-Mail."
+                ),
+                "Setze dein Passwort bei Klar zurück",
+                "Du hast angefragt, dein Passwort bei Klar zurückzusetzen.",
+                "Passwort zurücksetzen",
+                "Der Link ist 1 Stunde gültig. Wenn du diese Anfrage nicht gestellt hast, ignoriere diese E-Mail.",
+            ),
+        };
+        let html = render_html_email_in(lang, preheader, intro, button, &reset_url, note);
 
-        // HTML body, built from the shared template above.
-        let html = render_html_email(
-            "Setze dein Passwort bei Klar zurueck",
-            "Du hast angefragt, dein Passwort bei Klar zurueckzusetzen.",
-            "Passwort zuruecksetzen",
-            &reset_url,
-            "Der Link ist 1 Stunde gueltig. Wenn du diese Anfrage nicht gestellt hast, ignoriere diese E-Mail.",
-        );
-
-        self.send(to_email, "Passwort zuruecksetzen bei Klar", &text, &html).await
+        self.send(to_email, subject, &text, &html).await
     }
 
     /// Send an email with both plain-text and HTML alternatives, with the

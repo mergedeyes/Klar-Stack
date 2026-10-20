@@ -195,7 +195,8 @@ pub async fn resend_link(
     let token = create_reset_token(&mut tx, user.id, LINK_HOURS).await?;
     tx.commit().await.db_err("Database error")?;
 
-    if let Err(e) = state.email.send_account_locked(&user.email, &user.username, &token).await {
+    let lang = crate::i18n::for_account(user.locale.as_deref(), crate::i18n::current());
+    if let Err(e) = state.email.send_account_locked(lang, &user.email, &user.username, &token).await {
         tracing::error!("Lock email resend for user {} failed: {}", user.id, e.0);
     }
     Ok(Json(serde_json::json!({ "message": crate::i18n::tr("We sent you a new link.") })))
@@ -256,12 +257,14 @@ pub struct NewLock {
     email: String,
     username: String,
     token: String,
+    /// The owner's language; an admin's request says nothing about it.
+    lang: crate::i18n::Lang,
 }
 
 impl NewLock {
     /// Emails the owner their reset link. Runs after commit.
     pub async fn notify(self, state: &AppState) {
-        if let Err(e) = state.email.send_account_locked(&self.email, &self.username, &self.token).await {
+        if let Err(e) = state.email.send_account_locked(self.lang, &self.email, &self.username, &self.token).await {
             tracing::error!("Lock email for user {} failed: {}", self.user_id, e.0);
         }
         tracing::info!("Account {} locked by admin {} (suspected takeover)", self.user_id, self.admin_id);
@@ -272,7 +275,9 @@ impl NewLock {
 /// decision of an account review (account_review.rs), which closes the
 /// review in the same transaction.
 pub async fn lock_in(tx: &mut PgConnection, user_id: Uuid, admin_id: Uuid, note: &str) -> Result<NewLock, AppError> {
-    let (email, username) = sqlx::query_as::<_, (String, String)>("SELECT email, username FROM users WHERE id = $1 FOR UPDATE")
+    let (email, username, locale) = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT email, username, locale FROM users WHERE id = $1 FOR UPDATE",
+    )
         .bind(user_id)
         .fetch_optional(&mut *tx)
         .await
@@ -298,7 +303,8 @@ pub async fn lock_in(tx: &mut PgConnection, user_id: Uuid, admin_id: Uuid, note:
 
     revoke_sessions(tx, user_id).await?;
     let token = create_reset_token(&mut *tx, user_id, LINK_HOURS).await?;
-    Ok(NewLock { user_id, admin_id, email, username, token })
+    let lang = crate::i18n::for_account(locale.as_deref(), crate::i18n::Lang::De);
+    Ok(NewLock { user_id, admin_id, email, username, token, lang })
 }
 
 /// POST /admin/locks/:id/unlock (admin only) -- e.g. once the owner proved

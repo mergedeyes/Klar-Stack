@@ -27,6 +27,8 @@ realistic data volumes for the paging checks.
 - [ ] After logging out, the page follows the browser's language again (the `klar_locale` cookie is gone)
 - [ ] The notification dropdown reads naturally in German ("alice gefällt dein Beitrag"), with the name in bold
 - [ ] The legal pages stay German in both languages; the footer links keep their German names
+- [ ] With the page in German, an error from the server is German too (e.g. sign in with a wrong password: "E-Mail-Adresse, Nutzername oder Passwort ist falsch"); in English, English
+- [ ] An account set to English gets the verification, reminder, password-reset and account-locked emails in English (MailHog), with umlauts intact in the German ones; an account with no language yet gets the reset link in the page's language
 
 ## Home screen app
 
