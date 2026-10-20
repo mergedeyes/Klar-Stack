@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
-import { auth } from "@/lib/api";
+import { auth, HttpError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,12 +54,10 @@ function VerifyEmailContent() {
         refreshUser();
       })
       .catch((err: Error) => {
-        const msg = err.message.toLowerCase();
-        if (msg.includes("expired") || msg.includes("used") || msg.includes("invalid")) {
-          setRequestState("expired");
-        } else {
-          setRequestState("invalid");
-        }
+        // 400 is the backend's answer for a used, expired or unknown token;
+        // anything else (a network error, a 5xx) gets the generic page. The
+        // status, not the message, since the message is translated.
+        setRequestState(err instanceof HttpError && err.status === 400 ? "expired" : "invalid");
       });
   }, [token, refreshUser]);
 
