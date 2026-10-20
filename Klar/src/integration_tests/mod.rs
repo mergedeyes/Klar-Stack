@@ -26,6 +26,7 @@ mod account_review;
 mod activity;
 mod audit_export;
 mod chats;
+mod db_errors;
 mod evidence;
 mod feedback;
 mod guide;

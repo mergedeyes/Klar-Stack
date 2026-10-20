@@ -14,9 +14,12 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-// This is an Axum trick: by implementing IntoResponse for our own error type,
-// we can use it directly as a return type in handlers with the ? operator later.
-// For now we're still using Result tuples, but this sets us up for cleaner error handling.
+// Implementing IntoResponse lets handlers return Result<_, AppError> and use
+// the ? operator. There is deliberately no From<sqlx::Error>: a bare ? on a
+// database error would put the database's own text (table and constraint
+// names, sometimes values) into the response. Database results go through
+// utils::DbResultExt (.db_err / .db_err_ctx) instead, which logs the real
+// error and sends a generic message.
 #[derive(Debug)]
 pub struct AppError {
     pub status: StatusCode,
@@ -42,12 +45,6 @@ impl IntoResponse for AppError {
             error: crate::i18n::tr(&self.message),
         });
         (self.status, body).into_response()
-    }
-}
-
-impl From<sqlx::Error> for AppError {
-    fn from(err: sqlx::Error) -> Self {
-        AppError::internal(format!("Database error: {}", err))
     }
 }
 

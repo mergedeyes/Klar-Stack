@@ -94,7 +94,7 @@ pub async fn enforce_session(
     if let Some((user_id, issued_at)) = session.session {
         let valid = match state.db.acquire().await {
             Ok(mut conn) => session_valid(&mut conn, user_id, issued_at).await,
-            Err(e) => Err(AppError::internal(format!("Database error: {}", e))),
+            Err(e) => Err(e).db_err_ctx("Session check: no database connection", "Database error"),
         };
         match valid {
             Ok(true) => {}

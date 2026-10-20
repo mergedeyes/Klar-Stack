@@ -706,10 +706,19 @@ pub(crate) async fn sweep_bans(state: &AppState) {
             Ok(()) => tracing::info!("Deleted permanently suspended account {} (decision {})", user_id, decision_id),
             Err(e) => {
                 tracing::error!("Deleting permanently suspended account {} failed: {}", user_id, e.message);
-                let _ = sqlx::query("UPDATE moderation_decisions SET account_deleted_at = NULL WHERE id = $1")
+                // Releases the claim so the next sweep retries. If even that
+                // fails, the account isn't retried until someone clears
+                // account_deleted_at by hand.
+                if let Err(e) = sqlx::query("UPDATE moderation_decisions SET account_deleted_at = NULL WHERE id = $1")
                     .bind(decision_id)
                     .execute(&state.db)
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        "Releasing the deletion claim of decision {} failed, account {} needs a manual retry: {}",
+                        decision_id, user_id, e
+                    );
+                }
             }
         }
     }
@@ -763,7 +772,10 @@ pub async fn enforce_suspension(
         if !allowed_while_suspended(req.method(), path) {
             let mut conn = match state.db.acquire().await {
                 Ok(conn) => conn,
-                Err(e) => return AppError::internal(format!("Database error: {}", e)).into_response(),
+                Err(e) => {
+                    tracing::error!("Suspension check: no database connection: {}", e);
+                    return AppError::internal("Database error").into_response();
+                }
             };
             match suspension(&mut conn, user_id).await {
                 Ok(None) => {}
