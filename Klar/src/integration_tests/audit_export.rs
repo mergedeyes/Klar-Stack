@@ -20,7 +20,7 @@ async fn export(app: &TestApp, admin: &User, body: serde_json::Value) -> HashMap
         let mut file = zip.by_index(i).unwrap();
         let mut text = String::new();
         file.read_to_string(&mut text).unwrap();
-        files.insert(file.name().to_string(), text);
+        files.insert(file.name().unwrap().into_owned(), text);
     }
     files
 }
