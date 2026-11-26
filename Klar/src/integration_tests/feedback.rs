@@ -102,7 +102,7 @@ async fn screenshots_are_admin_only_exported_and_expire(pool: PgPool) {
     // The sender's export carries the files.
     let res = app.get(&tester, "/users/me/export").await.ok();
     let zip = zip::ZipArchive::new(std::io::Cursor::new(res.body.to_vec())).unwrap();
-    assert_eq!(zip.file_names().filter(|n| n.starts_with("feedback/")).count(), 2);
+    assert_eq!(zip.file_names().map(Result::unwrap).filter(|n| n.starts_with("feedback/")).count(), 2);
     assert_eq!(app.export(&tester).await["feedback_sent"][0]["screenshots"].as_array().unwrap().len(), 2);
 
     // Retention: kept while open; 30 days after "done" they go, text stays.
