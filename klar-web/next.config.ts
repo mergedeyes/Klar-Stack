@@ -9,11 +9,12 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: process.env.NODE_ENV === "development",
     remotePatterns: [
-      {
-        protocol: "http",
-        hostname: "localhost",
-        port: "3000",
-      },
+      // Only the dev backend serves media from localhost. In production this
+      // entry would let /_next/image (public, outside the passcode gate)
+      // fetch from the Next server itself, so it is left out there.
+      ...(process.env.NODE_ENV === "development"
+        ? [{ protocol: "http" as const, hostname: "localhost", port: "3000" }]
+        : []),
       {
         protocol: "https",
         hostname: "cdn.klarsocial.eu",
