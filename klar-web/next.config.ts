@@ -4,16 +4,19 @@ import createNextIntlPlugin from "next-intl/plugin";
 // Picks the language for each request (src/i18n/request.ts).
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+// The image optimizer (/_next/image) is public, outside the passcode gate, so
+// it only fetches from where media actually lives: the CDN, and the storage
+// URL this build was made for (http://localhost:3000/media for a local
+// backend, also in a local production build). A blanket localhost entry would
+// let it fetch anything from the backend or the Next server itself.
+const storageUrl = process.env.NEXT_PUBLIC_STORAGE_URL?.replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
   output: "standalone",
   images: {
     unoptimized: process.env.NODE_ENV === "development",
     remotePatterns: [
-      {
-        protocol: "http",
-        hostname: "localhost",
-        port: "3000",
-      },
+      ...(storageUrl ? [new URL(`${storageUrl}/**`)] : []),
       {
         protocol: "https",
         hostname: "cdn.klarsocial.eu",
